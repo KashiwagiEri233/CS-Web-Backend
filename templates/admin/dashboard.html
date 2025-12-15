@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} - FastAPI RBAC 框架{% endblock %}
+
+{% block content %}
+<div class="bg-white rounded-lg shadow-md p-6">
+    <h1 class="text-2xl font-bold mb-4">管理后台仪表板</h1>
+    <p class="text-gray-600 mb-6">欢迎使用企业级FastAPI RBAC权限管理系统</p>
+    
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="bg-blue-50 p-6 rounded-lg border border-blue-200">
+            <h3 class="text-lg font-semibold text-blue-800 mb-2">用户管理</h3>
+            <p class="text-blue-600 mb-4">管理系统用户账户、角色分配</p>
+            <a href="/admin/users" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition">管理用户</a>
+        </div>
+        
+        <div class="bg-green-50 p-6 rounded-lg border border-green-200">
+            <h3 class="text-lg font-semibold text-green-800 mb-2">角色管理</h3>
+            <p class="text-green-600 mb-4">创建和管理系统角色</p>
+            <a href="/admin/roles" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition">管理角色</a>
+        </div>
+        
+        <div class="bg-purple-50 p-6 rounded-lg border border-purple-200">
+            <h3 class="text-lg font-semibold text-purple-800 mb-2">权限管理</h3>
+            <p class="text-purple-600 mb-4">控制系统资源访问权限</p>
+            <a href="/admin/permissions" class="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 transition">管理权限</a>
+        </div>
+    </div>
+    
+    <div class="mt-8 bg-gray-50 p-6 rounded-lg border">
+        <h3 class="text-lg font-semibold mb-4">系统信息</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <p class="text-sm text-gray-600">当前用户</p>
+                <p class="font-medium">{{ user.username }} ({{ user.email }})</p>
+            </div>
+            <div>
+                <p class="text-sm text-gray-600">用户角色</p>
+                <p class="font-medium">
+                    {% if user.is_superuser %}
+                        超级管理员
+                    {% else %}
+                        普通用户
+                    {% endif %}
+                </p>
+            </div>
+            <div>
+                <p class="text-sm text-gray-600">账户状态</p>
+                <p class="font-medium">
+                    {% if user.is_active %}
+                        <span class="text-green-600">活跃</span>
+                    {% else %}
+                        <span class="text-red-600">未激活</span>
+                    {% endif %}
+                </p>
+            </div>
+            <div>
+                <p class="text-sm text-gray-600">创建时间</p>
+                <p class="font-medium">{{ user.created_at.strftime('%Y-%m-%d') if user.created_at else '未知' }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

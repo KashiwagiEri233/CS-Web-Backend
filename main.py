@@ -1,13 +1,14 @@
-from fastapi import FastAPI
+"""
+企业级FastAPI框架启动入口
 
-app = FastAPI()
+使用 startup.py 进行优雅启动，此文件保留用于兼容性
+"""
+import uvicorn
 
-
-@app.get("/")
-async def root():
-    return {"message": "Hello World"}
-
-
-@app.get("/hello/{name}")
-async def say_hello(name: str):
-    return {"message": f"Hello {name}"}
+if __name__ == "__main__":
+    uvicorn.run(
+        "app.main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True
+    )
