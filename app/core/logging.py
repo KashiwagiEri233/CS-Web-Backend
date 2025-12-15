@@ -9,22 +9,6 @@ from fastapi.logger import logger as fastapi_logger
 # 使用loguru作为日志系统
 from .loguru_logger import get_logger, configure_logging
 
-# 获取日志记录器
-logger = get_logger("app")
-
-# 配置日志系统
-configure_logging(
-    level="INFO",
-    enable_console=True,
-    enable_file=True,
-    log_dir="logs",
-    app_name="fastapi_app",
-    serialize=False  # 确保彩色输出
-)
-
-# 配置FastAPI日志记录器
-fastapi_logger.addHandler(sys.stdout)
-
 
 def setup_logging():
     """设置应用日志记录"""

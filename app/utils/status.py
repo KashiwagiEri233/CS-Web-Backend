@@ -45,8 +45,7 @@ async def check_database_connection() -> Dict[str, Any]:
                     return {
                         "status": "connected",
                         "type": db_type,
-                        "version": version,
-                        "url": settings.DATABASE_URL.split("@")[0].split("//")[0] + "//***:***@" + settings.DATABASE_URL.split("@")[1] if "@" in settings.DATABASE_URL else settings.DATABASE_URL,
+                        "version": version.split(",")[0] if "," in version else version,  # 只取版本号前面的主要部分
                     }
                 else:
                     return {

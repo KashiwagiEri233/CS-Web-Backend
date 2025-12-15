@@ -9,8 +9,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.api import api_router
 from app.core.config import settings
-from app.core.logging import configure_logging, start_logging_system, stop_logging_system, get_logger
-from app.core.loguru_logger import configure_logging as configure_loguru_logging
+from app.core.loguru_logger import configure_logging, get_logger
 from app.database import engine
 from app.models import Base
 from app.middleware.monitoring import SecurityHeadersMiddleware, MetricsMiddleware
@@ -20,17 +19,8 @@ from app.middleware.logging import LoggingMiddleware
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 应用启动时执行的代码
-    # 配置日志系统
+    # 配置loguru日志系统（统一的日志配置）
     configure_logging(
-        level="INFO",
-        enable_console=True,  # 启用控制台日志以显示统一格式
-        enable_file=True,
-        enable_performance=True,
-        log_dir="logs"
-    )
-    
-    # 配置loguru日志系统
-    configure_loguru_logging(
         level="INFO",
         enable_console=True,
         enable_file=True,
@@ -39,14 +29,13 @@ async def lifespan(app: FastAPI):
         serialize=False  # 确保彩色输出
     )
     
-    # 配置Uvicorn日志级别为WARNING，减少INFO输出
+    # 配置其他库的日志级别为WARNING，减少INFO输出
     import logging
     logging.getLogger("uvicorn").setLevel(logging.WARNING)
     logging.getLogger("uvicorn.error").setLevel(logging.ERROR)
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
-    
-    # 启动日志系统异步组件
-    await start_logging_system()
+    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+    logging.getLogger("sqlalchemy.pool").setLevel(logging.WARNING)
     
     logger = get_logger("main")
     logger.info("配置日志系统")
@@ -62,10 +51,12 @@ async def lifespan(app: FastAPI):
         db_status = await check_database_connection()
         
         if db_status["status"] == "connected":
-            logger.info(f"数据库连接成功 ({db_status['type']})")
-            logger.info(f"数据库版本: {db_status['version']}")
+            logger.info("数据库连接成功", 
+                        type=db_status['type'], 
+                        version=db_status['version'])
         else:
-            logger.error(f"数据库连接失败: {db_status.get('message', 'Unknown error')}")
+            logger.error("数据库连接失败", 
+                        message=db_status.get('message', 'Unknown error'))
             raise Exception(f"Database connection failed: {db_status.get('message', 'Unknown error')}")
     except Exception as e:
         logger.error(f"数据库连接失败: {str(e)}")
@@ -83,9 +74,14 @@ async def lifespan(app: FastAPI):
         tables_status = app_status["database_tables"]
         if tables_status["status"] == "checked":
             tables_found = tables_status["tables_found"]
-            logger.info(f"数据库表已就绪: {', '.join(tables_found)}")
+            total_checked = tables_status["total_checked"]
+            logger.info("数据库表检查完成", 
+                        tables_found=len(tables_found),
+                        total_checked=total_checked,
+                        table_list=', '.join(tables_found))
         else:
-            logger.warning(f"数据库表检查: {tables_status.get('message', 'Unknown error')}")
+            logger.warning("数据库表检查失败", 
+                          message=tables_status.get('message', 'Unknown error'))
     
     logger.info("应用初始化完成")
     logger.info("服务器地址: http://0.0.0.0:8000")
@@ -96,8 +92,6 @@ async def lifespan(app: FastAPI):
     yield
     # 应用关闭时执行的代码
     logger.info("正在关闭应用")
-    # 停止日志系统异步组件
-    await stop_logging_system()
     logger.info("FastAPI RBAC Framework shutdown - version: 1.0.0")
     logger.info("应用已安全关闭 - version: 1.0.0")
 

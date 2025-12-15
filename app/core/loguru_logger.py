@@ -57,13 +57,14 @@ class LoguruAdapter:
         loguru_logger.add(
             sys.stdout,
             level=loguru_level,
+            # 更直观的格式：主要信息突出，参数信息在下方用分隔线分开
             format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
                    "<level>{level: <8}</level> | "
-                   "<cyan>{extra[name]}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | "
-                   "<level>{message}</level> | "
-                   "<blue>{extra}</blue>",
+                   "<cyan>{extra[name]}</cyan> | "
+                   "{message}",
             serialize=False,  # 使用彩色格式输出，不序列化为JSON
-            colorize=True  # 启用颜色
+            colorize=True,  # 启用颜色
+            catch=True  # 捕获异常，避免程序崩溃
         )
 
     def _map_logging_level_to_loguru(self, level: int) -> str:
@@ -90,27 +91,57 @@ class LoguruAdapter:
         if not self.isEnabledFor(level):
             return
 
-        # 获取当前上下文
-        context = _logging_context.get().copy()
-
-        # 合并额外信息
-        if extra:
-            context.update(extra)
-
         # 添加日志级别名称
         level_name = logging.getLevelName(level)
 
         # 使用loguru记录日志
         log_method = getattr(self._logger, level_name.lower(), self._logger.info)
 
-        # 合并上下文和关键字参数
-        all_context = {**context, **kwargs}
-
+        # 格式化参数信息
+        if kwargs:
+            # 创建格式化的参数字符串
+            formatted_params = []
+            for k, v in kwargs.items():
+                # 跳过name，因为它已经在日志头部显示
+                if k == 'name':
+                    continue
+                
+                # 特殊处理一些常见字段，使显示更直观
+                display_key = k
+                if k == 'type':
+                    display_key = '数据库类型'
+                elif k == 'version':
+                    display_key = '版本'
+                elif k == 'tables_found':
+                    display_key = '已找到表数量'
+                elif k == 'total_checked':
+                    display_key = '检查表总数'
+                elif k == 'table_list':
+                    display_key = '表列表'
+                elif k == 'method':
+                    display_key = '请求方法'
+                elif k == 'url':
+                    display_key = '请求URL'
+                elif k == 'status_code':
+                    display_key = '响应状态码'
+                elif k == 'process_time':
+                    display_key = '处理时间'
+                elif k == 'client_ip':
+                    display_key = '客户端IP'
+                elif k == 'user_agent':
+                    display_key = '用户代理'
+                
+                formatted_params.append(f" <blue>{display_key}</blue>: {v}")
+            
+            # 将格式化的参数添加到消息中
+            if formatted_params:
+                msg = f"{msg}" + "".join(formatted_params)
+        
         # 如果需要异常信息
         if exc_info:
-            log_method(msg, exc_info=exc_info, **all_context)
+            log_method(msg, exc_info=exc_info)
         else:
-            log_method(msg, **all_context)
+            log_method(msg)
 
     def debug(self, msg: str, *args, **kwargs):
         """记录DEBUG级别日志"""
@@ -304,8 +335,9 @@ def basicConfig(**kwargs):
         'format',
         "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
         "<level>{level: <8}</level> | "
-        "<cyan>{extra[name]}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | "
-        "<level>{message}</level>"
+        "<cyan>{extra[name]}</cyan> | "
+        "\n"
+        "<level>→ {message}</level>"
     )
 
     loguru_logger.add(
@@ -313,7 +345,8 @@ def basicConfig(**kwargs):
         level=loguru_level,
         format=format_str,
         serialize=kwargs.get('serialize', False),
-        colorize=True  # 启用颜色
+        colorize=True,  # 启用颜色
+        catch=True  # 捕获异常
     )
 
 
@@ -354,13 +387,13 @@ def configure_logging(
 
     loguru_level = LoguruAdapter("", level)._map_logging_level_to_loguru(level)
 
-    # 默认格式
+    # 默认格式 - 更直观的格式，主要信息突出，参数在下方显示
     if format_string is None:
         format_string = (
             "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
             "<level>{level: <8}</level> | "
-            "<cyan>{extra[name]}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | "
-            "<level>{message}</level>"
+            "<cyan>{extra[name]}</cyan> | "
+            "{message}"
         )
 
     # 添加控制台处理器
@@ -371,6 +404,7 @@ def configure_logging(
             format=format_string,
             serialize=serialize,
             colorize=True,  # 启用颜色
+            catch=True,  # 捕获异常
             **kwargs
         )
 
@@ -388,9 +422,9 @@ def configure_logging(
             rotation=rotation,
             retention=retention,
             serialize=serialize,
+            catch=True,  # 捕获异常
             **kwargs
         )
 
 
-# 初始化默认配置
-configure_logging(level=logging.INFO, enable_console=True, serialize=False)
+# 注意：不在模块级别初始化配置，由应用程序统一配置
