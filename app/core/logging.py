@@ -1,5 +1,6 @@
 import sys
 import time
+import logging
 from typing import Any, Dict
 
 from fastapi import Request, Response
@@ -17,7 +18,8 @@ configure_logging(
     enable_console=True,
     enable_file=True,
     log_dir="logs",
-    app_name="fastapi_app"
+    app_name="fastapi_app",
+    serialize=False  # 确保彩色输出
 )
 
 # 配置FastAPI日志记录器
@@ -32,15 +34,16 @@ def setup_logging():
         enable_console=True,
         enable_file=True,
         log_dir="logs",
-        app_name="fastapi_app"
+        app_name="fastapi_app",
+        serialize=False  # 确保彩色输出
     )
     
     # 创建处理器
     handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(JSONFormatter())
+    # 使用loguru不需要额外的格式化器
     
-    # 添加处理器到根日志记录器
-    root_logger.addHandler(handler)
+    # 添加处理器到根日志记录器（如果需要）
+    # root_logger.addHandler(handler)
 
 
 async def log_request_response(request: Request, call_next):

@@ -67,7 +67,7 @@ def main():
         print("🌐 启动Web服务器...")
         print("-"*50)
         
-        # 创建自定义Uvicorn日志配置
+        # 创建自定义Uvicorn日志配置，只显示警告和错误
         uvicorn_log_config = {
             "version": 1,
             "disable_existing_loggers": False,
@@ -76,13 +76,7 @@ def main():
                     "()": "uvicorn.logging.DefaultFormatter",
                     "format": "%(levelprefix)s %(message)s",
                     "datefmt": "%H:%M:%S",
-                    "use_colors": False,
-                },
-                "access": {
-                    "()": "uvicorn.logging.AccessFormatter",
-                    "format": "%(levelprefix)s %(message)s",
-                    "datefmt": "%H:%M:%S",
-                    "use_colors": False,
+                    "use_colors": False,  # 禁用颜色，使用loguru的配置
                 },
             },
             "handlers": {
@@ -91,18 +85,13 @@ def main():
                     "class": "logging.StreamHandler",
                     "stream": "ext://sys.stdout",
                 },
-                "access": {
-                    "formatter": "access",
-                    "class": "logging.StreamHandler",
-                    "stream": "ext://sys.stdout",
-                },
             },
             "loggers": {
-                "uvicorn": {"handlers": ["default"], "level": "ERROR", "propagate": False},
+                "uvicorn": {"handlers": ["default"], "level": "WARNING", "propagate": False},
                 "uvicorn.error": {"level": "ERROR", "propagate": False},
-                "uvicorn.access": {"handlers": ["access"], "level": "ERROR", "propagate": False},
+                "uvicorn.access": {"handlers": [], "level": "WARNING", "propagate": False},  # 完全禁用访问日志
             },
-            "root": {"level": "ERROR", "handlers": ["default"]},
+            "root": {"level": "WARNING", "handlers": ["default"]},
         }
         
         uvicorn.run(
@@ -111,7 +100,7 @@ def main():
             port=8000,
             reload=True,
             log_config=uvicorn_log_config,  # 使用自定义Uvicorn日志配置
-            use_colors=False,              # 禁用颜色输出
+            use_colors=True,               # 启用颜色输出
         )
     except KeyboardInterrupt:
         print("\n🛑 服务器已停止")

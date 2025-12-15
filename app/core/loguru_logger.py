@@ -14,7 +14,12 @@ from contextvars import ContextVar
 from loguru import logger as loguru_logger
 
 # 自定义loguru的级别颜色
+loguru_logger.level("TRACE", color="<blue>")
+loguru_logger.level("DEBUG", color="<cyan>")
 loguru_logger.level("INFO", color="<green>")
+loguru_logger.level("WARNING", color="<yellow>")
+loguru_logger.level("ERROR", color="<red>")
+loguru_logger.level("CRITICAL", color="<red><bold>")
 
 
 # 上下文变量用于存储请求级别的信息
@@ -48,18 +53,18 @@ class LoguruAdapter:
         # 移除所有现有的处理器
         loguru_logger.remove()
 
-    # 重新添加处理器，设置级别
-    loguru_logger.add(
-        sys.stdout,
-        level=loguru_level,
-        format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
-               "<level>{level: <8}</level> | "
-               "<cyan>{extra[name]}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | "
-               "<level>{message}</level> | "
-               "<blue>{extra}</blue>",
-        serialize=False,  # 使用彩色格式输出，不序列化为JSON
-        colorize=True  # 启用颜色
-    )
+        # 重新添加处理器，设置级别
+        loguru_logger.add(
+            sys.stdout,
+            level=loguru_level,
+            format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
+                   "<level>{level: <8}</level> | "
+                   "<cyan>{extra[name]}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | "
+                   "<level>{message}</level> | "
+                   "<blue>{extra}</blue>",
+            serialize=False,  # 使用彩色格式输出，不序列化为JSON
+            colorize=True  # 启用颜色
+        )
 
     def _map_logging_level_to_loguru(self, level: int) -> str:
         """将logging级别映射到loguru级别"""
@@ -298,9 +303,9 @@ def basicConfig(**kwargs):
     format_str = kwargs.get(
         'format',
         "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
-        "<green>{level: <8}</green> | "
+        "<level>{level: <8}</level> | "
         "<cyan>{extra[name]}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | "
-        "<green>{message}</green>"
+        "<level>{message}</level>"
     )
 
     loguru_logger.add(
@@ -322,7 +327,7 @@ def configure_logging(
     app_name: str = "app",
     rotation: str = "10 MB",
     retention: str = "30 days",
-    serialize: bool = True,
+    serialize: bool = False,  # 默认不序列化为JSON，以支持彩色输出
     **kwargs
 ):
     """
@@ -353,9 +358,9 @@ def configure_logging(
     if format_string is None:
         format_string = (
             "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
-            "<green>{level: <8}</green> | "
+            "<level>{level: <8}</level> | "
             "<cyan>{extra[name]}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | "
-            "<green>{message}</green>"
+            "<level>{message}</level>"
         )
 
     # 添加控制台处理器
@@ -388,4 +393,4 @@ def configure_logging(
 
 
 # 初始化默认配置
-configure_logging(level=logging.INFO, enable_console=True)
+configure_logging(level=logging.INFO, enable_console=True, serialize=False)

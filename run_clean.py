@@ -51,7 +51,7 @@ def main():
             reload=True,
             log_level="warning",  # 只显示警告及以上级别的日志
             access_log=False,     # 禁用访问日志
-            use_colors=False,
+            use_colors=True,
         )
     except KeyboardInterrupt:
         logger.info("服务器已停止")

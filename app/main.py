@@ -9,7 +9,8 @@ from fastapi.templating import Jinja2Templates
 
 from app.api import api_router
 from app.core.config import settings
-from app.core.logging_config import configure_logging, start_logging_system, stop_logging_system, get_logger, LOG_CONFIG
+from app.core.logging import configure_logging, start_logging_system, stop_logging_system, get_logger
+from app.core.loguru_logger import configure_logging as configure_loguru_logging
 from app.database import engine
 from app.models import Base
 from app.middleware.monitoring import SecurityHeadersMiddleware, MetricsMiddleware
@@ -27,6 +28,22 @@ async def lifespan(app: FastAPI):
         enable_performance=True,
         log_dir="logs"
     )
+    
+    # 配置loguru日志系统
+    configure_loguru_logging(
+        level="INFO",
+        enable_console=True,
+        enable_file=True,
+        log_dir="logs",
+        app_name="fastapi_app",
+        serialize=False  # 确保彩色输出
+    )
+    
+    # 配置Uvicorn日志级别为WARNING，减少INFO输出
+    import logging
+    logging.getLogger("uvicorn").setLevel(logging.WARNING)
+    logging.getLogger("uvicorn.error").setLevel(logging.ERROR)
+    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
     
     # 启动日志系统异步组件
     await start_logging_system()

@@ -38,7 +38,7 @@ def main():
             reload=True,
             log_level="info",
             access_log=False,
-            use_colors=False,
+            use_colors=True,
         )
     except KeyboardInterrupt:
         print("2025-12-15 17:20:17 | INFO | startup - 服务器已停止")
