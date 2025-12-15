@@ -63,7 +63,40 @@ async def lifespan(app: FastAPI):
         logger.error(f"数据库连接失败: {str(e)}")
         raise
     
+    # 初始化RBAC系统
     logger.info("初始化权限系统")
+    try:
+        from app.database import AsyncSessionLocal
+        from app.services.rbac_init import initialize_rbac
+        
+        # 创建数据库会话
+        async with AsyncSessionLocal() as db:
+            # 初始化RBAC系统
+            init_result = await initialize_rbac(db)
+            if init_result["success"]:
+                logger.info(
+                    "RBAC系统初始化成功",
+                    permissions_created=init_result["permissions_created"],
+                    roles_created=init_result["roles_created"],
+                    admin_created=init_result["admin_created"]
+                )
+                
+                # 如果管理员账号被创建，显示登录信息
+                if init_result["admin_created"]:
+                    logger.info(
+                        "默认管理员账号已创建",
+                        username="admin",
+                        password="admin123",
+                        note="请在生产环境中修改默认密码"
+                    )
+            else:
+                logger.error(
+                    "RBAC系统初始化失败",
+                    errors=init_result["errors"]
+                )
+    except Exception as e:
+        logger.error(f"RBAC系统初始化异常: {str(e)}")
+    
     logger.info("FastAPI RBAC Framework started - version: 1.0.0")
     
     # 检查应用整体状态

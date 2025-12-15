@@ -31,6 +31,12 @@ class RBACRepository:
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
     
+    async def get_role_by_name(self, role_name: str) -> Optional[Role]:
+        """通过名称获取角色"""
+        stmt = select(Role).where(Role.name == role_name)
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+    
     async def get_role_with_permissions(self, role_id: int) -> Optional[Role]:
         """获取角色及其权限"""
         stmt = select(Role).options(selectinload(Role.permissions)).where(Role.id == role_id)
@@ -40,6 +46,15 @@ class RBACRepository:
     async def get_permission_by_id(self, permission_id: int) -> Optional[Permission]:
         """通过ID获取权限"""
         stmt = select(Permission).where(Permission.id == permission_id)
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+    
+    async def get_permission_by_resource_and_action(self, resource: str, action: str) -> Optional[Permission]:
+        """通过资源和操作获取权限"""
+        stmt = select(Permission).where(
+            Permission.resource == resource,
+            Permission.action == action
+        )
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
     
