@@ -1,111 +1,89 @@
+#!/usr/bin/env python3
 """
-优雅的FastAPI应用启动脚本
+系统启动脚本
+在应用启动前执行数据库表完整性检查和初始化
 """
-import os
+
 import sys
-import logging
-import logging.config
+import os
+import asyncio
 from pathlib import Path
 
 # 添加项目根目录到Python路径
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
-# 配置环境变量
-os.environ.setdefault("PYTHONPATH", str(project_root))
+# 设置环境变量
+os.environ.setdefault("ENV_FILE", ".env")
 
-# 自定义日志配置
-LOGGING_CONFIG = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "formatters": {
-        "default": {
-            "format": "%(message)s",
-        },
-    },
-    "handlers": {
-        "default": {
-            "formatter": "default",
-            "class": "logging.StreamHandler",
-            "stream": "ext://sys.stdout",
-        },
-    },
-    "loggers": {
-        "uvicorn": {"handlers": ["default"], "level": "ERROR", "propagate": False},
-        "uvicorn.error": {"level": "ERROR", "propagate": False},
-        "uvicorn.access": {"handlers": [], "level": "ERROR", "propagate": False},
-        "sqlalchemy.engine": {"handlers": [], "level": "WARNING", "propagate": False},
-        "sqlalchemy.pool": {"handlers": [], "level": "WARNING", "propagate": False},
-    },
-    "root": {"level": "ERROR", "handlers": ["default"]},
-}
+from app.utils.db_initializer import initialize_database
+from app.core.loguru_logger import get_logger
 
-import uvicorn
+logger = get_logger("startup")
 
-def main():
-    """
-    启动FastAPI应用的主函数
-    """
-    # 应用自定义日志配置
-    logging.config.dictConfig(LOGGING_CONFIG)
+
+async def initialize_system():
+    """系统初始化函数"""
+    print("=" * 60)
+    print("🚀 FastAPI RBAC Framework 系统初始化")
+    print("=" * 60)
     
-    # 显示启动标题
-    print("\n" + "="*50)
-    print("      FastAPI RBAC Framework 启动中...")
-    print("="*50)
-    
-    # 显示系统信息
-    print(f"📍 工作目录: {project_root}")
-    print(f"🐍 Python 环境: {sys.executable}")
-    print(f"📝 日志文件: {project_root}/logs/app.log")
-    print("-"*50)
-    
-    print("🔄 初始化应用组件...")
-    
-    # 启动服务器
     try:
-        print("🌐 启动Web服务器...")
-        print("-"*50)
+        # 1. 数据库表完整性检查和初始化
+        print("\n📋 正在检查数据库表完整性...")
+        db_result = await initialize_database()
         
-        # 创建自定义Uvicorn日志配置，只显示警告和错误
-        uvicorn_log_config = {
-            "version": 1,
-            "disable_existing_loggers": False,
-            "formatters": {
-                "default": {
-                    "()": "uvicorn.logging.DefaultFormatter",
-                    "format": "%(levelprefix)s %(message)s",
-                    "datefmt": "%H:%M:%S",
-                    "use_colors": False,  # 禁用颜色，使用loguru的配置
-                },
-            },
-            "handlers": {
-                "default": {
-                    "formatter": "default",
-                    "class": "logging.StreamHandler",
-                    "stream": "ext://sys.stdout",
-                },
-            },
-            "loggers": {
-                "uvicorn": {"handlers": ["default"], "level": "WARNING", "propagate": False},
-                "uvicorn.error": {"level": "ERROR", "propagate": False},
-                "uvicorn.access": {"handlers": [], "level": "WARNING", "propagate": False},  # 完全禁用访问日志
-            },
-            "root": {"level": "WARNING", "handlers": ["default"]},
-        }
+        # 输出数据库初始化结果
+        print(f"   检查表数量: {db_result['tables_checked']}")
+        if db_result['missing_tables']:
+            print(f"   缺失表: {db_result['missing_tables']}")
+            if db_result['created_tables']:
+                print(f"   已创建表: {db_result['created_tables']}")
+            if db_result['failed_tables']:
+                print(f"   创建失败表: {db_result['failed_tables']}")
+        else:
+            print("   所有表都已存在")
         
-        uvicorn.run(
-            "app.main:app",
-            host="0.0.0.0",
-            port=8000,
-            reload=True,
-            log_config=uvicorn_log_config,  # 使用自定义Uvicorn日志配置
-            use_colors=True,               # 启用颜色输出
-        )
-    except KeyboardInterrupt:
-        print("\n🛑 服务器已停止")
+        if not db_result['success']:
+            print("❌ 数据库初始化失败")
+            for error in db_result['errors']:
+                print(f"   错误: {error}")
+            return False
+        
+        print("✅ 数据库初始化完成")
+        
+        # 2. 其他初始化步骤可以在这里添加
+        # 例如：缓存初始化、定时任务初始化等
+        
+        return True
+        
     except Exception as e:
-        print(f"\n❌ 启动失败: {str(e)}")
+        logger.error(f"系统初始化过程中发生错误: {str(e)}")
+        print(f"\n💥 系统初始化失败: {str(e)}")
+        return False
+    finally:
+        print("\n" + "=" * 60)
+        print("系统初始化过程结束")
+        print("=" * 60)
+
+
+async def main():
+    """主函数"""
+    # 执行系统初始化
+    success = await initialize_system()
+    
+    if not success:
+        print("\n❌ 系统初始化失败，退出程序")
+        return 1
+    
+    print("\n✅ 系统初始化成功，准备启动应用...")
+    
+    # 启动主应用
+    # 这里我们不直接启动应用，而是返回成功状态
+    # 实际的应用启动应该由run.py或其他启动脚本来处理
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    exit_code = asyncio.run(main())
+    sys.exit(exit_code)
