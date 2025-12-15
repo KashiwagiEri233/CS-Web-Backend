@@ -14,6 +14,7 @@ from app.database import engine
 from app.models import Base
 from app.middleware.monitoring import SecurityHeadersMiddleware, MetricsMiddleware
 from app.middleware.logging import LoggingMiddleware
+from app.core.exceptions import setup_exception_handlers, ExceptionHandlerMiddleware
 
 
 @asynccontextmanager
@@ -107,11 +108,15 @@ app = FastAPI(
     redoc_url=f"{settings.API_V1_STR}/redoc"
 )
 
+# 设置全局异常处理器
+setup_exception_handlers(app)
+
 # 配置静态文件和模板
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-# 配置中间件
+# 配置中间件（注意异常处理中间件应该放在最外层）
+app.add_middleware(ExceptionHandlerMiddleware)
 app.add_middleware(MetricsMiddleware)
 app.add_middleware(LoggingMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)

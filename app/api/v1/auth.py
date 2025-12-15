@@ -1,12 +1,18 @@
 from datetime import timedelta
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.security import get_password_hash
+from app.core.exceptions import (
+    InvalidCredentialsException,
+    UserNotActiveException,
+    UserAlreadyExistsException,
+    NotFoundException
+)
 from app.database import get_db
 from app.dependencies import get_current_active_user
 from app.models.user import User
@@ -29,17 +35,10 @@ async def login(
     user = await auth_service.authenticate(form_data.username, form_data.password)
     
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="用户名或密码错误",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise InvalidCredentialsException()
     
     if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="用户账户未激活"
-        )
+        raise UserNotActiveException(user_id=user.id)
     
     return await auth_service.create_token_for_user(user)
 
@@ -56,17 +55,10 @@ async def login_json(
     user = await auth_service.authenticate(login_data.username, login_data.password)
     
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="用户名或密码错误",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise InvalidCredentialsException()
     
     if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="用户账户未激活"
-        )
+        raise UserNotActiveException(user_id=user.id)
     
     return await auth_service.create_token_for_user(user)
 
@@ -87,18 +79,12 @@ async def register(
     # 检查用户名是否已存在
     existing_user = await user_repo.get_by_username(username)
     if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="用户名已存在"
-        )
+        raise UserAlreadyExistsException(username=username)
     
     # 检查邮箱是否已存在
     existing_email = await user_repo.get_by_email(email)
     if existing_email:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="邮箱已存在"
-        )
+        raise UserAlreadyExistsException(email=email)
     
     # 创建新用户
     # 对于测试密码使用简单哈希

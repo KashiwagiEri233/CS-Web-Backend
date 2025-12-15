@@ -1,9 +1,10 @@
 from functools import wraps
 from typing import Callable, List, Union
 
-from fastapi import HTTPException, status, Request
+from fastapi import status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import PermissionDeniedException, NotFoundException
 from app.models.user import User
 from app.services.rbac_service import RBACService
 
@@ -76,16 +77,15 @@ def require_permission(resource: str, action: str, require_all: bool = True):
             db = kwargs.get("db")
             
             if not user or not db:
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="权限检查失败：缺少用户或数据库会话"
+                raise NotFoundException(
+                    resource_type="用户或数据库会话",
+                    resource_id="missing"
                 )
             
             has_permission = await checker(user, db)
             if not has_permission:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="权限不足"
+                raise PermissionDeniedException(
+                    required_permissions=checker.required_permissions
                 )
             
             return await func(*args, **kwargs)
@@ -102,15 +102,14 @@ def require_superuser(func: Callable):
         user = kwargs.get("current_user")
         
         if not user:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="权限检查失败：缺少用户信息"
+            raise NotFoundException(
+                resource_type="用户信息",
+                resource_id="missing"
             )
         
         if not user.is_superuser:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="需要超级用户权限"
+            raise PermissionDeniedException(
+                required_permissions=["superuser"]
             )
         
         return await func(*args, **kwargs)
@@ -131,9 +130,9 @@ def require_role(role_name: str):
             db = kwargs.get("db")
             
             if not user or not db:
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="权限检查失败：缺少用户或数据库会话"
+                raise NotFoundException(
+                    resource_type="用户或数据库会话",
+                    resource_id="missing"
                 )
             
             # 超级用户拥有所有角色权限
@@ -148,9 +147,8 @@ def require_role(role_name: str):
                     break
             
             if not has_role:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail=f"需要角色: {role_name}"
+                raise PermissionDeniedException(
+                    required_permissions=[f"role:{role_name}"]
                 )
             
             return await func(*args, **kwargs)

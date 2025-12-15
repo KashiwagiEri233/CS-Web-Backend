@@ -5,6 +5,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import verify_password, create_access_token
 from app.core.config import settings
+from app.core.exceptions import (
+    UserAlreadyExistsException,
+    NotFoundException,
+    InvalidCredentialsException,
+    UserNotActiveException
+)
 from app.models.user import User
 from app.repositories.user_repo import UserRepository
 from app.schemas.auth import Token
@@ -60,10 +66,10 @@ class AuthService:
         
         # 检查是否已存在相同用户名或邮箱的用户
         if await self.user_repo.get_by_username(user_data.username):
-            raise ValueError("用户名已存在")
+            raise UserAlreadyExistsException(username=user_data.username)
         
         if await self.user_repo.get_by_email(user_data.email):
-            raise ValueError("邮箱已存在")
+            raise UserAlreadyExistsException(email=user_data.email)
         
         # 创建新用户
         hashed_password = get_password_hash(user_data.password)
