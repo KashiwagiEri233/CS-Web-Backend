@@ -1,13 +1,21 @@
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+import logging
+
+# 设置SQLAlchemy日志级别
+logging.getLogger("sqlalchemy.engine").setLevel(logging.ERROR)
+logging.getLogger("sqlalchemy.pool").setLevel(logging.ERROR)
+logging.getLogger("sqlalchemy.dialects").setLevel(logging.ERROR)
+logging.getLogger("sqlalchemy.orm").setLevel(logging.ERROR)
+logging.getLogger("sqlalchemy.compiler").setLevel(logging.ERROR)
 
 from app.core.config import settings
 
 # 创建异步数据库引擎
 engine = create_async_engine(
     settings.DATABASE_URL,
-    echo=settings.DEBUG,
+    echo=False,  # 强制设置为False，避免输出调试信息
     future=True,
 )
 

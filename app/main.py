@@ -117,6 +117,9 @@ async def lifespan(app: FastAPI):
                         tables_found=len(tables_found),
                         total_checked=total_checked,
                         table_list=', '.join(tables_found))
+            # 添加更多信息，表明数据库结构完整
+            if len(tables_found) == total_checked and total_checked > 0:
+                logger.info("数据库结构完整，所有必需的表都已存在")
         else:
             logger.warning("数据库表检查失败", 
                           message=tables_status.get('message', 'Unknown error'))

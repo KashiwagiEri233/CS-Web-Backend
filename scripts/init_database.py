@@ -37,9 +37,14 @@ async def main():
         print(f"\n📊 初始化结果:")
         print(f"   成功: {result['success']}")
         print(f"   检查表数量: {result['tables_checked']}")
-        print(f"   缺失表: {result['missing_tables']}")
-        print(f"   创建表: {result['created_tables']}")
-        print(f"   失败表: {result['failed_tables']}")
+        if result['missing_tables']:
+            print(f"   缺失表: {result['missing_tables']}")
+            if result['created_tables']:
+                print(f"   创建表: {result['created_tables']}")
+            if result['failed_tables']:
+                print(f"   失败表: {result['failed_tables']}")
+        else:
+            print(f"   所有表都已存在，数据库结构完整")
         
         if result['errors']:
             print(f"\n❌ 错误信息:")

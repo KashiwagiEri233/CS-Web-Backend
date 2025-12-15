@@ -3,12 +3,21 @@
 用于检查和创建数据库表
 """
 
+import logging
+# 更早地设置SQLAlchemy日志级别，避免在导入时产生调试信息
+logging.getLogger("sqlalchemy.engine").setLevel(logging.ERROR)
+logging.getLogger("sqlalchemy.pool").setLevel(logging.ERROR)
+logging.getLogger("sqlalchemy.dialects").setLevel(logging.ERROR)
+logging.getLogger("sqlalchemy.orm").setLevel(logging.ERROR)
+logging.getLogger("sqlalchemy.compiler").setLevel(logging.ERROR)
+
 from typing import Dict, List
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.database import engine, Base
 from app.core.loguru_logger import get_logger
+
 from app.models.user import User
 from app.models.role import Role
 from app.models.permission import Permission
@@ -84,9 +93,16 @@ class DatabaseInitializer:
             
             if not missing_tables:
                 self.logger.info("所有表都已存在，无需创建")
+                # 即使没有缺失的表，也要记录每个表的状态
+                for table_name in self.expected_tables:
+                    self.logger.debug(f"表 '{table_name}' 已存在")
                 return {table: False for table in self.expected_tables}
             
             self.logger.info(f"发现缺失的表: {missing_tables}")
+            
+            # 逐个创建缺失的表并记录日志
+            for table_name in missing_tables:
+                self.logger.info(f"正在创建表 '{table_name}'...")
             
             # 创建所有表（SQLAlchemy会自动处理依赖关系）
             async with engine.begin() as conn:

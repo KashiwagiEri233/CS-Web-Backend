@@ -4,8 +4,20 @@
 在应用启动前执行数据库表完整性检查和初始化
 """
 
-import sys
 import os
+import sys
+
+# 更早地设置环境变量来控制SQLAlchemy日志
+os.environ['SQLALCHEMY_SILENCE_UBER_WARNING'] = '1'
+
+import logging
+# 更早地设置SQLAlchemy日志级别，避免在导入时产生调试信息
+logging.getLogger("sqlalchemy.engine").setLevel(logging.ERROR)
+logging.getLogger("sqlalchemy.pool").setLevel(logging.ERROR)
+logging.getLogger("sqlalchemy.dialects").setLevel(logging.ERROR)
+logging.getLogger("sqlalchemy.orm").setLevel(logging.ERROR)
+logging.getLogger("sqlalchemy.compiler").setLevel(logging.ERROR)
+
 import asyncio
 from pathlib import Path
 
@@ -42,7 +54,7 @@ async def initialize_system():
             if db_result['failed_tables']:
                 print(f"   创建失败表: {db_result['failed_tables']}")
         else:
-            print("   所有表都已存在")
+            print("   所有表都已存在，数据库结构完整")
         
         if not db_result['success']:
             print("❌ 数据库初始化失败")
