@@ -1,60 +1,39 @@
-import logging
 import sys
 import time
 from typing import Any, Dict
 
-import structlog
 from fastapi import Request, Response
 from fastapi.logger import logger as fastapi_logger
 
-# 如果pythonjsonlogger不可用，使用标准JSON格式化器
-try:
-    from pythonjsonlogger import jsonlogger
-    JSONFormatter = jsonlogger.JsonFormatter
-except ImportError:
-    class JSONFormatter(logging.Formatter):
-        def format(self, record):
-            return f"{record.levelname}: {record.getMessage()}"
+# 使用loguru作为日志系统
+from .loguru_logger import get_logger, configure_logging
 
-# 配置结构化日志
-structlog.configure(
-    processors=[
-        structlog.stdlib.filter_by_level,
-        structlog.stdlib.add_logger_name,
-        structlog.stdlib.add_log_level,
-        structlog.stdlib.PositionalArgumentsFormatter(),
-        structlog.processors.TimeStamper(fmt="iso"),
-        structlog.processors.StackInfoRenderer(),
-        structlog.processors.format_exc_info,
-        structlog.processors.UnicodeDecoder(),
-        structlog.processors.JSONRenderer()
-    ],
-    context_class=dict,
-    logger_factory=structlog.stdlib.LoggerFactory(),
-    wrapper_class=structlog.stdlib.BoundLogger,
-    cache_logger_on_first_use=True,
-)
+# 获取日志记录器
+logger = get_logger("app")
 
-# 获取结构化日志记录器
-logger = structlog.get_logger()
-
-# 配置标准库日志记录器
-logging.basicConfig(
-    format="%(message)s",
-    stream=sys.stdout,
-    level=logging.INFO,
+# 配置日志系统
+configure_logging(
+    level="INFO",
+    enable_console=True,
+    enable_file=True,
+    log_dir="logs",
+    app_name="fastapi_app"
 )
 
 # 配置FastAPI日志记录器
-fastapi_logger.addHandler(logging.StreamHandler())
-fastapi_logger.setLevel(logging.INFO)
+fastapi_logger.addHandler(sys.stdout)
 
 
 def setup_logging():
     """设置应用日志记录"""
-    # 配置根日志记录器
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logging.INFO)
+    # 使用loguru配置日志系统
+    configure_logging(
+        level="INFO",
+        enable_console=True,
+        enable_file=True,
+        log_dir="logs",
+        app_name="fastapi_app"
+    )
     
     # 创建处理器
     handler = logging.StreamHandler(sys.stdout)
