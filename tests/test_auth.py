@@ -12,21 +12,13 @@ class TestSecurity:
     def test_password_hashing(self):
         """测试密码哈希和验证"""
         password = "test123"  # 使用更短的密码
-        # 使用简单的测试哈希避免bcrypt问题
-        if password == "test123":
-            hashed = "test123_hash"
-        else:
-            hashed = get_password_hash(password)
+        hashed = get_password_hash(password)
         
         # 确保哈希不等于原始密码
         assert hashed != password
         
         # 确保可以验证密码
-        # 由于我们使用测试哈希，需要手动验证
-        if password == "test123":
-            assert verify_password(password, "test123_hash") is True
-        else:
-            assert verify_password(password, hashed) is True
+        assert verify_password(password, hashed) is True
         
         # 确保错误密码无法验证
         assert verify_password("wrong", hashed) is False
@@ -67,10 +59,12 @@ class TestAuthAPI:
             await conn.run_sync(Base.metadata.create_all)
         
         async with AsyncSession(engine) as session:
+            password = "testpassword"
+            hashed_password = get_password_hash(password)
             user = User(
                 username="testuser",
                 email="test@example.com",
-                hashed_password="test_hash",  # 使用简单哈希值避免bcrypt问题
+                hashed_password=hashed_password,
                 is_active=True
             )
             session.add(user)
@@ -79,7 +73,7 @@ class TestAuthAPI:
         # 测试登录
         response = await client.post(
             "/api/v1/auth/login-json",
-            json={"username": "testuser", "password": "test"}  # 使用相同的短密码
+            json={"username": "testuser", "password": password}
         )
         
         assert response.status_code == 200
@@ -110,10 +104,12 @@ class TestAuthAPI:
             await conn.run_sync(Base.metadata.create_all)
         
         async with AsyncSession(engine) as session:
+            password = "testpassword2"
+            hashed_password = get_password_hash(password)
             user = User(
                 username="testuser2",  # 使用不同的用户名避免冲突
                 email="test2@example.com",  # 使用不同的邮箱
-                hashed_password="test_hash",  # 使用简单哈希值避免bcrypt问题
+                hashed_password=hashed_password,
                 is_active=True
             )
             session.add(user)
@@ -121,7 +117,7 @@ class TestAuthAPI:
         
         login_response = await client.post(
             "/api/v1/auth/login-json",
-            json={"username": "testuser2", "password": "test"}  # 使用相同的短密码
+            json={"username": "testuser2", "password": password}
         )
         
         token = login_response.json()["access_token"]

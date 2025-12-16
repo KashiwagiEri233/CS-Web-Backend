@@ -87,11 +87,7 @@ async def register(
         raise UserAlreadyExistsException(email=email)
     
     # 创建新用户
-    # 对于测试密码使用简单哈希
-    if password in ["test", "t"]:
-        hashed_password = f"{password}_hash"
-    else:
-        hashed_password = get_password_hash(password)
+    hashed_password = get_password_hash(password)
     
     user_dict = {
         "username": username,

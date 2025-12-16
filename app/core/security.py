@@ -12,18 +12,6 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """验证密码"""
-    # 如果哈希是"test_hash"，则只有"test"能通过验证，用于测试
-    if hashed_password == "test_hash":
-        return plain_password == "test"
-    
-    # 如果哈希是"t_hash"，则只有"t"能通过验证，用于测试
-    if hashed_password == "t_hash":
-        return plain_password == "t"
-    
-    # 如果哈希是"test123_hash"，则只有"test123"能通过验证，用于测试
-    if hashed_password == "test123_hash":
-        return plain_password == "test123"
-    
     # bcrypt有72字节的限制，所以需要截断长密码
     if len(plain_password.encode('utf-8')) > 72:
         plain_password = plain_password.encode('utf-8')[:72].decode('utf-8', errors='ignore')
@@ -32,22 +20,6 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 def get_password_hash(password: str) -> str:
     """生成密码哈希"""
-    # 如果密码是"test_hash"，则直接返回，用于测试
-    if password == "test_hash":
-        return "test_hash"
-    
-    # 对于测试密码"test"，返回"test_hash"
-    if password == "test":
-        return "test_hash"
-    
-    # 对于测试密码"t"，返回"t_hash"
-    if password == "t":
-        return "t_hash"
-    
-    # 对于测试密码"test123"，返回"test123_hash"
-    if password == "test123":
-        return "test123_hash"
-    
     # bcrypt有72字节的限制，所以需要截断长密码
     if len(password.encode('utf-8')) > 72:
         password = password.encode('utf-8')[:72].decode('utf-8', errors='ignore')

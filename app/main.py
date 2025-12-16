@@ -14,6 +14,7 @@ from app.database import engine
 from app.models import Base
 from app.middleware.monitoring import SecurityHeadersMiddleware, MetricsMiddleware
 from app.middleware.logging import LoggingMiddleware
+from app.middleware.rate_limit import RateLimitMiddleware, AuthRateLimitMiddleware
 from app.core.exceptions import setup_exception_handlers, ExceptionHandlerMiddleware
 
 
@@ -157,15 +158,18 @@ templates = Jinja2Templates(directory="templates")
 
 # 配置中间件（注意异常处理中间件应该放在最外层）
 app.add_middleware(ExceptionHandlerMiddleware)
+# 添加速率限制中间件
+app.add_middleware(AuthRateLimitMiddleware, calls=settings.AUTH_RATE_LIMIT_CALLS, period=settings.AUTH_RATE_LIMIT_PERIOD)
+app.add_middleware(RateLimitMiddleware, calls=settings.RATE_LIMIT_CALLS, period=settings.RATE_LIMIT_PERIOD)
 app.add_middleware(MetricsMiddleware)
 app.add_middleware(LoggingMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 生产环境中应该限制为特定域名
+    allow_origins=settings.ALLOWED_ORIGINS,  # 从配置文件读取允许的源
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=settings.ALLOWED_METHODS,  # 从配置文件读取允许的方法
+    allow_headers=settings.ALLOWED_HEADERS,  # 从配置文件读取允许的头部
 )
 
 # 注册API路由

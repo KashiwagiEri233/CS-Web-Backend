@@ -11,7 +11,13 @@ class UserBase(BaseModel):
 
 
 from typing import Optional, Any
-from pydantic import BaseModel, field_validator, EmailStr
+from pydantic import BaseModel, field_validator, EmailStr, ConfigDict
+from app.core.validators import (
+    validate_password_strength, 
+    validate_username, 
+    validate_email,
+    sanitize_input
+)
 
 
 class UserBase(BaseModel):
@@ -19,24 +25,58 @@ class UserBase(BaseModel):
     email: EmailStr
     full_name: Optional[str] = None
     is_active: bool = True
+    
+    @field_validator('username')
+    @classmethod
+    def validate_username_field(cls, v: str) -> str:
+        is_valid, error_msg = validate_username(v)
+        if not is_valid:
+            raise ValueError(error_msg)
+        return v
+    
+    @field_validator('full_name')
+    @classmethod
+    def sanitize_full_name(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            return sanitize_input(v, max_length=100)
+        return v
 
 
 class UserCreate(UserBase):
     password: str
+    model_config = ConfigDict(str_strip_whitespace=True)
     
     @field_validator('password')
     @classmethod
-    def validate_password(cls, v: str) -> str:
-        if len(v) < 6:
-            raise ValueError('密码长度至少为6个字符')
+    def validate_password_field(cls, v: str) -> str:
+        is_valid, error_msg = validate_password_strength(v)
+        if not is_valid:
+            raise ValueError(error_msg)
         return v
 
 
 class UserUpdate(BaseModel):
-    email: Optional[str] = None
+    email: Optional[EmailStr] = None
     full_name: Optional[str] = None
     password: Optional[str] = None
     is_active: Optional[bool] = None
+    model_config = ConfigDict(str_strip_whitespace=True)
+    
+    @field_validator('password')
+    @classmethod
+    def validate_password_field(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            is_valid, error_msg = validate_password_strength(v)
+            if not is_valid:
+                raise ValueError(error_msg)
+        return v
+    
+    @field_validator('full_name')
+    @classmethod
+    def sanitize_full_name(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            return sanitize_input(v, max_length=100)
+        return v
 
 
 class User(UserBase):

@@ -87,11 +87,7 @@ async def create_user(
         )
     
     # 创建新用户
-    # 对于测试密码使用简单哈希
-    if user_data.password in ["test", "t"]:
-        hashed_password = f"{user_data.password}_hash"
-    else:
-        hashed_password = get_password_hash(user_data.password)
+    hashed_password = get_password_hash(user_data.password)
         
     user_dict = {
         "username": user_data.username,
@@ -140,11 +136,7 @@ async def update_user(
         user.full_name = user_data.full_name
     
     if user_data.password is not None:
-        # 对于测试密码使用简单哈希
-        if user_data.password in ["test", "t"]:
-            user.hashed_password = f"{user_data.password}_hash"
-        else:
-            user.hashed_password = get_password_hash(user_data.password)
+        user.hashed_password = get_password_hash(user_data.password)
     
     if user_data.is_active is not None:
         user.is_active = user_data.is_active
@@ -178,11 +170,7 @@ async def update_user_me(
         current_user.full_name = user_data.full_name
     
     if user_data.password is not None:
-        # 对于测试密码使用简单哈希
-        if user_data.password in ["test", "t"]:
-            current_user.hashed_password = f"{user_data.password}_hash"
-        else:
-            current_user.hashed_password = get_password_hash(user_data.password)
+        current_user.hashed_password = get_password_hash(user_data.password)
     
     updated_user = await user_repo.update(current_user)
     return updated_user
