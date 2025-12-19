@@ -6,10 +6,10 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     # 数据库配置
-    DATABASE_URL: str = "postgresql+asyncpg://postgres:123456@localhost/fff"
+    DATABASE_URL: str = "postgresql+asyncpg://postgres:123456@localhost/rqaiqt"
     DATABASE_HOST: str = "localhost"
     DATABASE_PORT: int = 5432
-    DATABASE_NAME: str = "fff"
+    DATABASE_NAME: str = "rqaiqt"
     DATABASE_USER: str = "postgres"
     DATABASE_PASSWORD: str = "123456"
     
