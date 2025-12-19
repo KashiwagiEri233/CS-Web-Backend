@@ -1,7 +1,9 @@
 from typing import Any, List
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.dependencies import get_current_active_user, get_current_superuser
@@ -105,8 +107,11 @@ async def update_role(
     
     # 更新角色
     await db.commit()
-    await db.refresh(role)
-    updated_role = role
+    
+    # 预加载权限关系，避免 MissingGreenlet 错误
+    stmt = select(Role).options(selectinload(Role.permissions)).where(Role.id == role.id)
+    result = await db.execute(stmt)
+    updated_role = result.scalar_one()
     return updated_role
 
 
@@ -218,8 +223,11 @@ async def update_permission(
     
     # 更新权限
     await db.commit()
-    await db.refresh(permission)
-    updated_permission = permission
+    
+    # 预加载角色关系，避免 MissingGreenlet 错误
+    stmt = select(Permission).options(selectinload(Permission.roles)).where(Permission.id == permission.id)
+    result = await db.execute(stmt)
+    updated_permission = result.scalar_one()
     return updated_permission
 
 

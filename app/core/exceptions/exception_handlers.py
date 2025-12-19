@@ -201,14 +201,23 @@ def create_server_error_response(exc: Exception, request: Request) -> ErrorRespo
     
     # 记录详细错误信息
     try:
-        logger.error(
-            "未处理的异常",
-            error_type=type(exc).__name__,
-            error_message=str(exc),
-            traceback_id=traceback_id,
-            context=context.model_dump() if context else None,
-            exc_info=True
-        )
+        # 对于 ResponseValidationError，我们需要特别处理，因为它可能包含复杂的信息
+        if "ResponseValidationError" in str(type(exc)):
+            logger.error(
+                f"响应验证错误: {str(exc)}",
+                error_type=type(exc).__name__,
+                traceback_id=traceback_id,
+                exc_info=False  # 避免复杂的异常信息导致更多错误
+            )
+        else:
+            logger.error(
+                "未处理的异常",
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+                traceback_id=traceback_id,
+                context=context.model_dump() if context else None,
+                exc_info=True
+            )
     except Exception as log_error:
         # 如果日志记录失败，使用基本日志记录
         logger.error(f"未处理的异常: {type(exc).__name__}: {str(exc)}")
