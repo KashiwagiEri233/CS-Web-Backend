@@ -16,6 +16,7 @@ from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.loguru_logger import get_logger
+from app.database import get_db
 from .base_exceptions import (
     BaseAppException,
     BusinessException,
@@ -289,6 +290,37 @@ async def app_exception_handler(request: Request, exc: BaseAppException) -> JSON
         exc_info=exc.cause is not None
     )
     
+    # 尝试将异常记录到数据库
+    try:
+        # 获取数据库会话
+        async for db in get_db():
+            # 创建异常服务实例
+            from app.services.exception_service import ExceptionService
+            exception_service = ExceptionService(db)
+            
+            # 准备请求上下文
+            request_context = {
+                "request_id": getattr(request.state, 'request_id', None),
+                "user_id": getattr(request.state, 'user_id', None),
+                "method": request.method,
+                "endpoint": f"{request.method} {request.url.path}",
+                "ip_address": request.client.host if request.client else None,
+                "user_agent": request.headers.get("user-agent")
+            }
+            
+            # 记录异常到数据库
+            await exception_service.record_exception(
+                exception=exc,
+                request_context=request_context
+            )
+            break  # 只需要第一个数据库会话
+    except Exception as db_error:
+        # 数据库记录失败不影响主流程，只记录错误日志
+        logger.error(
+            f"记录异常到数据库失败: {type(db_error).__name__}: {str(db_error)}",
+            traceback_id=exc.traceback_id
+        )
+    
     response = create_app_exception_response(exc, request)
     try:
         return JSONResponse(
@@ -321,6 +353,36 @@ async def http_exception_handler(request: Request, exc: Union[HTTPException, Sta
         url=str(request.url)
     )
     
+    # 尝试将异常记录到数据库
+    try:
+        # 获取数据库会话
+        async for db in get_db():
+            # 创建异常服务实例
+            from app.services.exception_service import ExceptionService
+            exception_service = ExceptionService(db)
+            
+            # 准备请求上下文
+            request_context = {
+                "request_id": getattr(request.state, 'request_id', None),
+                "user_id": getattr(request.state, 'user_id', None),
+                "method": request.method,
+                "endpoint": f"{request.method} {request.url.path}",
+                "ip_address": request.client.host if request.client else None,
+                "user_agent": request.headers.get("user-agent")
+            }
+            
+            # 记录异常到数据库
+            await exception_service.record_exception(
+                exception=exc,
+                request_context=request_context
+            )
+            break  # 只需要第一个数据库会话
+    except Exception as db_error:
+        # 数据库记录失败不影响主流程，只记录错误日志
+        logger.error(
+            f"记录HTTP异常到数据库失败: {type(db_error).__name__}: {str(db_error)}"
+        )
+    
     response = create_http_exception_response(exc, request)
     try:
         return JSONResponse(
@@ -350,6 +412,36 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         method=request.method,
         url=str(request.url)
     )
+    
+    # 尝试将验证错误记录到数据库
+    try:
+        # 获取数据库会话
+        async for db in get_db():
+            # 创建异常服务实例
+            from app.services.exception_service import ExceptionService
+            exception_service = ExceptionService(db)
+            
+            # 准备请求上下文
+            request_context = {
+                "request_id": getattr(request.state, 'request_id', None),
+                "user_id": getattr(request.state, 'user_id', None),
+                "method": request.method,
+                "endpoint": f"{request.method} {request.url.path}",
+                "ip_address": request.client.host if request.client else None,
+                "user_agent": request.headers.get("user-agent")
+            }
+            
+            # 记录验证错误到数据库
+            await exception_service.record_validation_error(
+                errors=exc.errors(),
+                request_context=request_context
+            )
+            break  # 只需要第一个数据库会话
+    except Exception as db_error:
+        # 数据库记录失败不影响主流程，只记录错误日志
+        logger.error(
+            f"记录验证错误到数据库失败: {type(db_error).__name__}: {str(db_error)}"
+        )
     
     response = create_validation_error_response(exc, request)
     try:
@@ -426,6 +518,38 @@ async def database_exception_handler(request: Request, exc: SQLAlchemyError) -> 
 async def general_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """通用异常处理器"""
     response = create_server_error_response(exc, request)
+    
+    # 尝试将异常记录到数据库
+    try:
+        # 获取数据库会话
+        async for db in get_db():
+            # 创建异常服务实例
+            from app.services.exception_service import ExceptionService
+            exception_service = ExceptionService(db)
+            
+            # 准备请求上下文
+            request_context = {
+                "request_id": getattr(request.state, 'request_id', None),
+                "user_id": getattr(request.state, 'user_id', None),
+                "method": request.method,
+                "endpoint": f"{request.method} {request.url.path}",
+                "ip_address": request.client.host if request.client else None,
+                "user_agent": request.headers.get("user-agent")
+            }
+            
+            # 记录异常到数据库
+            await exception_service.record_exception(
+                exception=exc,
+                request_context=request_context
+            )
+            break  # 只需要第一个数据库会话
+    except Exception as db_error:
+        # 数据库记录失败不影响主流程，只记录错误日志
+        logger.error(
+            f"记录异常到数据库失败: {type(db_error).__name__}: {str(db_error)}",
+            traceback_id=response.traceback_id if response else None
+        )
+    
     try:
         return JSONResponse(
             status_code=500,

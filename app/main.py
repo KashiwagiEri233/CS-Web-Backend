@@ -126,9 +126,9 @@ async def lifespan(app: FastAPI):
                           message=tables_status.get('message', 'Unknown error'))
     
     logger.info("应用初始化完成")
-    logger.info("服务器地址: http://0.0.0.0:8000")
-    logger.info("API文档: http://0.0.0.0:8000/api/v1/docs")
-    logger.info("管理后台: http://0.0.0.0:8000/admin")
+    logger.info("服务器地址: http://127.0.0.1:8000")
+    logger.info("API文档: http://127.0.0.1:8000/api/v1/docs")
+    logger.info("管理后台: http://127.0.0.1:8000/admin")
     logger.info("FastAPI RBAC Framework 已启动成功")
     
     yield
