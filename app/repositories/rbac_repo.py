@@ -60,7 +60,7 @@ class RBACRepository:
     
     async def get_all_roles(self) -> List[Role]:
         """获取所有角色"""
-        stmt = select(Role)
+        stmt = select(Role).options(selectinload(Role.permissions))
         result = await self.db.execute(stmt)
         return result.scalars().all()
     

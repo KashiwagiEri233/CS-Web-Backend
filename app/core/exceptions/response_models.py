@@ -19,10 +19,16 @@ class ErrorContext(BaseModel):
     timestamp: Optional[datetime] = Field(None, description="错误发生时间")
     
     model_config = ConfigDict(
-        json_encoders={
-            datetime: lambda v: v.isoformat() if v else None
-        }
+        from_attributes=True
     )
+    
+    def model_dump(self, **kwargs):
+        """重写 model_dump 方法以正确处理 datetime 对象"""
+        data = super().model_dump(**kwargs)
+        if 'timestamp' in data and data['timestamp'] is not None:
+            if isinstance(data['timestamp'], datetime):
+                data['timestamp'] = data['timestamp'].isoformat()
+        return data
 
 
 class ErrorDetail(BaseModel):
@@ -83,6 +89,14 @@ class ErrorResponse(BaseModel):
             }
         }
     )
+    
+    def model_dump(self, **kwargs):
+        """重写 model_dump 方法以正确处理 datetime 对象"""
+        data = super().model_dump(**kwargs)
+        if 'timestamp' in data and data['timestamp'] is not None:
+            if isinstance(data['timestamp'], datetime):
+                data['timestamp'] = data['timestamp'].isoformat()
+        return data
 
 
 class ValidationErrorResponse(ErrorResponse):

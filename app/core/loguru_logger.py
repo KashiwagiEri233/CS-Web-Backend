@@ -130,6 +130,28 @@ class LoguruAdapter:
                     display_key = '客户端IP'
                 elif k == 'user_agent':
                     display_key = '用户代理'
+                elif k == 'error_type':
+                    display_key = '错误类型'
+                elif k == 'error_message':
+                    display_key = '错误消息'
+                elif k == 'traceback_id':
+                    display_key = '追踪ID'
+                elif k == 'request_id':
+                    display_key = '请求ID'
+                elif k == 'context':
+                    display_key = '上下文'
+                
+                # 如果值是字典或列表，使用JSON格式化
+                if isinstance(v, (dict, list)):
+                    import json
+                    from datetime import datetime
+                    # 自定义JSON编码器来处理datetime对象
+                    class DateTimeEncoder(json.JSONEncoder):
+                        def default(self, obj):
+                            if isinstance(obj, datetime):
+                                return obj.isoformat()
+                            return super().default(obj)
+                    v = json.dumps(v, ensure_ascii=False, cls=DateTimeEncoder)
                 
                 formatted_params.append(f" <blue>{display_key}</blue>: {v}")
             
@@ -137,7 +159,8 @@ class LoguruAdapter:
             if formatted_params:
                 msg = f"{msg}" + "".join(formatted_params)
         
-        # 如果需要异常信息
+        # 使用 log_method 记录日志，避免将 kwargs 作为格式化参数
+        # 这样可以防止 KeyError 错误
         if exc_info:
             log_method(msg, exc_info=exc_info)
         else:
