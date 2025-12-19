@@ -25,6 +25,7 @@ router = APIRouter()
 
 
 @router.get("/logs")
+@require_permission("exception", "read")
 async def get_exception_logs(
     skip: int = Query(0, ge=0, description="跳过记录数"),
     limit: int = Query(100, ge=1, le=1000, description="限制记录数"),
@@ -43,9 +44,6 @@ async def get_exception_logs(
     """
     获取异常日志列表
     """
-    # 检查权限
-    require_permission("exception:read")(current_user, db)
-    
     # 创建服务实例
     exception_service = ExceptionService(db)
     
@@ -73,6 +71,7 @@ async def get_exception_logs(
 
 
 @router.get("/logs/{log_id}")
+@require_permission("exception", "read")
 async def get_exception_log(
     log_id: int = Path(..., description="日志ID"),
     db: AsyncSession = Depends(get_db),
@@ -81,9 +80,6 @@ async def get_exception_log(
     """
     获取单个异常日志详情
     """
-    # 检查权限
-    require_permission("exception:read")(current_user, db)
-    
     # 创建仓储实例
     log_repo = ExceptionLogRepository(db)
     
@@ -100,6 +96,7 @@ async def get_exception_log(
 
 
 @router.put("/logs/{log_id}/resolve")
+@require_permission("exception", "resolve")
 async def resolve_exception_log(
     log_id: int = Path(..., description="日志ID"),
     resolution_notes: Optional[str] = Body(None, description="解决备注"),
@@ -109,9 +106,6 @@ async def resolve_exception_log(
     """
     解决异常日志
     """
-    # 检查权限
-    require_permission("exception:resolve")(current_user, db)
-    
     # 创建服务实例
     exception_service = ExceptionService(db)
     
@@ -135,6 +129,7 @@ async def resolve_exception_log(
 
 
 @router.get("/statistics")
+@require_permission("exception", "statistics")
 async def get_exception_statistics(
     time_window_hours: int = Query(24, ge=1, le=168, description="时间窗口（小时）"),
     db: AsyncSession = Depends(get_db),
@@ -143,9 +138,6 @@ async def get_exception_statistics(
     """
     获取异常统计信息
     """
-    # 检查权限
-    require_permission("exception:statistics")(current_user, db)
-    
     # 创建服务实例
     exception_service = ExceptionService(db)
     
@@ -156,6 +148,7 @@ async def get_exception_statistics(
 
 
 @router.get("/patterns")
+@require_permission("exception", "analyze")
 async def analyze_exception_patterns(
     time_window_hours: int = Query(24, ge=1, le=168, description="时间窗口（小时）"),
     db: AsyncSession = Depends(get_db),
@@ -164,9 +157,6 @@ async def analyze_exception_patterns(
     """
     分析异常模式
     """
-    # 检查权限
-    require_permission("exception:analyze")(current_user, db)
-    
     # 创建服务实例
     exception_service = ExceptionService(db)
     
@@ -177,6 +167,7 @@ async def analyze_exception_patterns(
 
 
 @router.get("/anomalies")
+@require_permission("exception", "analyze")
 async def detect_anomalies(
     baseline_window_hours: int = Query(168, ge=24, le=720, description="基准时间窗口（小时）"),
     current_window_hours: int = Query(1, ge=1, le=24, description="当前时间窗口（小时）"),
@@ -186,9 +177,6 @@ async def detect_anomalies(
     """
     检测异常模式
     """
-    # 检查权限
-    require_permission("exception:analyze")(current_user, db)
-    
     # 创建服务实例
     exception_service = ExceptionService(db)
     
@@ -202,6 +190,7 @@ async def detect_anomalies(
 
 
 @router.get("/metrics")
+@require_permission("exception", "metrics")
 async def get_exception_metrics(
     time_window_hours: int = Query(24, ge=1, le=168, description="时间窗口（小时）"),
     db: AsyncSession = Depends(get_db),
@@ -210,9 +199,6 @@ async def get_exception_metrics(
     """
     获取异常指标
     """
-    # 检查权限
-    require_permission("exception:metrics")(current_user, db)
-    
     # 创建服务实例
     exception_service = ExceptionService(db)
     
@@ -223,6 +209,7 @@ async def get_exception_metrics(
 
 
 @router.get("/alerts")
+@require_permission("exception", "alerts")
 async def get_exception_alerts(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
@@ -230,9 +217,6 @@ async def get_exception_alerts(
     """
     获取异常告警
     """
-    # 检查权限
-    require_permission("exception:alerts")(current_user, db)
-    
     # 创建服务实例
     exception_service = ExceptionService(db)
     
@@ -245,6 +229,7 @@ async def get_exception_alerts(
 
 
 @router.put("/alerts/{alert_id}/acknowledge")
+@require_permission("exception", "alerts")
 async def acknowledge_exception_alert(
     alert_id: int = Path(..., description="告警ID"),
     db: AsyncSession = Depends(get_db),
@@ -253,9 +238,6 @@ async def acknowledge_exception_alert(
     """
     确认异常告警
     """
-    # 检查权限
-    require_permission("exception:alerts")(current_user, db)
-    
     # 创建服务实例
     exception_service = ExceptionService(db)
     
@@ -278,6 +260,7 @@ async def acknowledge_exception_alert(
 
 
 @router.put("/alerts/{alert_id}/resolve")
+@require_permission("exception", "alerts")
 async def resolve_exception_alert(
     alert_id: int = Path(..., description="告警ID"),
     db: AsyncSession = Depends(get_db),
@@ -286,9 +269,6 @@ async def resolve_exception_alert(
     """
     解决异常告警
     """
-    # 检查权限
-    require_permission("exception:alerts")(current_user, db)
-    
     # 创建服务实例
     exception_service = ExceptionService(db)
     
@@ -311,6 +291,7 @@ async def resolve_exception_alert(
 
 
 @router.get("/dashboard")
+@require_permission("exception", "dashboard")
 async def get_exception_dashboard(
     time_window_hours: int = Query(24, ge=1, le=168, description="时间窗口（小时）"),
     db: AsyncSession = Depends(get_db),
@@ -319,9 +300,6 @@ async def get_exception_dashboard(
     """
     获取异常仪表板数据
     """
-    # 检查权限
-    require_permission("exception:dashboard")(current_user, db)
-    
     # 创建服务实例
     exception_service = ExceptionService(db)
     

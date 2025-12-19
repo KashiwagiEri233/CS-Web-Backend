@@ -28,6 +28,7 @@ def create_admin_router(templates):
             "request": request,
             "user": current_user,
             "title": "管理后台",
+            "settings": settings,
         })
 
     # 用户管理页面
@@ -48,6 +49,7 @@ def create_admin_router(templates):
             "user": current_user,
             "users": users,
             "title": "用户管理",
+            "settings": settings,
         })
 
     # 角色管理页面
@@ -66,6 +68,7 @@ def create_admin_router(templates):
             "user": current_user,
             "roles": roles,
             "title": "角色管理",
+            "settings": settings,
         })
 
     # 权限管理页面
@@ -84,6 +87,7 @@ def create_admin_router(templates):
             "user": current_user,
             "permissions": permissions,
             "title": "权限管理",
+            "settings": settings,
         })
 
     # 创建用户页面
@@ -97,6 +101,7 @@ def create_admin_router(templates):
             "request": request,
             "user": current_user,
             "title": "创建用户",
+            "settings": settings,
         })
 
     # 处理创建用户
