@@ -23,7 +23,7 @@ loguru_logger.level("CRITICAL", color="<red><bold>")
 
 
 # 上下文变量用于存储请求级别的信息
-_logging_context: ContextVar[Dict[str, Any]] = ContextVar('logging_context', default={})
+_logging_context: ContextVar[Dict[str, Any]] = ContextVar("logging_context", default={})
 
 
 class LoguruAdapter:
@@ -59,12 +59,12 @@ class LoguruAdapter:
             level=loguru_level,
             # 更直观的格式：主要信息突出，参数信息在下方用分隔线分开
             format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
-                   "<level>{level: <8}</level> | "
-                   "<cyan>{extra[name]}</cyan> | "
-                   "{message}",
+            "<level>{level: <8}</level> | "
+            "<cyan>{extra[name]}</cyan> | "
+            "{message}",
             serialize=False,  # 使用彩色格式输出，不序列化为JSON
             colorize=True,  # 启用颜色
-            catch=True  # 捕获异常，避免程序崩溃
+            catch=True,  # 捕获异常，避免程序崩溃
         )
 
     def _map_logging_level_to_loguru(self, level: int) -> str:
@@ -86,7 +86,16 @@ class LoguruAdapter:
             level = getattr(logging, level.upper(), logging.INFO)
         return level >= self.level
 
-    def _log(self, level: int, msg: str, args, exc_info=None, extra=None, stack_info=False, **kwargs):
+    def _log(
+        self,
+        level: int,
+        msg: str,
+        args,
+        exc_info=None,
+        extra=None,
+        stack_info=False,
+        **kwargs,
+    ):
         """内部日志记录方法"""
         if not self.isEnabledFor(level):
             return
@@ -103,62 +112,64 @@ class LoguruAdapter:
             formatted_params = []
             for k, v in kwargs.items():
                 # 跳过name，因为它已经在日志头部显示
-                if k == 'name':
+                if k == "name":
                     continue
-                
+
                 # 特殊处理一些常见字段，使显示更直观
                 display_key = k
-                if k == 'type':
-                    display_key = '数据库类型'
-                elif k == 'version':
-                    display_key = '版本'
-                elif k == 'tables_found':
-                    display_key = '已找到表数量'
-                elif k == 'total_checked':
-                    display_key = '检查表总数'
-                elif k == 'table_list':
-                    display_key = '表列表'
-                elif k == 'method':
-                    display_key = '请求方法'
-                elif k == 'url':
-                    display_key = '请求URL'
-                elif k == 'status_code':
-                    display_key = '响应状态码'
-                elif k == 'process_time':
-                    display_key = '处理时间'
-                elif k == 'client_ip':
-                    display_key = '客户端IP'
-                elif k == 'user_agent':
-                    display_key = '用户代理'
-                elif k == 'error_type':
-                    display_key = '错误类型'
-                elif k == 'error_message':
-                    display_key = '错误消息'
-                elif k == 'traceback_id':
-                    display_key = '追踪ID'
-                elif k == 'request_id':
-                    display_key = '请求ID'
-                elif k == 'context':
-                    display_key = '上下文'
-                
+                if k == "type":
+                    display_key = "数据库类型"
+                elif k == "version":
+                    display_key = "版本"
+                elif k == "tables_found":
+                    display_key = "已找到表数量"
+                elif k == "total_checked":
+                    display_key = "检查表总数"
+                elif k == "table_list":
+                    display_key = "表列表"
+                elif k == "method":
+                    display_key = "请求方法"
+                elif k == "url":
+                    display_key = "请求URL"
+                elif k == "status_code":
+                    display_key = "响应状态码"
+                elif k == "process_time":
+                    display_key = "处理时间"
+                elif k == "client_ip":
+                    display_key = "客户端IP"
+                elif k == "user_agent":
+                    display_key = "用户代理"
+                elif k == "error_type":
+                    display_key = "错误类型"
+                elif k == "error_message":
+                    display_key = "错误消息"
+                elif k == "traceback_id":
+                    display_key = "追踪ID"
+                elif k == "request_id":
+                    display_key = "请求ID"
+                elif k == "context":
+                    display_key = "上下文"
+
                 # 如果值是字典或列表，使用JSON格式化
                 if isinstance(v, (dict, list)):
                     import json
                     from datetime import datetime
+
                     # 自定义JSON编码器来处理datetime对象
                     class DateTimeEncoder(json.JSONEncoder):
                         def default(self, obj):
                             if isinstance(obj, datetime):
                                 return obj.isoformat()
                             return super().default(obj)
+
                     v = json.dumps(v, ensure_ascii=False, cls=DateTimeEncoder)
-                
-                formatted_params.append(f" <blue>{display_key}</blue>: {v}")
-            
+
+                formatted_params.append(f" [{display_key}]: {v}")
+
             # 将格式化的参数添加到消息中
             if formatted_params:
                 msg = f"{msg}" + "".join(formatted_params)
-        
+
         # 使用 log_method 记录日志，避免将 kwargs 作为格式化参数
         # 这样可以防止 KeyError 错误
         if exc_info:
@@ -196,10 +207,10 @@ class LoguruAdapter:
 
     def exception(self, msg: str, *args, **kwargs):
         """记录异常信息，自动添加异常信息"""
-        kwargs.setdefault('exc_info', True)
+        kwargs.setdefault("exc_info", True)
         self.error(msg, *args, **kwargs)
 
-    def bind(self, **kwargs) -> 'LoguruAdapter':
+    def bind(self, **kwargs) -> "LoguruAdapter":
         """绑定上下文信息，返回新的适配器实例"""
         # 创建新实例
         new_adapter = LoguruAdapter(self.name, self.level)
@@ -209,7 +220,7 @@ class LoguruAdapter:
 
         return new_adapter
 
-    def unbind(self, *keys) -> 'LoguruAdapter':
+    def unbind(self, *keys) -> "LoguruAdapter":
         """解绑指定的上下文信息"""
         # 创建新实例
         new_adapter = LoguruAdapter(self.name, self.level)
@@ -218,7 +229,7 @@ class LoguruAdapter:
         # 注意：loguru没有直接的unbind方法，我们只能重新创建
         return new_adapter
 
-    def new(self, **kwargs) -> 'LoguruAdapter':
+    def new(self, **kwargs) -> "LoguruAdapter":
         """创建全新的适配器实例，不继承当前上下文"""
         new_adapter = LoguruAdapter(self.name, self.level)
         new_adapter._logger = self._logger.bind(**kwargs)
@@ -256,8 +267,9 @@ def get_logger(name: str = None) -> LoguruAdapter:
     if name is None:
         # 自动获取调用模块名
         import inspect
+
         frame = inspect.currentframe().f_back
-        name = frame.f_globals.get('__name__', 'unknown')
+        name = frame.f_globals.get("__name__", "unknown")
 
     # 缓存管理
     if name not in _adapter_cache:
@@ -309,7 +321,7 @@ class LoggingContextManager:
         """退出上下文"""
         _logging_context.set(self.original_context)
 
-    def bind(self, **kwargs) -> 'LoggingContextManager':
+    def bind(self, **kwargs) -> "LoggingContextManager":
         """绑定额外的上下文信息"""
         self.context.update(kwargs)
         return self
@@ -318,17 +330,20 @@ class LoggingContextManager:
 # 便捷函数
 def bind_context(**kwargs):
     """创建上下文绑定装饰器"""
+
     def decorator(func):
         def wrapper(*args, **func_kwargs):
             with LoggingContextManager(**kwargs):
                 return func(*args, **func_kwargs)
+
         return wrapper
+
     return decorator
 
 
 def generate_request_id() -> str:
     """生成唯一的请求ID"""
-    return str(uuid.uuid4()).replace('-', '')
+    return str(uuid.uuid4()).replace("-", "")
 
 
 # 兼容标准库logging的模块级别函数
@@ -339,7 +354,7 @@ def getLogger(name: str = None) -> LoguruAdapter:
 
 def basicConfig(**kwargs):
     """兼容标准库logging.basicConfig"""
-    level = kwargs.get('level', logging.INFO)
+    level = kwargs.get("level", logging.INFO)
     if isinstance(level, str):
         level = getattr(logging, level.upper(), logging.INFO)
 
@@ -355,21 +370,21 @@ def basicConfig(**kwargs):
 
     # 重新添加处理器
     format_str = kwargs.get(
-        'format',
+        "format",
         "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
         "<level>{level: <8}</level> | "
         "<cyan>{extra[name]}</cyan> | "
         "\n"
-        "<level>→ {message}</level>"
+        "<level>→ {message}</level>",
     )
 
     loguru_logger.add(
-        kwargs.get('stream', sys.stdout),
+        kwargs.get("stream", sys.stdout),
         level=loguru_level,
         format=format_str,
-        serialize=kwargs.get('serialize', False),
+        serialize=kwargs.get("serialize", False),
         colorize=True,  # 启用颜色
-        catch=True  # 捕获异常
+        catch=True,  # 捕获异常
     )
 
 
@@ -384,7 +399,7 @@ def configure_logging(
     rotation: str = "10 MB",
     retention: str = "30 days",
     serialize: bool = False,  # 默认不序列化为JSON，以支持彩色输出
-    **kwargs
+    **kwargs,
 ):
     """
     配置loguru日志系统
@@ -428,7 +443,7 @@ def configure_logging(
             serialize=serialize,
             colorize=True,  # 启用颜色
             catch=True,  # 捕获异常
-            **kwargs
+            **kwargs,
         )
 
     # 添加文件处理器
@@ -446,7 +461,7 @@ def configure_logging(
             retention=retention,
             serialize=serialize,
             catch=True,  # 捕获异常
-            **kwargs
+            **kwargs,
         )
 
 
