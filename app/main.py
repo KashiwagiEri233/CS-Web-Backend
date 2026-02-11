@@ -18,123 +18,124 @@ from app.middleware.rate_limit import RateLimitMiddleware, AuthRateLimitMiddlewa
 from app.core.exceptions import setup_exception_handlers, ExceptionHandlerMiddleware
 
 
+def _suppress_library_logging():
+    """统一设置第三方库日志级别，减少噪音输出"""
+    import logging
+
+    for name in ("uvicorn", "uvicorn.access"):
+        logging.getLogger(name).setLevel(logging.WARNING)
+    logging.getLogger("uvicorn.error").setLevel(logging.ERROR)
+    for name in (
+        "sqlalchemy.engine",
+        "sqlalchemy.pool",
+        "sqlalchemy.dialects",
+        "sqlalchemy.orm",
+        "sqlalchemy.compiler",
+    ):
+        logging.getLogger(name).setLevel(logging.ERROR)
+
+
+async def _initialize_database(logger):
+    """初始化数据库连接并创建表"""
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    from app.utils.status import check_database_connection
+
+    db_status = await check_database_connection()
+
+    if db_status["status"] == "connected":
+        logger.info(
+            "数据库连接成功", type=db_status["type"], version=db_status["version"]
+        )
+    else:
+        msg = db_status.get("message", "Unknown error")
+        logger.error("数据库连接失败", message=msg)
+        raise Exception(f"Database connection failed: {msg}")
+
+
+async def _initialize_rbac(logger):
+    """初始化 RBAC 权限系统"""
+    from app.database import AsyncSessionLocal
+    from app.services.rbac_init import initialize_rbac
+
+    async with AsyncSessionLocal() as db:
+        init_result = await initialize_rbac(db)
+        if init_result["success"]:
+            logger.info(
+                "RBAC系统初始化成功",
+                permissions_created=init_result["permissions_created"],
+                roles_created=init_result["roles_created"],
+                admin_created=init_result["admin_created"],
+            )
+            if init_result["admin_created"]:
+                logger.info(
+                    "默认管理员账号已创建",
+                    username="admin",
+                    password="admin123",
+                    note="请在生产环境中修改默认密码",
+                )
+        else:
+            logger.error("RBAC系统初始化失败", errors=init_result["errors"])
+
+
+async def _log_startup_status(logger):
+    """检查并输出应用启动状态"""
+    from app.utils.status import check_application_status
+
+    app_status = await check_application_status()
+
+    if "database_tables" in app_status:
+        tables_status = app_status["database_tables"]
+        if tables_status["status"] == "checked":
+            tables_found = tables_status["tables_found"]
+            total_checked = tables_status["total_checked"]
+            logger.info(
+                "数据库表检查完成",
+                tables_found=len(tables_found),
+                total_checked=total_checked,
+                table_list=", ".join(tables_found),
+            )
+        else:
+            logger.warning(
+                "数据库表检查失败",
+                message=tables_status.get("message", "Unknown error"),
+            )
+
+    logger.info("服务器地址: http://0.0.0.0:8000")
+    logger.info(f"API文档: http://0.0.0.0:8000{settings.API_V1_STR}/docs")
+    logger.info("管理后台: http://0.0.0.0:8000/admin")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 应用启动时执行的代码
-    # 配置loguru日志系统（统一的日志配置）
+    # 配置日志系统
     configure_logging(
         level="INFO",
         enable_console=True,
         enable_file=True,
         log_dir="logs",
         app_name="fastapi_app",
-        serialize=False  # 确保彩色输出
+        serialize=False,
     )
-    
-    # 配置其他库的日志级别为WARNING，减少INFO输出
-    import logging
-    logging.getLogger("uvicorn").setLevel(logging.WARNING)
-    logging.getLogger("uvicorn.error").setLevel(logging.ERROR)
-    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
-    # 更全面地设置SQLAlchemy日志级别
-    logging.getLogger("sqlalchemy.engine").setLevel(logging.ERROR)
-    logging.getLogger("sqlalchemy.pool").setLevel(logging.ERROR)
-    logging.getLogger("sqlalchemy.dialects").setLevel(logging.ERROR)
-    logging.getLogger("sqlalchemy.orm").setLevel(logging.ERROR)
-    logging.getLogger("sqlalchemy.compiler").setLevel(logging.ERROR)
-    
+    _suppress_library_logging()
     logger = get_logger("main")
-    logger.info("配置日志系统")
-    
-    logger.info("初始化数据库连接")
-    # 创建所有数据库表
+
+    # 应用启动
+    logger.info("FastAPI RBAC Framework 启动中...")
+    await _initialize_database(logger)
+
     try:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        
-        # 检查数据库状态
-        from app.utils.status import check_database_connection
-        db_status = await check_database_connection()
-        
-        if db_status["status"] == "connected":
-            logger.info("数据库连接成功", 
-                        type=db_status['type'], 
-                        version=db_status['version'])
-        else:
-            logger.error("数据库连接失败", 
-                        message=db_status.get('message', 'Unknown error'))
-            raise Exception(f"Database connection failed: {db_status.get('message', 'Unknown error')}")
-    except Exception as e:
-        logger.error(f"数据库连接失败: {str(e)}")
-        raise
-    
-    # 初始化RBAC系统
-    logger.info("初始化权限系统")
-    try:
-        from app.database import AsyncSessionLocal
-        from app.services.rbac_init import initialize_rbac
-        
-        # 创建数据库会话
-        async with AsyncSessionLocal() as db:
-            # 初始化RBAC系统
-            init_result = await initialize_rbac(db)
-            if init_result["success"]:
-                logger.info(
-                    "RBAC系统初始化成功",
-                    permissions_created=init_result["permissions_created"],
-                    roles_created=init_result["roles_created"],
-                    admin_created=init_result["admin_created"]
-                )
-                
-                # 如果管理员账号被创建，显示登录信息
-                if init_result["admin_created"]:
-                    logger.info(
-                        "默认管理员账号已创建",
-                        username="admin",
-                        password="admin123",
-                        note="请在生产环境中修改默认密码"
-                    )
-            else:
-                logger.error(
-                    "RBAC系统初始化失败",
-                    errors=init_result["errors"]
-                )
+        await _initialize_rbac(logger)
     except Exception as e:
         logger.error(f"RBAC系统初始化异常: {str(e)}")
-    
-    logger.info("FastAPI RBAC Framework started - version: 1.0.0")
-    
-    # 检查应用整体状态
-    from app.utils.status import check_application_status
-    app_status = await check_application_status()
-    
-    # 显示数据库表状态
-    if "database_tables" in app_status:
-        tables_status = app_status["database_tables"]
-        if tables_status["status"] == "checked":
-            tables_found = tables_status["tables_found"]
-            total_checked = tables_status["total_checked"]
-            logger.info("数据库表检查完成", 
-                        tables_found=len(tables_found),
-                        total_checked=total_checked,
-                        table_list=', '.join(tables_found))
-            # 添加更多信息，表明数据库结构完整
-            if len(tables_found) == total_checked and total_checked > 0:
-                logger.info("数据库结构完整，所有必需的表都已存在")
-        else:
-            logger.warning("数据库表检查失败", 
-                          message=tables_status.get('message', 'Unknown error'))
-    
-    logger.info("应用初始化完成")
-    logger.info("服务器地址: http://0.0.0.0:8000")
-    logger.info("API文档: http://0.0.0.0:8000/api/v1/docs")
-    logger.info("管理后台: http://0.0.0.0:8000/admin")
-    logger.info("FastAPI RBAC Framework 已启动成功")
-    
+
+    await _log_startup_status(logger)
+    logger.info("FastAPI RBAC Framework 已启动成功 - version: 1.0.0")
+
     yield
-    # 应用关闭时执行的代码
-    logger.info("正在关闭应用")
-    logger.info("FastAPI RBAC Framework shutdown - version: 1.0.0")
+
+    # 应用关闭
     logger.info("应用已安全关闭 - version: 1.0.0")
 
 
@@ -146,7 +147,7 @@ app = FastAPI(
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     lifespan=lifespan,
     docs_url=f"{settings.API_V1_STR}/docs",
-    redoc_url=f"{settings.API_V1_STR}/redoc"
+    redoc_url=f"{settings.API_V1_STR}/redoc",
 )
 
 # 设置全局异常处理器
@@ -159,8 +160,16 @@ templates = Jinja2Templates(directory="templates")
 # 配置中间件（注意异常处理中间件应该放在最外层）
 app.add_middleware(ExceptionHandlerMiddleware)
 # 添加速率限制中间件
-app.add_middleware(AuthRateLimitMiddleware, calls=settings.AUTH_RATE_LIMIT_CALLS, period=settings.AUTH_RATE_LIMIT_PERIOD)
-app.add_middleware(RateLimitMiddleware, calls=settings.RATE_LIMIT_CALLS, period=settings.RATE_LIMIT_PERIOD)
+app.add_middleware(
+    AuthRateLimitMiddleware,
+    calls=settings.AUTH_RATE_LIMIT_CALLS,
+    period=settings.AUTH_RATE_LIMIT_PERIOD,
+)
+app.add_middleware(
+    RateLimitMiddleware,
+    calls=settings.RATE_LIMIT_CALLS,
+    period=settings.RATE_LIMIT_PERIOD,
+)
 app.add_middleware(MetricsMiddleware)
 app.add_middleware(LoggingMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
@@ -177,18 +186,19 @@ app.include_router(api_router, prefix=settings.API_V1_STR)
 
 # 注册管理后台路由
 from app.admin_routes import create_admin_router
+
 admin_router = create_admin_router(templates)
 app.include_router(admin_router, prefix="/admin", tags=["管理后台"])
+
 
 # 登录页面
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
     """登录页面"""
-    return templates.TemplateResponse("login.html", {
-        "request": request,
-        "title": "登录",
-        "settings": settings
-    })
+    return templates.TemplateResponse(
+        "login.html", {"request": request, "title": "登录", "settings": settings}
+    )
+
 
 # 根路径
 @app.get("/")
@@ -197,7 +207,7 @@ async def root():
         "message": "欢迎使用企业级FastAPI RBAC框架",
         "docs_url": f"{settings.API_V1_STR}/docs",
         "redoc_url": f"{settings.API_V1_STR}/redoc",
-        "admin_url": "/admin"
+        "admin_url": "/admin",
     }
 
 
@@ -213,11 +223,14 @@ async def metrics():
     """获取应用性能指标"""
     # 获取中间件实例
     for middleware in app.user_middleware:
-        if hasattr(middleware.cls, '__name__') and 'MetricsMiddleware' in middleware.cls.__name__:
+        if (
+            hasattr(middleware.cls, "__name__")
+            and "MetricsMiddleware" in middleware.cls.__name__
+        ):
             metrics_instance = middleware.instance
-            if hasattr(metrics_instance, 'get_metrics'):
+            if hasattr(metrics_instance, "get_metrics"):
                 return metrics_instance.get_metrics()
-    
+
     return {"error": "Metrics not available"}
 
 
@@ -226,4 +239,5 @@ async def metrics():
 async def status():
     """获取应用详细状态"""
     from app.utils.status import check_application_status
+
     return await check_application_status()

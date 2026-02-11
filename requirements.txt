@@ -30,6 +30,4 @@ flake8==6.1.0
 mypy==1.7.1
 
 # 日志
-structlog==23.2.0
-python-json-logger==2.0.7
 loguru==0.7.2
