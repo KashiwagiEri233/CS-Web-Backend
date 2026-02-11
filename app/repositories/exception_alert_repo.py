@@ -3,7 +3,7 @@
 提供异常告警的数据库操作方法
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import select
@@ -99,7 +99,7 @@ class ExceptionAlertRepository:
 
         alert.status = "acknowledged"
         alert.acknowledged_by = acknowledged_by
-        alert.acknowledged_at = datetime.utcnow()
+        alert.acknowledged_at = datetime.now(timezone.utc)
 
         await self.db.commit()
         await self.db.refresh(alert)
@@ -128,7 +128,7 @@ class ExceptionAlertRepository:
 
         alert.status = "resolved"
         alert.resolved_by = resolved_by
-        alert.resolved_at = datetime.utcnow()
+        alert.resolved_at = datetime.now(timezone.utc)
 
         await self.db.commit()
         await self.db.refresh(alert)

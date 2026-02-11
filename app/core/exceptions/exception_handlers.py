@@ -5,7 +5,7 @@
 
 import traceback
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Type, Union
 
 from fastapi import FastAPI, Request, Response
@@ -66,7 +66,7 @@ def create_error_context(request: Request) -> ErrorContext:
         user_agent=user_agent,
         endpoint=f"{request.method} {request.url.path}",
         method=request.method,
-        timestamp=datetime.utcnow()
+        timestamp=datetime.now(timezone.utc)
     )
 
 
@@ -110,7 +110,7 @@ def create_app_exception_response(exc: BaseAppException, request: Request) -> Er
     context = create_error_context(request)
     
     # 更新异常的时间戳
-    exc.timestamp = datetime.utcnow()
+    exc.timestamp = datetime.now(timezone.utc)
     
     # 根据异常类型选择适当的响应模型
     response_class = ErrorResponse
@@ -337,7 +337,7 @@ async def app_exception_handler(request: Request, exc: BaseAppException) -> JSON
                 "message": exc.message,
                 "status_code": exc.status_code,
                 "traceback_id": exc.traceback_id,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
         )
 
@@ -398,7 +398,7 @@ async def http_exception_handler(request: Request, exc: Union[HTTPException, Sta
                 "error_code": f"HTTP_{exc.status_code}",
                 "message": exc.detail,
                 "status_code": exc.status_code,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
         )
 
@@ -458,7 +458,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
                 "error_code": "VALIDATION_FAILED",
                 "message": "数据验证失败",
                 "status_code": 422,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
         )
 
@@ -488,7 +488,7 @@ async def pydantic_validation_exception_handler(request: Request, exc: Validatio
                 "error_code": "VALIDATION_FAILED",
                 "message": "数据验证失败",
                 "status_code": 422,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
         )
 
@@ -510,7 +510,7 @@ async def database_exception_handler(request: Request, exc: SQLAlchemyError) -> 
                 "error_code": "DATABASE_ERROR",
                 "message": "数据库操作失败",
                 "status_code": 500,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
         )
 
@@ -564,7 +564,7 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
                 "error_code": "INTERNAL_SERVER_ERROR",
                 "message": "内部服务器错误",
                 "status_code": 500,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
         )
 
@@ -647,7 +647,7 @@ class ExceptionHandlerMiddleware:
                     "message": "内部服务器错误",
                     "status_code": 500,
                     "traceback_id": response.traceback_id if response else None,
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": datetime.now(timezone.utc).isoformat()
                 }
                 response_obj = JSONResponse(
                     status_code=500,

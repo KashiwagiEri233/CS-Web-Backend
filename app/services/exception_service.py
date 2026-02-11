@@ -3,7 +3,7 @@
 提供异常记录、分析、模式识别和告警功能
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional, Tuple, Union
 from uuid import uuid4
 
@@ -163,7 +163,7 @@ class ExceptionService:
             异常模式分析结果
         """
         # 获取异常日志
-        end_date = datetime.utcnow()
+        end_date = datetime.now(timezone.utc)
         start_date = end_date - timedelta(hours=time_window_hours)
         
         exception_logs, _ = await self.log_repo.get_exception_logs(
@@ -194,7 +194,7 @@ class ExceptionService:
             异常检测结果
         """
         # 获取异常日志
-        end_date = datetime.utcnow()
+        end_date = datetime.now(timezone.utc)
         start_date = end_date - timedelta(hours=baseline_window_hours)
         
         exception_logs, _ = await self.log_repo.get_exception_logs(
@@ -223,7 +223,7 @@ class ExceptionService:
             异常指标
         """
         # 获取异常日志
-        end_date = datetime.utcnow()
+        end_date = datetime.now(timezone.utc)
         start_date = end_date - timedelta(hours=time_window_hours)
         
         exception_logs, _ = await self.log_repo.get_exception_logs(
@@ -499,7 +499,7 @@ class ExceptionService:
             "error_code": exception_log.error_code,
             "endpoint_pattern": exception_log.endpoint,
             "occurrence_count": 1,
-            "last_occurrence": datetime.utcnow(),
+            "last_occurrence": datetime.now(timezone.utc),
             "is_active": True,
             "alert_threshold": 10
         }

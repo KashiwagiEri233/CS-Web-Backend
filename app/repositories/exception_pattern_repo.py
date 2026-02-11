@@ -3,7 +3,7 @@
 提供异常模式的数据库操作方法
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import select
@@ -130,7 +130,7 @@ class ExceptionPatternRepository:
             return None
 
         pattern.occurrence_count += 1
-        pattern.last_occurrence = datetime.utcnow()
+        pattern.last_occurrence = datetime.now(timezone.utc)
 
         await self.db.commit()
         await self.db.refresh(pattern)

@@ -5,7 +5,7 @@
 
 import json
 import traceback
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Union
 from uuid import UUID
 
@@ -49,7 +49,7 @@ class ExceptionLogger:
         
         # 构建日志记录
         log_record = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "exception_type": exception_type,
             "exception_message": exception_message,
             "traceback": traceback_str
@@ -105,7 +105,7 @@ class ExceptionLogger:
             验证错误日志记录
         """
         log_record = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "error_type": "validation_error",
             "errors": errors
         }
@@ -158,7 +158,7 @@ class ExceptionAnalyzer:
         user_ids = {}
         
         recent_logs = []
-        cutoff_time = datetime.utcnow().timestamp() - (time_window_hours * 3600)
+        cutoff_time = datetime.now(timezone.utc).timestamp() - (time_window_hours * 3600)
         
         for log in logs:
             # 检查时间窗口
@@ -229,8 +229,8 @@ class ExceptionAnalyzer:
             return {"message": "没有可分析的异常日志"}
         
         # 分割时间窗口
-        baseline_cutoff = datetime.utcnow().timestamp() - (baseline_window_hours * 3600)
-        current_cutoff = datetime.utcnow().timestamp() - (current_window_hours * 3600)
+        baseline_cutoff = datetime.now(timezone.utc).timestamp() - (baseline_window_hours * 3600)
+        current_cutoff = datetime.now(timezone.utc).timestamp() - (current_window_hours * 3600)
         
         baseline_logs = []
         current_logs = []
@@ -320,7 +320,7 @@ class ExceptionMetrics:
             return {"message": "没有异常日志"}
         
         # 过滤时间窗口
-        cutoff_time = datetime.utcnow().timestamp() - (time_window_hours * 3600)
+        cutoff_time = datetime.now(timezone.utc).timestamp() - (time_window_hours * 3600)
         window_logs = [
             log for log in logs
             if datetime.fromisoformat(log["timestamp"]).timestamp() >= cutoff_time
