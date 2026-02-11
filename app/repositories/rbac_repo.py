@@ -60,7 +60,7 @@ class RBACRepository:
     
     async def get_all_roles(self) -> List[Role]:
         """获取所有角色"""
-        stmt = select(Role)
+        stmt = select(Role).options(selectinload(Role.permissions))
         result = await self.db.execute(stmt)
         return result.scalars().all()
     
@@ -76,7 +76,11 @@ class RBACRepository:
         self.db.add(role)
         await self.db.commit()
         await self.db.refresh(role)
-        return role
+        # 预加载权限关系，避免 MissingGreenlet 错误
+        # 使用更直接的方式预加载关系
+        stmt = select(Role).options(selectinload(Role.permissions)).where(Role.id == role.id)
+        result = await self.db.execute(stmt)
+        return result.scalar_one()
     
     async def create_permission(self, permission_data: dict) -> Permission:
         """创建权限"""
@@ -84,7 +88,11 @@ class RBACRepository:
         self.db.add(permission)
         await self.db.commit()
         await self.db.refresh(permission)
-        return permission
+        # 预加载角色关系，避免 MissingGreenlet 错误
+        # 使用更直接的方式预加载关系
+        stmt = select(Permission).options(selectinload(Permission.roles)).where(Permission.id == permission.id)
+        result = await self.db.execute(stmt)
+        return result.scalar_one()
     
     async def delete_role(self, role_id: int) -> bool:
         """删除角色"""
