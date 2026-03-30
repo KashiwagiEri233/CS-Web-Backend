@@ -32,19 +32,19 @@ from .base_exceptions import (
 from .response_models import (
     ErrorResponse,
     ValidationErrorResponse,
-    AuthenticationErrorResponse,
-    AuthorizationErrorResponse,
-    NotFoundErrorResponse,
-    ConflictErrorResponse,
-    RateLimitErrorResponse,
-    ServerErrorResponse,
-    DatabaseErrorResponse,
-    ExternalServiceErrorResponse,
     ErrorContext,
     ErrorDetail
 )
 
 logger = get_logger("exception_handler")
+
+_HTTP_ERROR_CODES: Dict[int, str] = {
+    401: "AUTHENTICATION_FAILED",
+    403: "AUTHORIZATION_FAILED",
+    404: "RESOURCE_NOT_FOUND",
+    409: "RESOURCE_CONFLICT",
+    429: "RATE_LIMIT_EXCEEDED",
+}
 
 
 def create_error_context(request: Request) -> ErrorContext:
@@ -112,24 +112,7 @@ def create_app_exception_response(exc: BaseAppException, request: Request) -> Er
     # 更新异常的时间戳
     exc.timestamp = datetime.now(timezone.utc)
     
-    # 根据异常类型选择适当的响应模型
-    response_class = ErrorResponse
-    if isinstance(exc, AuthenticationException):
-        response_class = AuthenticationErrorResponse
-    elif isinstance(exc, AuthorizationException):
-        response_class = AuthorizationErrorResponse
-    elif isinstance(exc, NotFoundException):
-        response_class = NotFoundErrorResponse
-    elif isinstance(exc, ConflictException):
-        response_class = ConflictErrorResponse
-    elif isinstance(exc, RateLimitException):
-        response_class = RateLimitErrorResponse
-    elif isinstance(exc, DatabaseException):
-        response_class = DatabaseErrorResponse
-    elif isinstance(exc, ExternalServiceException):
-        response_class = ExternalServiceErrorResponse
-    
-    return response_class(
+    return ErrorResponse(
         error_code=exc.error_code,
         message=exc.message,
         status_code=exc.status_code,
@@ -142,57 +125,15 @@ def create_app_exception_response(exc: BaseAppException, request: Request) -> Er
 def create_http_exception_response(exc: Union[HTTPException, StarletteHTTPException], request: Request) -> ErrorResponse:
     """创建HTTP异常响应"""
     context = create_error_context(request)
-    
-    # 将HTTPException映射到适当的响应类
     status_code = exc.status_code
-    if status_code == 401:
-        return AuthenticationErrorResponse(
-            error_code="AUTHENTICATION_FAILED",
-            message=exc.detail,
-            status_code=status_code,
-            context=context,
-            traceback_id=str(uuid.uuid4())
-        )
-    elif status_code == 403:
-        return AuthorizationErrorResponse(
-            error_code="AUTHORIZATION_FAILED",
-            message=exc.detail,
-            status_code=status_code,
-            context=context,
-            traceback_id=str(uuid.uuid4())
-        )
-    elif status_code == 404:
-        return NotFoundErrorResponse(
-            error_code="RESOURCE_NOT_FOUND",
-            message=exc.detail,
-            status_code=status_code,
-            context=context,
-            traceback_id=str(uuid.uuid4())
-        )
-    elif status_code == 409:
-        return ConflictErrorResponse(
-            error_code="RESOURCE_CONFLICT",
-            message=exc.detail,
-            status_code=status_code,
-            context=context,
-            traceback_id=str(uuid.uuid4())
-        )
-    elif status_code == 429:
-        return RateLimitErrorResponse(
-            error_code="RATE_LIMIT_EXCEEDED",
-            message=exc.detail,
-            status_code=status_code,
-            context=context,
-            traceback_id=str(uuid.uuid4())
-        )
-    else:
-        return ErrorResponse(
-            error_code=f"HTTP_{status_code}",
-            message=exc.detail,
-            status_code=status_code,
-            context=context,
-            traceback_id=str(uuid.uuid4())
-        )
+    
+    return ErrorResponse(
+        error_code=_HTTP_ERROR_CODES.get(status_code, f"HTTP_{status_code}"),
+        message=exc.detail,
+        status_code=status_code,
+        context=context,
+        traceback_id=str(uuid.uuid4())
+    )
 
 
 def create_server_error_response(exc: Exception, request: Request) -> ErrorResponse:
@@ -224,7 +165,7 @@ def create_server_error_response(exc: Exception, request: Request) -> ErrorRespo
         logger.error(f"未处理的异常: {type(exc).__name__}: {str(exc)}")
         logger.error(f"日志记录错误: {type(log_error).__name__}: {str(log_error)}")
     
-    return ServerErrorResponse(
+    return ErrorResponse(
         error_code="INTERNAL_SERVER_ERROR",
         message="内部服务器错误",
         status_code=500,
@@ -266,7 +207,7 @@ def create_database_error_response(exc: SQLAlchemyError, request: Request) -> Er
         logger.error(f"数据库异常: {type(exc).__name__}: {str(exc)}")
         logger.error(f"日志记录错误: {type(log_error).__name__}: {str(log_error)}")
     
-    return DatabaseErrorResponse(
+    return ErrorResponse(
         error_code=error_code,
         message=message,
         status_code=500,

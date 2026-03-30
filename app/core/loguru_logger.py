@@ -3,23 +3,51 @@
 提供与标准库logging兼容的接口，同时使用loguru作为底层日志处理
 """
 
+import json
 import logging
 import sys
 import uuid
 import threading
+from datetime import datetime
 from typing import Any, Dict, Optional, Union
 from pathlib import Path
 from contextvars import ContextVar
 
 from loguru import logger as loguru_logger
 
-# 自定义loguru的级别颜色
 loguru_logger.level("TRACE", color="<blue>")
 loguru_logger.level("DEBUG", color="<cyan>")
 loguru_logger.level("INFO", color="<green>")
 loguru_logger.level("WARNING", color="<yellow>")
 loguru_logger.level("ERROR", color="<red>")
 loguru_logger.level("CRITICAL", color="<red><bold>")
+
+
+_DISPLAY_KEY_MAP: Dict[str, str] = {
+    "type": "数据库类型",
+    "version": "版本",
+    "tables_found": "已找到表数量",
+    "total_checked": "检查表总数",
+    "table_list": "表列表",
+    "method": "请求方法",
+    "url": "请求URL",
+    "status_code": "响应状态码",
+    "process_time": "处理时间",
+    "client_ip": "客户端IP",
+    "user_agent": "用户代理",
+    "error_type": "错误类型",
+    "error_message": "错误消息",
+    "traceback_id": "追踪ID",
+    "request_id": "请求ID",
+    "context": "上下文",
+}
+
+
+class _DateTimeEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        return super().default(obj)
 
 
 # 上下文变量用于存储请求级别的信息
@@ -111,58 +139,13 @@ class LoguruAdapter:
             # 创建格式化的参数字符串
             formatted_params = []
             for k, v in kwargs.items():
-                # 跳过name，因为它已经在日志头部显示
                 if k == "name":
                     continue
 
-                # 特殊处理一些常见字段，使显示更直观
-                display_key = k
-                if k == "type":
-                    display_key = "数据库类型"
-                elif k == "version":
-                    display_key = "版本"
-                elif k == "tables_found":
-                    display_key = "已找到表数量"
-                elif k == "total_checked":
-                    display_key = "检查表总数"
-                elif k == "table_list":
-                    display_key = "表列表"
-                elif k == "method":
-                    display_key = "请求方法"
-                elif k == "url":
-                    display_key = "请求URL"
-                elif k == "status_code":
-                    display_key = "响应状态码"
-                elif k == "process_time":
-                    display_key = "处理时间"
-                elif k == "client_ip":
-                    display_key = "客户端IP"
-                elif k == "user_agent":
-                    display_key = "用户代理"
-                elif k == "error_type":
-                    display_key = "错误类型"
-                elif k == "error_message":
-                    display_key = "错误消息"
-                elif k == "traceback_id":
-                    display_key = "追踪ID"
-                elif k == "request_id":
-                    display_key = "请求ID"
-                elif k == "context":
-                    display_key = "上下文"
+                display_key = _DISPLAY_KEY_MAP.get(k, k)
 
-                # 如果值是字典或列表，使用JSON格式化
                 if isinstance(v, (dict, list)):
-                    import json
-                    from datetime import datetime
-
-                    # 自定义JSON编码器来处理datetime对象
-                    class DateTimeEncoder(json.JSONEncoder):
-                        def default(self, obj):
-                            if isinstance(obj, datetime):
-                                return obj.isoformat()
-                            return super().default(obj)
-
-                    v = json.dumps(v, ensure_ascii=False, cls=DateTimeEncoder)
+                    v = json.dumps(v, ensure_ascii=False, cls=_DateTimeEncoder)
 
                 formatted_params.append(f" [{display_key}]: {v}")
 
@@ -463,6 +446,29 @@ def configure_logging(
             catch=True,  # 捕获异常
             **kwargs,
         )
+
+
+_LIBRARY_LOGGERS = (
+    "uvicorn",
+    "uvicorn.access",
+    "sqlalchemy.engine",
+    "sqlalchemy.pool",
+    "sqlalchemy.dialects",
+    "sqlalchemy.orm",
+    "sqlalchemy.compiler",
+)
+
+_LIBRARY_LOGGER_LEVELS = {
+    "uvicorn.error": logging.ERROR,
+}
+
+
+def suppress_library_logging():
+    """统一设置第三方库日志级别，减少噪音输出"""
+    for name in _LIBRARY_LOGGERS:
+        logging.getLogger(name).setLevel(logging.WARNING)
+    for name, level in _LIBRARY_LOGGER_LEVELS.items():
+        logging.getLogger(name).setLevel(level)
 
 
 # 注意：不在模块级别初始化配置，由应用程序统一配置

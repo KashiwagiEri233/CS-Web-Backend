@@ -9,30 +9,12 @@ from fastapi.templating import Jinja2Templates
 
 from app.api import api_router
 from app.core.config import settings
-from app.core.loguru_logger import configure_logging, get_logger
+from app.core.loguru_logger import configure_logging, get_logger, suppress_library_logging
 from app.database import engine
 from app.models import Base
-from app.middleware.monitoring import SecurityHeadersMiddleware, MetricsMiddleware
-from app.middleware.logging import LoggingMiddleware
+from app.middleware.monitoring import SecurityHeadersMiddleware, MetricsMiddleware, LoggingMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware, AuthRateLimitMiddleware
 from app.core.exceptions import setup_exception_handlers, ExceptionHandlerMiddleware
-
-
-def _suppress_library_logging():
-    """统一设置第三方库日志级别，减少噪音输出"""
-    import logging
-
-    for name in ("uvicorn", "uvicorn.access"):
-        logging.getLogger(name).setLevel(logging.WARNING)
-    logging.getLogger("uvicorn.error").setLevel(logging.ERROR)
-    for name in (
-        "sqlalchemy.engine",
-        "sqlalchemy.pool",
-        "sqlalchemy.dialects",
-        "sqlalchemy.orm",
-        "sqlalchemy.compiler",
-    ):
-        logging.getLogger(name).setLevel(logging.ERROR)
 
 
 async def _initialize_database(logger):
@@ -80,28 +62,7 @@ async def _initialize_rbac(logger):
 
 
 async def _log_startup_status(logger):
-    """检查并输出应用启动状态"""
-    from app.utils.status import check_application_status
-
-    app_status = await check_application_status()
-
-    if "database_tables" in app_status:
-        tables_status = app_status["database_tables"]
-        if tables_status["status"] == "checked":
-            tables_found = tables_status["tables_found"]
-            total_checked = tables_status["total_checked"]
-            logger.info(
-                "数据库表检查完成",
-                tables_found=len(tables_found),
-                total_checked=total_checked,
-                table_list=", ".join(tables_found),
-            )
-        else:
-            logger.warning(
-                "数据库表检查失败",
-                message=tables_status.get("message", "Unknown error"),
-            )
-
+    """输出应用启动状态"""
     logger.info("服务器地址: http://0.0.0.0:8000")
     logger.info(f"API文档: http://0.0.0.0:8000{settings.API_V1_STR}/docs")
     logger.info("管理后台: http://0.0.0.0:8000/admin")
@@ -118,7 +79,7 @@ async def lifespan(app: FastAPI):
         app_name="fastapi_app",
         serialize=False,
     )
-    _suppress_library_logging()
+    suppress_library_logging()
     logger = get_logger("main")
 
     # 应用启动

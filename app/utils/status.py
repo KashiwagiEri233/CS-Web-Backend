@@ -2,9 +2,7 @@
 应用状态检查工具
 """
 
-import asyncio
-from typing import Dict, Any, Optional
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Dict, Any
 from sqlalchemy import text
 
 from app.database import get_db
@@ -74,34 +72,7 @@ async def check_application_status() -> Dict[str, Any]:
     Returns:
         包含各组件状态的字典
     """
-    status = {
+    return {
         "application": "running",
         "database": await check_database_connection(),
     }
-
-    # 检查数据库表是否存在
-    try:
-        async for session in get_db():
-            try:
-                # 检查关键表是否存在
-                tables_to_check = ["users", "roles", "permissions"]
-                existing_tables = []
-
-                for table in tables_to_check:
-                    try:
-                        await session.execute(text(f"SELECT 1 FROM {table} LIMIT 1"))
-                        existing_tables.append(table)
-                    except:
-                        pass
-
-                status["database_tables"] = {
-                    "status": "checked",
-                    "tables_found": existing_tables,
-                    "total_checked": len(tables_to_check),
-                }
-            finally:
-                await session.close()
-    except Exception as e:
-        status["database_tables"] = {"status": "error", "message": str(e)}
-
-    return status

@@ -3,20 +3,14 @@
 用于检查和创建数据库表
 """
 
-import logging
-# 更早地设置SQLAlchemy日志级别，避免在导入时产生调试信息
-logging.getLogger("sqlalchemy.engine").setLevel(logging.ERROR)
-logging.getLogger("sqlalchemy.pool").setLevel(logging.ERROR)
-logging.getLogger("sqlalchemy.dialects").setLevel(logging.ERROR)
-logging.getLogger("sqlalchemy.orm").setLevel(logging.ERROR)
-logging.getLogger("sqlalchemy.compiler").setLevel(logging.ERROR)
-
 from typing import Dict, List
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.database import engine, Base
-from app.core.loguru_logger import get_logger
+from app.core.loguru_logger import get_logger, suppress_library_logging
+
+suppress_library_logging()
 
 from app.models.user import User
 from app.models.role import Role

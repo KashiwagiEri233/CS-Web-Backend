@@ -4,33 +4,11 @@
 
 ## 快速启动
 
-### 使用优雅启动脚本（推荐）
-
 ```bash
-python startup.py
+python run.py              # 开发模式（热重载）
+python run.py --prod       # 生产模式（多 worker）
+python run.py --port 9000  # 自定义端口
 ```
-
-这将提供更简洁的启动日志和更好的用户体验。
-
-### 传统启动方式
-
-```bash
-python main.py
-```
-
-## 启动日志对比
-
-### 传统启动方式
-
-传统方式会输出详细的SQL查询和日志信息，适合调试但不够简洁。
-
-### 优雅启动方式
-
-新的启动脚本将：
-- 隐藏详细的SQL查询日志
-- 只显示关键的服务器信息
-- 将完整日志记录到文件中
-- 提供更友好的启动界面
 
 ## 环境配置
 
@@ -63,7 +41,6 @@ FastAPI-foundation-framework/
 ├── static/             # 静态文件
 ├── templates/          # 模板文件
 ├── tests/              # 测试代码
-├── startup.py          # 优雅启动脚本
-├── main.py             # 传统启动入口
+├── run.py              # 统一启动入口
 └── requirements.txt    # 依赖包列表
 ```
