@@ -15,7 +15,13 @@ from app.core.exceptions import setup_exception_handlers, ExceptionHandlerMiddle
 
 
 async def _initialize_database(logger):
-    """初始化数据库连接（按配置决定是否自动建表）"""
+    """初始化数据库（按配置：先确保库存在，再决定是否自动建表）"""
+    if settings.DB_AUTO_CREATE_DATABASE:
+        from app.database import ensure_database_exists
+
+        created = await ensure_database_exists()
+        logger.info("目标数据库已自动创建" if created else "目标数据库已存在")
+
     if settings.DB_AUTO_CREATE:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)

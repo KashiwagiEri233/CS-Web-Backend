@@ -1,103 +1,59 @@
 # CLAUDE.md
 
-本项目是企业级 FastAPI RBAC 权限管理脚手架（纯后端）。本文件为 Claude Code 提供项目级指令，作用域内优先级高于通用工作流。
-
----
+企业级 FastAPI RBAC 权限管理脚手架（纯后端）。本文件优先级高于通用工作流。
+**扩展项目的结构约定**（如何加模块、中心注册点、不变量）见 `AGENTS.md`。
 
 ## 项目定位
-
-- **纯后端 REST API 脚手架**，不包含任何前端/UI 逻辑（模板、静态文件、管理后台 Web 界面已移除）。
-- 提供 RBAC 权限、JWT 认证、结构化异常处理、loguru 日志、限流、性能监控。
-- 默认数据库为 PostgreSQL（asyncpg）。
+- 纯后端 REST API，无前端/模板/静态文件；所有接口返回 JSON。
+- 提供 RBAC、JWT、结构化异常、loguru 日志、可降级 Redis 限流/缓存。
+- 数据库 PostgreSQL（asyncpg）；**专属库 `domefff`，勿与其它项目共用一个库**。
 
 ## 技术栈
+FastAPI 0.110 · SQLAlchemy 2.0 async + asyncpg · Alembic · pydantic-settings v2 · python-jose/passlib(JWT) · loguru · redis(可选) · pytest/httpx。
 
-| 层 | 技术 |
-|---|---|
-| Web 框架 | FastAPI 0.110 + Uvicorn |
-| ORM | SQLAlchemy 2.0 (async) |
-| 数据库驱动 | asyncpg（PostgreSQL） |
-| 认证 | python-jose (JWT) + passlib (bcrypt) |
-| 日志 | loguru |
-| 迁移 | Alembic |
-| 配置 | pydantic-settings + .env |
-| 测试 | pytest + httpx + pytest-asyncio |
-
-## 目录约定
-
+## 目录
 ```
 app/
-├── api/v1/          # 路由层（auth/users/rbac/exceptions/test_exceptions）
-├── core/            # config / loguru_logger / security / validators / exceptions/
-├── middleware/      # monitoring / rate_limit / rbac
-├── models/          # ORM 模型
-├── repositories/    # 数据访问层（每张表一个 repo）
-├── schemas/         # Pydantic 入参/出参
-├── services/        # 业务逻辑层
-├── utils/           # db_initializer / status
-├── database.py      # 异步引擎 + get_db
-├── dependencies.py  # 认证依赖
-└── main.py          # 应用入口
+├── api/v1/        # 路由层（每个资源一个文件，在 v1/__init__.py 汇总注册）
+├── core/          # config / loguru_logger / security / redis_client
+│   ├── exceptions/  # 业务异常 + 全局处理器 + ExceptionHandlerMiddleware
+│   ├── cache/       # 可降级通用缓存
+│   └── rate_limit/  # 可降级限流
+├── middleware/    # monitoring / rate_limit / rbac（权限校验依赖）
+├── models/        # ORM 模型（在 models/__init__.py 汇总导出）
+├── repositories/  # 数据访问层
+├── schemas/       # Pydantic 入/出参
+├── services/      # 业务逻辑层
+├── database.py    # 引擎 + get_db（路由）/ get_session（路由外）/ ensure_database_exists
+├── dependencies.py
+└── main.py        # 入口：中间件注册、异常处理器、lifespan
 ```
-
-## 编码规范
-
-### 分层与调用方向
-- 严格分层：`api → service → repository → model`。
-- 路由层不直接操作 ORM，必须通过 service → repository。
-- 新业务模块按上述分层放置，禁止跨层调用。
-
-### 命名
-- 文件名、变量名用 snake_case。
-- 类名用 PascalCase。
-- 常量用 UPPER_SNAKE_CASE。
-
-### 异步约定
-- 数据库操作一律 async。
-- 路由函数、service 方法使用 async def。
-- 禁止在 async 路径中直接执行阻塞 IO。
-
-### 日志
-- 统一使用 `from app.core.loguru_logger import get_logger`。
-- 日志配置由 `configure_logging` 在 `run.py` 中 `uvicorn.run()` 之前统一管理。
-- 通过 `LOG_PROFILE` 一键切换日志风格，`.env` 中各 `LOG_*` 字段可覆盖 profile 默认值。
-
-| LOG_PROFILE | 级别 | 序列化 | 控制台 | 文件 | Error文件 | 回溯栈 |
-|-------------|------|--------|--------|------|-----------|--------|
-| dev | DEBUG | False(彩色) | True | False | False | True |
-| prod | INFO | True(JSON) | True | True | True | False |
-
-- `LOG_PROFILE` 在 `.env` 中设置，可选字段留空/注释则用 profile 默认值。
-- 禁止直接 `print()` 调试输出。
-
-### 异常处理
-- 业务异常继承 `BaseAppException`（在 `app/core/exceptions/base_exceptions.py`）。
-- 全局异常处理器通过 `setup_exception_handlers(app)` 注册。
-- 错误响应统一走 `ErrorResponse` 模型。
-
-### 配置
-- 所有可配置项定义在 `app/core/config.py` 的 `Settings` 类。
-- 从 `.env` 读取，`.env.example` 必须与 `Settings` 字段一一对应。
-- `SECRET_KEY` 必须从环境变量设置，禁止使用默认值。
-
-## 禁止事项
-
-- 禁止引入前端模板引擎（Jinja2）、静态文件挂载、HTML 响应。
-- 禁止引入 sqlite/aiosqlite 作为生产数据库（仅 PostgreSQL）。
-- 禁止在 `LoguruAdapter.setLevel` 中调用 `loguru_logger.remove()`（会清掉全局 handler 配置）。
-- 禁止提交 `*.db`、`logs/`、`.env` 到版本控制。
 
 ## 启动
-
 ```bash
-python run.py --env 1            # 开发环境（.env.development），热重载
-python run.py --env 2            # 测试环境（.env.test）
-python run.py --env 3            # 生产环境（.env）
-python run.py --env 3 --prod     # 生产环境 + 多 worker
-python run.py --port 9000        # 自定义端口
+python run.py --env 1   # 开发（.env.development），热重载
+python run.py --env 2   # 测试（.env.test）
+python run.py --env 3   # 生产（.env）
+python run.py --env 3 --prod   # 生产 + 多 worker
 ```
 
-环境配置文件：
-- `1` → `.env.development`（开发：DEBUG 日志 + 彩色控制台）
-- `2` → `.env.test`（测试：独立测试数据库 + DEBUG 日志）
-- `3` → `.env`（生产：INFO 日志 + JSON 序列化 + 文件轮转 + error 日志）
+## 配置（定义在 `app/core/config.py` 的 `Settings`，新增字段须同步 `.env.example`）
+- `SECRET_KEY` 必须从环境变量设置，禁止占位值。
+- `DB_AUTO_CREATE`（生产置 False，走 alembic）、`DB_AUTO_CREATE_DATABASE`（启动时缺库则自动建）。
+- `REDIS_URL`（空=纯内存）、`RATE_LIMIT_FALLBACK` / `CACHE_FALLBACK`。
+- `ADMIN_PASSWORD`（空=首启随机生成、日志只提示一次；配置则不写日志）。
+- `LOG_PROFILE=dev|prod`（dev=DEBUG+彩色控制台；prod=INFO+JSON+文件轮转）。
+
+## 数据库迁移
+- 单一 baseline；改模型后 `alembic revision --autogenerate -m "..."` → `alembic upgrade head`。
+- 生产用 alembic 管 schema，不要同时开 `create_all` 形成双轨。
+
+## 禁止事项
+- 禁止前端渲染：Jinja2 / StaticFiles / HTMLResponse。
+- 禁止 sqlite 作生产库（仅 PostgreSQL）。
+- 禁止直接 `print` 或直接配置 loguru handler（用 `get_logger`）。
+- 禁止提交 `*.db`、`logs/`、`.env`。
+
+## 测试
+- `python -m pytest`；目录镜像 `app/` 结构（见 `tests/README.md`）。
+- `pytest.ini` 段名必须 `[pytest]`；`asyncio_mode=auto`，异步测试直接 `async def`，不要 `@pytest.mark.asyncio`。

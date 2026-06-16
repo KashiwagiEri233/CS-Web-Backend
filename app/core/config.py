@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     # 开发环境置 True 方便起步；生产环境应置 False，改用 `alembic upgrade head` 管理 schema，
     # 避免 create_all 与迁移双轨并存导致的不一致。
     DB_AUTO_CREATE: bool = True
+    # 启动时若目标数据库不存在则自动创建（连接到维护库执行 CREATE DATABASE）。
+    # 开发便利用 True；生产通常由 DBA/运维预建库，可置 False。
+    DB_AUTO_CREATE_DATABASE: bool = True
+    DB_MAINTENANCE_DB: str = "postgres"  # 用于建库的维护库名
     
     # CORS配置
     ALLOWED_ORIGINS: list = ["http://localhost:3000", "http://localhost:8080", "http://127.0.0.1:3000", "http://127.0.0.1:8080"]

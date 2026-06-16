@@ -134,10 +134,12 @@ class LoguruAdapter:
             if formatted_params:
                 msg = f"{msg}" + "".join(formatted_params)
 
-        # 使用 log_method 记录日志，避免将 kwargs 作为格式化参数
-        # 这样可以防止 KeyError 错误
+        # 记录日志。注意：
+        # 1) 不向 loguru 传任何额外位置/关键字参数，否则 loguru 会对 msg 调用 .format()，
+        #    当 msg 含 JSON（如 {"request_id": ...}）时触发 KeyError。
+        # 2) loguru 用 opt(exception=...) 传递异常信息，而非 stdlib 的 exc_info=。
         if exc_info:
-            log_method(msg, exc_info=exc_info)
+            self._logger.opt(exception=exc_info).log(level_name, msg)
         else:
             log_method(msg)
 

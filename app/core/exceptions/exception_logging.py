@@ -4,8 +4,11 @@
 """
 
 import traceback
+import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.loguru_logger import get_logger
 from .base_exceptions import BaseAppException
@@ -39,9 +42,11 @@ class ExceptionLogger:
         exception_message = str(exception)
         traceback_str = traceback.format_exc()
 
-        # 构建日志记录
+        # 构建日志记录。traceback_id 必须始终有值（DB 列 NOT NULL）：
+        # 业务异常用其自带的，其余（HTTPException / 普通异常）现场生成一个。
         log_record = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
+            "traceback_id": str(uuid.uuid4()),
             "exception_type": exception_type,
             "exception_message": exception_message,
             "traceback": traceback_str,
@@ -53,11 +58,15 @@ class ExceptionLogger:
                 {
                     "error_code": exception.error_code,
                     "status_code": exception.status_code,
-                    "traceback_id": exception.traceback_id,
+                    "traceback_id": exception.traceback_id or log_record["traceback_id"],
                     "details": exception.details,
                     "context": exception.context,
                 }
             )
+        # HTTPException（含 FastAPI 子类）：捕获其状态码，避免落库 status_code 为空
+        elif isinstance(exception, StarletteHTTPException):
+            log_record["status_code"] = exception.status_code
+            log_record["error_code"] = f"HTTP_{exception.status_code}"
 
         # 添加请求上下文
         if request_context:

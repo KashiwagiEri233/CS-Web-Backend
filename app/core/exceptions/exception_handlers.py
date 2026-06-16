@@ -16,7 +16,7 @@ from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.loguru_logger import get_logger
-from app.database import get_db
+from app.database import get_session
 from .base_exceptions import (
     BaseAppException,
     BusinessException,
@@ -234,7 +234,7 @@ async def app_exception_handler(request: Request, exc: BaseAppException) -> JSON
     # 尝试将异常记录到数据库
     try:
         # 获取数据库会话
-        async for db in get_db():
+        async with get_session() as db:
             # 创建异常服务实例
             from app.services.exception_service import ExceptionService
             exception_service = ExceptionService(db)
@@ -254,7 +254,6 @@ async def app_exception_handler(request: Request, exc: BaseAppException) -> JSON
                 exception=exc,
                 request_context=request_context
             )
-            break  # 只需要第一个数据库会话
     except Exception as db_error:
         # 数据库记录失败不影响主流程，只记录错误日志
         logger.error(
@@ -297,7 +296,7 @@ async def http_exception_handler(request: Request, exc: Union[HTTPException, Sta
     # 尝试将异常记录到数据库
     try:
         # 获取数据库会话
-        async for db in get_db():
+        async with get_session() as db:
             # 创建异常服务实例
             from app.services.exception_service import ExceptionService
             exception_service = ExceptionService(db)
@@ -317,7 +316,6 @@ async def http_exception_handler(request: Request, exc: Union[HTTPException, Sta
                 exception=exc,
                 request_context=request_context
             )
-            break  # 只需要第一个数据库会话
     except Exception as db_error:
         # 数据库记录失败不影响主流程，只记录错误日志
         logger.error(
@@ -357,7 +355,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     # 尝试将验证错误记录到数据库
     try:
         # 获取数据库会话
-        async for db in get_db():
+        async with get_session() as db:
             # 创建异常服务实例
             from app.services.exception_service import ExceptionService
             exception_service = ExceptionService(db)
@@ -377,7 +375,6 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
                 errors=exc.errors(),
                 request_context=request_context
             )
-            break  # 只需要第一个数据库会话
     except Exception as db_error:
         # 数据库记录失败不影响主流程，只记录错误日志
         logger.error(
@@ -463,7 +460,7 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
     # 尝试将异常记录到数据库
     try:
         # 获取数据库会话
-        async for db in get_db():
+        async with get_session() as db:
             # 创建异常服务实例
             from app.services.exception_service import ExceptionService
             exception_service = ExceptionService(db)
@@ -483,7 +480,6 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
                 exception=exc,
                 request_context=request_context
             )
-            break  # 只需要第一个数据库会话
     except Exception as db_error:
         # 数据库记录失败不影响主流程，只记录错误日志
         logger.error(

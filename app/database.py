@@ -1,5 +1,12 @@
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker, DeclarativeBase
+from contextlib import asynccontextmanager
+from typing import AsyncGenerator
+
+from sqlalchemy.ext.asyncio import (
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+from sqlalchemy.orm import DeclarativeBase
 
 from app.core.config import settings
 
@@ -17,13 +24,73 @@ engine = create_async_engine(
 )
 
 # 创建异步会话工厂
-AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
 
-# 获取数据库会话的依赖注入函数
-async def get_db() -> AsyncSession:
+async def ensure_database_exists() -> bool:
+    """若目标数据库不存在则创建。
+
+    Postgres 不会自动建库，这里连接到维护库（默认 postgres）检查并 CREATE DATABASE。
+    返回 True 表示本次新建，False 表示已存在或未配置。
+    """
+    import re
+    import asyncpg
+    from sqlalchemy.engine import make_url
+
+    url = make_url(settings.DATABASE_URL)
+    db_name = url.database
+    if not db_name:
+        return False
+    # 库名来自配置而非用户输入，但 CREATE DATABASE 不能参数化，仍做标识符白名单校验
+    if not re.fullmatch(r"[A-Za-z0-9_]+", db_name):
+        raise ValueError(f"非法数据库名（仅允许字母数字下划线）: {db_name!r}")
+
+    conn = await asyncpg.connect(
+        host=url.host or "localhost",
+        port=url.port or 5432,
+        user=url.username,
+        password=url.password,
+        database=settings.DB_MAINTENANCE_DB,
+    )
+    try:
+        exists = await conn.fetchval(
+            "SELECT 1 FROM pg_database WHERE datname = $1", db_name
+        )
+        if exists:
+            return False
+        await conn.execute(f'CREATE DATABASE "{db_name}"')
+        return True
+    finally:
+        await conn.close()
+
+
+# 获取数据库会话的依赖注入函数（FastAPI 路由用）
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
         try:
             yield session
         finally:
             await session.close()
+
+
+# 在 FastAPI 依赖体系之外安全使用会话（worker / 脚本 / 后台任务 / 队列消费者）。
+# 路由用 Depends(get_db)，非请求上下文用 `async with get_session() as db:`。
+@asynccontextmanager
+async def get_session() -> AsyncGenerator[AsyncSession, None]:
+    """提供一个受管理的异步会话。
+
+    用法：
+        async with get_session() as db:
+            await SomeService(db).do_something()
+            await db.commit()
+
+    出异常自动回滚；与路由层保持一致——不自动提交，由调用方显式 commit。
+    """
+    session = AsyncSessionLocal()
+    try:
+        yield session
+    except Exception:
+        await session.rollback()
+        raise
+    finally:
+        await session.close()
