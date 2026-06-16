@@ -64,36 +64,17 @@ class LoguruAdapter:
         self.name = name
         self._logger = loguru_logger.bind(name=name)
 
-        # 设置日志级别
-        if isinstance(level, str):
-            level = getattr(logging, level.upper(), logging.INFO)
-        self.setLevel(level)
-
-    def setLevel(self, level: Union[int, str]) -> None:
-        """设置日志级别"""
+        # 仅记录级别用于 isEnabledFor 判断，不触碰全局 handler 配置
+        # handler 的添加由 configure_logging 统一管理，避免每次 get_logger 重置全局
         if isinstance(level, str):
             level = getattr(logging, level.upper(), logging.INFO)
         self.level = level
 
-        # loguru使用不同的级别系统，我们需要映射
-        loguru_level = self._map_logging_level_to_loguru(level)
-
-        # 移除所有现有的处理器
-        loguru_logger.remove()
-
-        # 重新添加处理器，设置级别
-        loguru_logger.add(
-            sys.stdout,
-            level=loguru_level,
-            # 更直观的格式：主要信息突出，参数信息在下方用分隔线分开
-            format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
-            "<level>{level: <8}</level> | "
-            "<cyan>{extra[name]}</cyan> | "
-            "{message}",
-            serialize=False,  # 使用彩色格式输出，不序列化为JSON
-            colorize=True,  # 启用颜色
-            catch=True,  # 捕获异常，避免程序崩溃
-        )
+    def setLevel(self, level: Union[int, str]) -> None:
+        """设置该适配器的日志级别（仅影响本实例的 isEnabledFor 判断）"""
+        if isinstance(level, str):
+            level = getattr(logging, level.upper(), logging.INFO)
+        self.level = level
 
     def _map_logging_level_to_loguru(self, level: int) -> str:
         """将logging级别映射到loguru级别"""
