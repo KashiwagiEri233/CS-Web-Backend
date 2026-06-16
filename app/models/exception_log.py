@@ -10,7 +10,7 @@ from sqlalchemy import (
     Column,
     String,
     Integer,
-    DateTime,
+    DateTime as _DateTime,
     Text,
     Boolean,
     ForeignKey,
@@ -22,6 +22,11 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.database import Base
+
+# 所有时间列统一带时区：映射为 Postgres TIMESTAMP WITH TIME ZONE，
+# 与代码库中 datetime.now(timezone.utc)（UTC aware）的约定对齐，
+# 避免向无时区列写入 aware 时间（asyncpg DataError）以及读回后 naive/aware 混用比较报错。
+DateTime = _DateTime(timezone=True)
 
 
 class ExceptionLog(Base):

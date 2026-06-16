@@ -81,9 +81,8 @@ class UserUpdate(BaseModel):
 class User(UserBase):
     id: int
     is_superuser: bool
-    
-    class Config:
-        from_attributes = True
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 # 别名，用于API响应

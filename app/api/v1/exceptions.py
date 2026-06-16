@@ -14,7 +14,7 @@ from app.core.exceptions import (
     NotFoundException,
     PermissionDeniedException
 )
-from app.middleware.rbac import require_permission, require_superuser
+from app.middleware.rbac import require_permission
 from app.database import get_db
 from app.dependencies import get_current_active_user
 from app.models.user import User
@@ -24,8 +24,7 @@ from app.services.exception_service import ExceptionService
 router = APIRouter()
 
 
-@router.get("/logs")
-@require_permission("exception", "read")
+@router.get("/logs", dependencies=[Depends(require_permission("exception", "read"))])
 async def get_exception_logs(
     skip: int = Query(0, ge=0, description="跳过记录数"),
     limit: int = Query(100, ge=1, le=1000, description="限制记录数"),
@@ -70,8 +69,7 @@ async def get_exception_logs(
     }
 
 
-@router.get("/logs/{log_id}")
-@require_permission("exception", "read")
+@router.get("/logs/{log_id}", dependencies=[Depends(require_permission("exception", "read"))])
 async def get_exception_log(
     log_id: int = Path(..., description="日志ID"),
     db: AsyncSession = Depends(get_db),
@@ -95,8 +93,7 @@ async def get_exception_log(
     return log.to_dict()
 
 
-@router.put("/logs/{log_id}/resolve")
-@require_permission("exception", "resolve")
+@router.put("/logs/{log_id}/resolve", dependencies=[Depends(require_permission("exception", "resolve"))])
 async def resolve_exception_log(
     log_id: int = Path(..., description="日志ID"),
     resolution_notes: Optional[str] = Body(None, description="解决备注"),
@@ -128,8 +125,7 @@ async def resolve_exception_log(
     }
 
 
-@router.get("/statistics")
-@require_permission("exception", "statistics")
+@router.get("/statistics", dependencies=[Depends(require_permission("exception", "statistics"))])
 async def get_exception_statistics(
     time_window_hours: int = Query(24, ge=1, le=168, description="时间窗口（小时）"),
     db: AsyncSession = Depends(get_db),
@@ -147,8 +143,7 @@ async def get_exception_statistics(
     return stats
 
 
-@router.get("/patterns")
-@require_permission("exception", "analyze")
+@router.get("/patterns", dependencies=[Depends(require_permission("exception", "analyze"))])
 async def analyze_exception_patterns(
     time_window_hours: int = Query(24, ge=1, le=168, description="时间窗口（小时）"),
     db: AsyncSession = Depends(get_db),
@@ -166,8 +161,7 @@ async def analyze_exception_patterns(
     return patterns
 
 
-@router.get("/anomalies")
-@require_permission("exception", "analyze")
+@router.get("/anomalies", dependencies=[Depends(require_permission("exception", "analyze"))])
 async def detect_anomalies(
     baseline_window_hours: int = Query(168, ge=24, le=720, description="基准时间窗口（小时）"),
     current_window_hours: int = Query(1, ge=1, le=24, description="当前时间窗口（小时）"),
@@ -189,8 +183,7 @@ async def detect_anomalies(
     return anomalies
 
 
-@router.get("/metrics")
-@require_permission("exception", "metrics")
+@router.get("/metrics", dependencies=[Depends(require_permission("exception", "metrics"))])
 async def get_exception_metrics(
     time_window_hours: int = Query(24, ge=1, le=168, description="时间窗口（小时）"),
     db: AsyncSession = Depends(get_db),
@@ -208,8 +201,7 @@ async def get_exception_metrics(
     return metrics
 
 
-@router.get("/alerts")
-@require_permission("exception", "alerts")
+@router.get("/alerts", dependencies=[Depends(require_permission("exception", "alerts"))])
 async def get_exception_alerts(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
@@ -228,8 +220,7 @@ async def get_exception_alerts(
     }
 
 
-@router.put("/alerts/{alert_id}/acknowledge")
-@require_permission("exception", "alerts")
+@router.put("/alerts/{alert_id}/acknowledge", dependencies=[Depends(require_permission("exception", "alerts"))])
 async def acknowledge_exception_alert(
     alert_id: int = Path(..., description="告警ID"),
     db: AsyncSession = Depends(get_db),
@@ -259,8 +250,7 @@ async def acknowledge_exception_alert(
     }
 
 
-@router.put("/alerts/{alert_id}/resolve")
-@require_permission("exception", "alerts")
+@router.put("/alerts/{alert_id}/resolve", dependencies=[Depends(require_permission("exception", "alerts"))])
 async def resolve_exception_alert(
     alert_id: int = Path(..., description="告警ID"),
     db: AsyncSession = Depends(get_db),
@@ -290,8 +280,7 @@ async def resolve_exception_alert(
     }
 
 
-@router.get("/dashboard")
-@require_permission("exception", "dashboard")
+@router.get("/dashboard", dependencies=[Depends(require_permission("exception", "dashboard"))])
 async def get_exception_dashboard(
     time_window_hours: int = Query(24, ge=1, le=168, description="时间窗口（小时）"),
     db: AsyncSession = Depends(get_db),

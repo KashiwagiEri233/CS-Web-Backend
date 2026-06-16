@@ -26,9 +26,9 @@ class RBACInitializer:
         self.rbac_repo = RBACRepository(db)
         self.logger = get_logger("rbac_init")
     
-    async def initialize_rbac_system(self, admin_username: str = "admin", 
-                                   admin_email: str = "admin@example.com",
-                                   admin_password: str = "admin123") -> Dict[str, any]:
+    async def initialize_rbac_system(self, admin_username: str,
+                                   admin_email: str,
+                                   admin_password: str) -> Dict[str, any]:
         """
         初始化RBAC系统，包括权限、角色和默认管理员账号
         
@@ -271,12 +271,38 @@ class RBACInitializer:
 async def initialize_rbac(db: AsyncSession) -> Dict[str, any]:
     """
     初始化RBAC系统的便捷函数
-    
+
+    管理员凭据来自配置：ADMIN_USERNAME / ADMIN_EMAIL / ADMIN_PASSWORD。
+    未配置 ADMIN_PASSWORD 时随机生成一个强密码，并仅在确实创建了管理员时
+    通过返回值回传明文（供启动流程提示一次），绝不在本函数内打印明文。
+
     Args:
         db: 数据库会话
-        
+
     Returns:
         初始化结果
     """
+    import secrets
+    from app.core.config import settings
+
+    generated = False
+    password = settings.ADMIN_PASSWORD
+    if not password:
+        password = secrets.token_urlsafe(16)
+        generated = True
+
     initializer = RBACInitializer(db)
-    return await initializer.initialize_rbac_system()
+    result = await initializer.initialize_rbac_system(
+        admin_username=settings.ADMIN_USERNAME,
+        admin_email=settings.ADMIN_EMAIL,
+        admin_password=password,
+    )
+
+    # 仅当本次确实创建了管理员、且密码是自动生成的，才回传明文供启动日志提示一次
+    if result.get("admin_created") and generated:
+        result["admin_password_generated"] = True
+        result["generated_admin_password"] = password
+    else:
+        result["admin_password_generated"] = False
+
+    return result

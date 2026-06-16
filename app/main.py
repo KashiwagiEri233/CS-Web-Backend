@@ -15,9 +15,13 @@ from app.core.exceptions import setup_exception_handlers, ExceptionHandlerMiddle
 
 
 async def _initialize_database(logger):
-    """初始化数据库连接并创建表"""
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    """初始化数据库连接（按配置决定是否自动建表）"""
+    if settings.DB_AUTO_CREATE:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        logger.info("已自动建表 (DB_AUTO_CREATE=True)")
+    else:
+        logger.info("跳过自动建表 (DB_AUTO_CREATE=False)，请确保已执行 alembic upgrade head")
 
     from app.utils.status import check_database_connection
 
@@ -48,12 +52,17 @@ async def _initialize_rbac(logger):
                 admin_created=init_result["admin_created"],
             )
             if init_result["admin_created"]:
-                logger.info(
-                    "默认管理员账号已创建",
-                    username="admin",
-                    password="admin123",
-                    note="请在生产环境中修改默认密码",
-                )
+                if init_result.get("admin_password_generated"):
+                    logger.warning(
+                        "默认管理员已创建，初始密码为随机生成，请立即登录并修改（仅显示这一次）",
+                        username=settings.ADMIN_USERNAME,
+                        password=init_result["generated_admin_password"],
+                    )
+                else:
+                    logger.info(
+                        "默认管理员已创建（密码来自 ADMIN_PASSWORD 配置，未写入日志）",
+                        username=settings.ADMIN_USERNAME,
+                    )
         else:
             logger.error("RBAC系统初始化失败", errors=init_result["errors"])
 
@@ -123,9 +132,12 @@ app = FastAPI(
 # 设置全局异常处理器
 setup_exception_handlers(app)
 
-# 配置中间件（注意异常处理中间件应该放在最外层）
-app.add_middleware(ExceptionHandlerMiddleware)
-# 添加速率限制中间件
+# 配置中间件
+# 重要：Starlette 中 add_middleware 后注册的在更外层。
+# 期望的执行顺序（外 -> 内）：
+#   CORS -> 异常处理 -> 安全头 -> 日志 -> 指标 -> 限流 -> 认证限流 -> 路由
+# 因此注册顺序需自内向外。异常处理放在 CORS 之内、其余功能中间件之外，
+# 这样它能捕获任何功能中间件抛出的异常并映射为正确状态码，而错误响应仍会被 CORS 装饰。
 app.add_middleware(
     AuthRateLimitMiddleware,
     calls=settings.AUTH_RATE_LIMIT_CALLS,
@@ -139,6 +151,8 @@ app.add_middleware(
 app.add_middleware(MetricsMiddleware)
 app.add_middleware(LoggingMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
+# 异常处理中间件：包裹上述所有功能中间件（但在 CORS 之内）
+app.add_middleware(ExceptionHandlerMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS,  # 从配置文件读取允许的源

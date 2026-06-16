@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr
 
 from app.schemas.auth import UserBase
 
@@ -8,9 +8,8 @@ from app.schemas.auth import UserBase
 class UserResponse(UserBase):
     id: int
     is_superuser: bool
-    
-    class Config:
-        from_attributes = True
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UserCreate(UserBase):

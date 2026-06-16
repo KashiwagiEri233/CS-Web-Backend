@@ -569,10 +569,16 @@ class ExceptionHandlerMiddleware:
         try:
             await self.app(scope, receive, send)
         except Exception as exc:
-            # 如果有专门的异常处理器，让它们处理
-            # 这里只处理未捕获的异常
-            response = create_server_error_response(exc, request)
-            
+            # 注意：中间件层抛出的异常不会经过 app.add_exception_handler 注册的处理器
+            # （那些只覆盖路由层），必须在此按类型显式区分，否则 HTTPException 与业务异常
+            # 会被错误地吞成 500。
+            if isinstance(exc, (HTTPException, StarletteHTTPException)):
+                response = create_http_exception_response(exc, request)
+            elif isinstance(exc, BaseAppException):
+                response = create_app_exception_response(exc, request)
+            else:
+                response = create_server_error_response(exc, request)
+
             try:
                 # 创建响应，使用 model_dump 来正确处理 datetime
                 content = response.model_dump()
@@ -581,19 +587,19 @@ class ExceptionHandlerMiddleware:
                     content=content
                 )
             except Exception as json_error:
-                # 如果序列化失败，使用基本错误响应
+                # 如果序列化失败，使用基本错误响应（保留原始状态码）
                 content = {
                     "success": False,
-                    "error_code": "INTERNAL_SERVER_ERROR",
-                    "message": "内部服务器错误",
-                    "status_code": 500,
+                    "error_code": response.error_code if response else "INTERNAL_SERVER_ERROR",
+                    "message": response.message if response else "内部服务器错误",
+                    "status_code": response.status_code if response else 500,
                     "traceback_id": response.traceback_id if response else None,
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 }
                 response_obj = JSONResponse(
-                    status_code=500,
+                    status_code=response.status_code if response else 500,
                     content=content
                 )
-            
+
             # 发送响应
             await response_obj(scope, receive, send)

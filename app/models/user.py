@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from sqlalchemy import (
     Boolean,
     Column,
-    DateTime,
+    DateTime as _DateTime,
     ForeignKey,
     Integer,
     String,
@@ -12,6 +12,9 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from app.database import Base
+
+# 带时区的 DateTime（Postgres TIMESTAMP WITH TIME ZONE），与 UTC aware 约定对齐
+DateTime = _DateTime(timezone=True)
 
 # 用户角色关联表
 user_roles = Table(

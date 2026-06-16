@@ -1,8 +1,11 @@
 from datetime import datetime, timezone
-from sqlalchemy import Column, DateTime, Integer, String, Text
+from sqlalchemy import Column, DateTime as _DateTime, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from app.database import Base
+
+# 带时区的 DateTime（Postgres TIMESTAMP WITH TIME ZONE），与 UTC aware 约定对齐
+DateTime = _DateTime(timezone=True)
 
 
 class Permission(Base):
