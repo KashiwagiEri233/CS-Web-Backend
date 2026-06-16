@@ -1,8 +1,12 @@
 from typing import Any, List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import (
+    ConflictException,
+    NotFoundException,
+)
 from app.core.security import get_password_hash
 from app.database import get_db
 from app.dependencies import get_current_active_user, get_current_superuser
@@ -49,13 +53,14 @@ async def read_user(
     """
     user_repo = UserRepository(db)
     user = await user_repo.get_by_id(user_id)
-    
+
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="用户不存在"
+        raise NotFoundException(
+            message="用户不存在",
+            resource_type="user",
+            resource_id=user_id,
         )
-    
+
     return user
 
 
@@ -65,25 +70,21 @@ async def create_user(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_superuser)
 ) -> Any:
-    """
-    创建用户（需要超级用户权限）
-    """
+    """创建用户（需要超级用户权限）"""
     user_repo = UserRepository(db)
-    
-    # 检查用户名是否已存在
+
     existing_user = await user_repo.get_by_username(user_data.username)
     if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="用户名已存在"
+        raise ConflictException(
+            message="用户名已存在",
+            details={"username": user_data.username},
         )
-    
-    # 检查邮箱是否已存在
+
     existing_email = await user_repo.get_by_email(user_data.email)
     if existing_email:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="邮箱已存在"
+        raise ConflictException(
+            message="邮箱已存在",
+            details={"email": user_data.email},
         )
     
     # 创建新用户
@@ -114,21 +115,21 @@ async def update_user(
     """
     user_repo = UserRepository(db)
     user = await user_repo.get_by_id(user_id)
-    
+
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="用户不存在"
+        raise NotFoundException(
+            message="用户不存在",
+            resource_type="user",
+            resource_id=user_id,
         )
-    
+
     # 更新用户信息
     if user_data.email is not None:
-        # 检查邮箱是否已被其他用户使用
         existing_email = await user_repo.get_by_email(user_data.email)
         if existing_email and existing_email.id != user_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="邮箱已被其他用户使用"
+            raise ConflictException(
+                message="邮箱已被其他用户使用",
+                details={"email": user_data.email},
             )
         user.email = user_data.email
     
@@ -155,14 +156,13 @@ async def update_user_me(
     更新当前用户信息
     """
     user_repo = UserRepository(db)
-    
-    # 检查邮箱是否已被其他用户使用
+
     if user_data.email is not None and user_data.email != current_user.email:
         existing_email = await user_repo.get_by_email(user_data.email)
         if existing_email and existing_email.id != current_user.id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="邮箱已被其他用户使用"
+            raise ConflictException(
+                message="邮箱已被其他用户使用",
+                details={"email": user_data.email},
             )
         current_user.email = user_data.email
     
@@ -186,20 +186,20 @@ async def delete_user(
     删除用户（需要超级用户权限）
     """
     user_repo = UserRepository(db)
-    
-    # 不能删除自己
+
     if user_id == current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="不能删除自己"
+        raise ConflictException(
+            message="不能删除自己",
+            details={"user_id": user_id},
         )
-    
+
     success = await user_repo.delete(user_id)
-    
+
     if not success:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="用户不存在"
+        raise NotFoundException(
+            message="用户不存在",
+            resource_type="user",
+            resource_id=user_id,
         )
-    
+
     return {"message": "用户已删除"}

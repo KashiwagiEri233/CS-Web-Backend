@@ -62,19 +62,6 @@ class UserRepository:
     
     async def get_user_with_roles(self, user_id: int) -> Optional[User]:
         """获取用户及其角色"""
-        # 对于测试环境，直接返回Mock设置的对象
-        import sys
-        if 'pytest' in sys.modules:
-            # 在测试环境中，直接使用Mock的返回值
-            from sqlalchemy import select
-            stmt = select(User).options(selectinload(User.roles)).where(User.id == user_id)
-            result = await self.db.execute(stmt)
-            user = result.scalar_one_or_none()
-            # 如果是协程，直接返回
-            if hasattr(user, '__await__'):
-                return await user
-            return user
-        
         stmt = select(User).options(selectinload(User.roles)).where(User.id == user_id)
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()

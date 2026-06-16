@@ -34,16 +34,19 @@ class RBACService:
         user = await self.rbac_repo.get_user_with_roles(user_id)
         if not user:
             return False
-        
-        # 超级用户拥有所有权限
+
         if user.is_superuser:
             return True
-        
-        # 检查用户是否有特定权限
+
         required_permission = f"{resource}:{action}"
-        user_permissions = await self.get_user_permissions(user_id)
-        
-        return required_permission in user_permissions
+        # 复用已查询的 user 对象，避免重复 DB 查询
+        permissions = set()
+        for role in user.roles:
+            for permission in role.permissions:
+                perm_str = f"{permission.resource}:{permission.action}"
+                permissions.add(perm_str)
+
+        return required_permission in permissions
     
     async def grant_role_to_user(self, user_id: int, role_id: int) -> bool:
         """为用户授予角色"""

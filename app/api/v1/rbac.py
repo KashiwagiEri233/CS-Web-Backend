@@ -1,19 +1,24 @@
 from typing import Any, List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.exceptions import (
+    ConflictException,
+    NotFoundException,
+    PermissionDeniedException,
+)
 from app.database import get_db
 from app.dependencies import get_current_active_user, get_current_superuser
 from app.models.user import User
+from app.models.role import Role as RoleModel
+from app.models.permission import Permission as PermissionModel
 from app.repositories.rbac_repo import RBACRepository
-from app.repositories.user_repo import UserRepository
 from app.schemas.rbac import (
     Role, RoleCreate, RoleUpdate,
     Permission, PermissionCreate, PermissionUpdate,
-    UserRoleAssignment, RolePermissionAssignment,
     UserPermissionCheck, UserPermissionResult
 )
 from app.services.rbac_service import RBACService
@@ -41,15 +46,14 @@ async def create_role(
 ) -> Any:
     """创建角色（需要超级用户权限）"""
     rbac_repo = RBACRepository(db)
-    
-    # 检查角色名称是否已存在
-    existing_roles = await rbac_repo.get_all_roles()
-    for role in existing_roles:
-        if role.name == role_data.name:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="角色名称已存在"
-            )
+
+    # 按名称查重（避免全表遍历）
+    existing = await rbac_repo.get_role_by_name(role_data.name)
+    if existing:
+        raise ConflictException(
+            message="角色名称已存在",
+            details={"name": role_data.name},
+        )
     
     role_dict = {
         "name": role_data.name,
@@ -70,11 +74,12 @@ async def get_role(
     """获取指定角色信息（需要超级用户权限）"""
     rbac_repo = RBACRepository(db)
     role = await rbac_repo.get_role_with_permissions(role_id)
-    
+
     if not role:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="角色不存在"
+        raise NotFoundException(
+            message="角色不存在",
+            resource_type="role",
+            resource_id=role_id,
         )
     
     return role
@@ -90,11 +95,12 @@ async def update_role(
     """更新角色（需要超级用户权限）"""
     rbac_repo = RBACRepository(db)
     role = await rbac_repo.get_role_by_id(role_id)
-    
+
     if not role:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="角色不存在"
+        raise NotFoundException(
+            message="角色不存在",
+            resource_type="role",
+            resource_id=role_id,
         )
     
     # 更新角色信息
@@ -124,13 +130,14 @@ async def delete_role(
     """删除角色（需要超级用户权限）"""
     rbac_repo = RBACRepository(db)
     success = await rbac_repo.delete_role(role_id)
-    
+
     if not success:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="角色不存在"
+        raise NotFoundException(
+            message="角色不存在",
+            resource_type="role",
+            resource_id=role_id,
         )
-    
+
     return {"message": "角色已删除"}
 
 
@@ -154,23 +161,22 @@ async def create_permission(
 ) -> Any:
     """创建权限（需要超级用户权限）"""
     rbac_repo = RBACRepository(db)
-    
-    # 检查权限名称是否已存在
-    existing_permissions = await rbac_repo.get_all_permissions()
-    for perm in existing_permissions:
-        if perm.name == permission_data.name:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="权限名称已存在"
-            )
-    
+
+    # 按名称查重（避免全表遍历）
+    existing = await rbac_repo.get_permission_by_name(permission_data.name)
+    if existing:
+        raise ConflictException(
+            message="权限名称已存在",
+            details={"name": permission_data.name},
+        )
+
     permission_dict = {
         "name": permission_data.name,
         "resource": permission_data.resource,
         "action": permission_data.action,
         "description": permission_data.description
     }
-    
+
     created_permission = await rbac_repo.create_permission(permission_dict)
     return created_permission
 
@@ -184,13 +190,14 @@ async def get_permission(
     """获取指定权限信息（需要超级用户权限）"""
     rbac_repo = RBACRepository(db)
     permission = await rbac_repo.get_permission_by_id(permission_id)
-    
+
     if not permission:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="权限不存在"
+        raise NotFoundException(
+            message="权限不存在",
+            resource_type="permission",
+            resource_id=permission_id,
         )
-    
+
     return permission
 
 
@@ -204,13 +211,14 @@ async def update_permission(
     """更新权限（需要超级用户权限）"""
     rbac_repo = RBACRepository(db)
     permission = await rbac_repo.get_permission_by_id(permission_id)
-    
+
     if not permission:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="权限不存在"
+        raise NotFoundException(
+            message="权限不存在",
+            resource_type="permission",
+            resource_id=permission_id,
         )
-    
+
     # 更新权限信息
     if permission_data.name is not None:
         permission.name = permission_data.name
@@ -220,12 +228,11 @@ async def update_permission(
         permission.action = permission_data.action
     if permission_data.description is not None:
         permission.description = permission_data.description
-    
-    # 更新权限
+
     await db.commit()
-    
+
     # 预加载角色关系，避免 MissingGreenlet 错误
-    stmt = select(Permission).options(selectinload(Permission.roles)).where(Permission.id == permission.id)
+    stmt = select(PermissionModel).options(selectinload(PermissionModel.roles)).where(PermissionModel.id == permission.id)
     result = await db.execute(stmt)
     updated_permission = result.scalar_one()
     return updated_permission
@@ -240,13 +247,14 @@ async def delete_permission(
     """删除权限（需要超级用户权限）"""
     rbac_repo = RBACRepository(db)
     success = await rbac_repo.delete_permission(permission_id)
-    
+
     if not success:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="权限不存在"
+        raise NotFoundException(
+            message="权限不存在",
+            resource_type="permission",
+            resource_id=permission_id,
         )
-    
+
     return {"message": "权限已删除"}
 
 
@@ -261,13 +269,14 @@ async def assign_role_to_user(
     """为用户分配角色（需要超级用户权限）"""
     rbac_service = RBACService(db)
     success = await rbac_service.grant_role_to_user(user_id, role_id)
-    
+
     if not success:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="用户或角色不存在"
+        raise NotFoundException(
+            message="用户或角色不存在",
+            resource_type="user/role",
+            resource_id=f"{user_id}/{role_id}",
         )
-    
+
     return {"message": "角色已分配给用户"}
 
 
@@ -281,13 +290,14 @@ async def revoke_role_from_user(
     """从用户撤销角色（需要超级用户权限）"""
     rbac_service = RBACService(db)
     success = await rbac_service.revoke_role_from_user(user_id, role_id)
-    
+
     if not success:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="用户或角色不存在"
+        raise NotFoundException(
+            message="用户或角色不存在",
+            resource_type="user/role",
+            resource_id=f"{user_id}/{role_id}",
         )
-    
+
     return {"message": "角色已从用户撤销"}
 
 
@@ -302,13 +312,14 @@ async def assign_permission_to_role(
     """为角色分配权限（需要超级用户权限）"""
     rbac_service = RBACService(db)
     success = await rbac_service.grant_permission_to_role(role_id, permission_id)
-    
+
     if not success:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="角色或权限不存在"
+        raise NotFoundException(
+            message="角色或权限不存在",
+            resource_type="role/permission",
+            resource_id=f"{role_id}/{permission_id}",
         )
-    
+
     return {"message": "权限已分配给角色"}
 
 
@@ -322,13 +333,14 @@ async def revoke_permission_from_role(
     """从角色撤销权限（需要超级用户权限）"""
     rbac_service = RBACService(db)
     success = await rbac_service.revoke_permission_from_role(role_id, permission_id)
-    
+
     if not success:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="角色或权限不存在"
+        raise NotFoundException(
+            message="角色或权限不存在",
+            resource_type="role/permission",
+            resource_id=f"{role_id}/{permission_id}",
         )
-    
+
     return {"message": "权限已从角色撤销"}
 
 
@@ -341,16 +353,14 @@ async def check_user_permission(
     current_user: User = Depends(get_current_active_user)
 ) -> Any:
     """检查用户是否有特定权限"""
-    # 只有超级用户或用户本人才能检查权限
     if not current_user.is_superuser and user_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="没有权限检查其他用户的权限"
+        raise PermissionDeniedException(
+            required_permissions=["check_permission"],
         )
-    
+
     rbac_service = RBACService(db)
     has_permission = await rbac_service.check_permission(
         user_id, permission_check.resource, permission_check.action
     )
-    
+
     return UserPermissionResult(has_permission=has_permission)

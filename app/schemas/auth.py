@@ -16,7 +16,6 @@ from app.core.validators import (
     validate_password_strength, 
     validate_username, 
     validate_email,
-    sanitize_input
 )
 
 
@@ -36,9 +35,9 @@ class UserBase(BaseModel):
     
     @field_validator('full_name')
     @classmethod
-    def sanitize_full_name(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None:
-            return sanitize_input(v, max_length=100)
+    def validate_full_name(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and len(v) > 100:
+            raise ValueError("全名长度不能超过100个字符")
         return v
 
 
@@ -73,9 +72,9 @@ class UserUpdate(BaseModel):
     
     @field_validator('full_name')
     @classmethod
-    def sanitize_full_name(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None:
-            return sanitize_input(v, max_length=100)
+    def validate_full_name(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and len(v) > 100:
+            raise ValueError("全名长度不能超过100个字符")
         return v
 
 

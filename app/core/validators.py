@@ -61,26 +61,6 @@ def validate_email(email: str) -> tuple[bool, Optional[str]]:
     return True, None
 
 
-def sanitize_input(input_string: str, max_length: int = 1000) -> str:
-    """
-    清理输入字符串，防止XSS和注入攻击
-    """
-    if not input_string:
-        return ""
-    
-    # 限制长度
-    if len(input_string) > max_length:
-        input_string = input_string[:max_length]
-    
-    # 移除潜在的危险字符（根据具体需求调整）
-    # 注意：使用参数化查询是最好的防护方式，这只是额外的保护层
-    dangerous_chars = ['<', '>', '"', "'", '&', '\x00']
-    for char in dangerous_chars:
-        input_string = input_string.replace(char, '')
-    
-    return input_string
-
-
 def validate_sql_like_pattern(pattern: str) -> tuple[bool, Optional[str]]:
     """
     验证SQL LIKE模式，防止SQL注入

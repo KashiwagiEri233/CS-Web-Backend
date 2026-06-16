@@ -49,7 +49,10 @@ def main():
         env_file = ENV_FILES[args.env]
         os.environ["ENV_FILE"] = env_file
         env_names = {1: "开发", 2: "测试", 3: "生产"}
-        print(f"[启动] 使用 {env_names[args.env]} 环境配置: {env_file}")
+        # loguru 尚未配置，用 stdout 直接输出启动提示
+        import sys
+        sys.stdout.write(f"[启动] 使用 {env_names[args.env]} 环境配置: {env_file}\n")
+        sys.stdout.flush()
 
     # 在 uvicorn 启动前配置 loguru 日志系统
     from app.core.config import settings
