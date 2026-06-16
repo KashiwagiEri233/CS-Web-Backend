@@ -25,6 +25,6 @@ if errorlevel 1 (
 echo.
 echo 启动FastAPI应用...
 echo.
-python startup.py
+python run.py
 
 pause

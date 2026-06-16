@@ -47,10 +47,7 @@ def run_migrations_offline() -> None:
     # 从环境变量获取数据库URL
     from app.core.config import settings
     # 将异步URL转换为同步URL供Alembic使用
-    if "+asyncpg" in settings.DATABASE_URL:
-        url = settings.DATABASE_URL.replace("+asyncpg", "")
-    else:
-        url = settings.DATABASE_URL.replace("+aiosqlite", "")
+    url = settings.DATABASE_URL.replace("+asyncpg", "")
     
     context.configure(
         url=url,
@@ -74,10 +71,7 @@ def run_migrations_online() -> None:
     from app.core.config import settings
     
     # 将异步URL转换为同步URL供Alembic使用
-    if "+asyncpg" in settings.DATABASE_URL:
-        url = settings.DATABASE_URL.replace("+asyncpg", "")
-    else:
-        url = settings.DATABASE_URL.replace("+aiosqlite", "")
+    url = settings.DATABASE_URL.replace("+asyncpg", "")
     
     configuration = config.get_section(config.config_ini_section, {})
     configuration["sqlalchemy.url"] = url
