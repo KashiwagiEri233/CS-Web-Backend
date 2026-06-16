@@ -16,7 +16,12 @@ class Settings(BaseSettings):
     # JWT 配置
     SECRET_KEY: Optional[str] = None  # 强制要求从环境变量设置（见 validate_secret_key）
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15  # 短期 access token（分钟），配合 refresh token 使用
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7  # 长期 refresh token（天）
+    # access token 黑名单（登出/改密后让未过期 token 立即失效）
+    #   未配置 Redis 时退回进程内内存黑名单（仅本进程可见，多实例部署会失效）
+    #   配置 Redis 后跨实例一致；Redis 不可用时不阻断请求，回退内存
+    TOKEN_BLACKLIST_FALLBACK: str = "memory"  # memory=降级内存 / open=故障时放行（不推荐）
 
     # 默认管理员（仅在数据库首次初始化、且该用户不存在时创建）
     ADMIN_USERNAME: str = "admin"

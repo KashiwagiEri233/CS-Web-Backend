@@ -454,39 +454,14 @@ async def database_exception_handler(request: Request, exc: SQLAlchemyError) -> 
 
 
 async def general_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    """通用异常处理器"""
+    """通用异常处理器（兜底 500）。
+
+    重要：这里不写数据库。500 异常往往源于 DB 自身故障（连接断、死锁、迁移不一致），
+    在此再开 session 写日志会二次失败，且即便 catch 住也会拖慢响应、掩盖原始错误。
+    日志走 loguru（stdout/文件），DB 记录由业务异常处理器（健康路径）负责。
+    """
     response = create_server_error_response(exc, request)
-    
-    # 尝试将异常记录到数据库
-    try:
-        # 获取数据库会话
-        async with get_session() as db:
-            # 创建异常服务实例
-            from app.services.exception_service import ExceptionService
-            exception_service = ExceptionService(db)
-            
-            # 准备请求上下文
-            request_context = {
-                "request_id": getattr(request.state, 'request_id', None),
-                "user_id": getattr(request.state, 'user_id', None),
-                "method": request.method,
-                "endpoint": f"{request.method} {request.url.path}",
-                "ip_address": request.client.host if request.client else None,
-                "user_agent": request.headers.get("user-agent")
-            }
-            
-            # 记录异常到数据库
-            await exception_service.record_exception(
-                exception=exc,
-                request_context=request_context
-            )
-    except Exception as db_error:
-        # 数据库记录失败不影响主流程，只记录错误日志
-        logger.error(
-            f"记录异常到数据库失败: {type(db_error).__name__}: {str(db_error)}",
-            traceback_id=response.traceback_id if response else None
-        )
-    
+
     try:
         return JSONResponse(
             status_code=500,

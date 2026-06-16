@@ -52,6 +52,15 @@ async def get_current_user(
     if user is None:
         raise auth_exception
 
+    # 黑名单检查：登出/改密后让未过期 access token 立即失效
+    if await auth_service.is_access_revoked(token):
+        # 复用 auth_exception（401 + WWW-Authenticate）以保持语义一致
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="令牌已被撤销",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     return user
 
 

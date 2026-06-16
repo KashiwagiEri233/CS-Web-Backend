@@ -94,6 +94,24 @@ class Token(BaseModel):
     token_type: str
 
 
+class TokenPair(BaseModel):
+    """登录/刷新返回：access + refresh 双 token。
+
+    access token 短期（默认 15 分钟），refresh token 长期（默认 7 天）。
+    """
+
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    expires_in: int  # access token 有效期（秒），便于前端调度刷新
+
+
+class RefreshRequest(BaseModel):
+    """用 refresh token 换新 access token 的请求体。"""
+
+    refresh_token: str
+
+
 class TokenData(BaseModel):
     username: Optional[str] = None
     user_id: Optional[int] = None
