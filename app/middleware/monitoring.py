@@ -1,4 +1,6 @@
+import asyncio
 import time
+from collections import Counter
 from typing import Callable
 
 from fastapi import Request, Response
@@ -19,7 +21,6 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         request.state.start_time = time.time()
 
         try:
-            # 记录请求信息
             self.logger.info(
                 "Request started",
                 method=request.method,
@@ -28,14 +29,11 @@ class LoggingMiddleware(BaseHTTPMiddleware):
                 user_agent=request.headers.get("user-agent", ""),
             )
 
-            # 处理请求
             response = await call_next(request)
 
-            # 记录请求和响应信息
             process_time = time.time() - request.state.start_time
             response.headers["X-Process-Time"] = str(process_time)
 
-            # 记录响应信息
             self.logger.info(
                 "Request completed",
                 method=request.method,
@@ -46,7 +44,6 @@ class LoggingMiddleware(BaseHTTPMiddleware):
 
             return response
         except Exception as exc:
-            # 记录异常信息
             self.logger.error(
                 "Request failed",
                 method=request.method,
@@ -63,7 +60,6 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         response = await call_next(request)
 
-        # 添加安全头
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
@@ -75,89 +71,77 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 class MetricsMiddleware(BaseHTTPMiddleware):
-    """性能指标中间件"""
+    """性能指标中间件。
+
+    使用 Counter + asyncio.Lock 保证并发下的计数一致性。asyncio 单线程模型下
+    Counter 本身已足够安全，Lock 主要为"读总响应时间 + 算平均 + 写回"这种
+    复合操作提供原子性，并防止 get_metrics 读到半更新状态。
+    """
+
+    # by_path 维度容量上限，防止路由数无限膨胀。实际路由是有限集合，
+    # 超过阈值说明 path 混入了参数化高频变体（如把 id 拼进 path），应由调用方治理。
+    _MAX_PATH_ENTRIES = 1024
 
     def __init__(self, app):
         super().__init__(app)
-        self.start_time = time.time()
-        self.request_count = 0
-        self.error_count = 0
-        self.total_response_time = 0.0
-
-        # 更详细的指标结构
-        self.requests_by_status = {}
-        self.requests_by_method = {}
-        self.requests_by_path = {}
+        self._start_time = time.time()
+        self._lock = asyncio.Lock()
+        self._total_requests = 0
+        self._total_errors = 0
+        self._total_response_time = 0.0
+        self._by_status: Counter = Counter()
+        self._by_method: Counter = Counter()
+        self._by_path: Counter = Counter()
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         start_time = time.time()
-        self.request_count += 1
-
-        # 更新方法计数
         method = request.method
-        if method not in self.requests_by_method:
-            self.requests_by_method[method] = 0
-        self.requests_by_method[method] += 1
-
-        # 更新路径计数
         path = request.url.path
-        if path not in self.requests_by_path:
-            self.requests_by_path[path] = 0
-        self.requests_by_path[path] += 1
+
+        async with self._lock:
+            self._total_requests += 1
+            self._by_method[method] += 1
+            if len(self._by_path) < self._MAX_PATH_ENTRIES or path in self._by_path:
+                self._by_path[path] += 1
 
         try:
             response = await call_next(request)
-
-            # 记录指标
             process_time = time.time() - start_time
-            self.total_response_time += process_time
 
-            # 更新状态码计数
-            status_code = str(response.status_code)
-            if status_code not in self.requests_by_status:
-                self.requests_by_status[status_code] = 0
-            self.requests_by_status[status_code] += 1
+            async with self._lock:
+                self._total_response_time += process_time
+                self._by_status[str(response.status_code)] += 1
+                if response.status_code >= 500:
+                    self._total_errors += 1
 
-            # 添加指标到响应头
-            response.headers["X-Request-Count"] = str(self.request_count)
-            response.headers["X-Avg-Response-Time"] = str(
-                self.total_response_time / self.request_count
-            )
-
+            response.headers["X-Request-Count"] = str(self._total_requests)
             return response
-
-        except Exception as exc:
-            self.error_count += 1
+        except Exception:
+            async with self._lock:
+                self._total_errors += 1
             raise
 
     def get_metrics(self) -> dict:
-        """获取性能指标"""
+        """获取性能指标快照。"""
+        total = self._total_requests
         avg_response_time = (
-            self.total_response_time / self.request_count
-            if self.request_count > 0
-            else 0
+            self._total_response_time / total if total > 0 else 0.0
         )
-        error_rate = (
-            self.error_count / self.request_count if self.request_count > 0 else 0
-        )
-        uptime = time.time() - self.start_time
+        error_rate = self._total_errors / total if total > 0 else 0.0
+        uptime = time.time() - self._start_time
 
         return {
             "requests": {
-                "total": self.request_count,
-                "by_status": self.requests_by_status,
-                "by_method": self.requests_by_method,
-                "by_path": self.requests_by_path,
-                "request_count": self.request_count,  # 兼容旧格式
-                "errors": self.error_count,  # 兼容旧格式
-                "error_count": self.error_count,  # 兼容旧格式
+                "total": total,
+                "errors": self._total_errors,
+                "by_status": dict(self._by_status),
+                "by_method": dict(self._by_method),
+                "by_path": dict(self._by_path),
             },
             "performance": {
                 "avg_response_time": avg_response_time,
-                "total_response_time": self.total_response_time,
+                "total_response_time": self._total_response_time,
             },
-            "security": {"auth_failures": 0},  # 占位符，尚未实现
-            "uptime_seconds": uptime,
-            # 兼容旧格式
             "error_rate": error_rate,
+            "uptime_seconds": uptime,
         }

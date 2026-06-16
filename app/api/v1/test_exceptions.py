@@ -1,6 +1,11 @@
 """
-测试异常日志记录的API端点
-仅在 DEBUG 模式下可用
+测试异常日志记录的 API 端点。
+
+位置说明：本文件放在 app/api/v1/ 是为了让异常处理器能真实端到端触发，
+便于开发期联调。**所有端点均有 DEBUG 守护**：生产环境（DEBUG=False）
+下统一返回 404，不会暴露给外部。如需彻底隔离，可改用条件挂载：
+    if settings.DEBUG:
+        api_router.include_router(test_exceptions.router, ...)
 """
 
 from fastapi import APIRouter, HTTPException

@@ -70,6 +70,59 @@ def create_error_context(request: Request) -> ErrorContext:
     )
 
 
+def _build_request_context_dict(request: Request) -> dict:
+    """构造写日志库用的请求上下文字典（多处处理器共用）。"""
+    return {
+        "request_id": getattr(request.state, "request_id", None),
+        "user_id": getattr(request.state, "user_id", None),
+        "method": request.method,
+        "endpoint": f"{request.method} {request.url.path}",
+        "ip_address": request.client.host if request.client else None,
+        "user_agent": request.headers.get("user-agent"),
+    }
+
+
+async def _record_exception_to_db(
+    request: Request,
+    record_fn,
+    *args,
+    log_label: str = "异常",
+    traceback_id: Optional[str] = None,
+) -> None:
+    """把异常/验证错误写入 DB（best-effort）。
+
+    DB 记录失败不影响响应，只记日志。仅在业务异常处理器（健康路径）使用，
+    兜底 500 处理器不应调用此函数（见 general_exception_handler 的说明）。
+    """
+    try:
+        async with get_session() as db:
+            from app.services.exception_service import ExceptionService
+
+            exception_service = ExceptionService(db)
+            await record_fn(
+                exception_service,
+                request_context=_build_request_context_dict(request),
+                *args,
+            )
+    except Exception as db_error:
+        logger.error(
+            f"记录{log_label}到数据库失败: {type(db_error).__name__}: {str(db_error)}",
+            traceback_id=traceback_id,
+        )
+
+
+def _safe_json_response(
+    status_code: int,
+    response_model,
+    fallback_body: dict,
+) -> JSONResponse:
+    """优先用 response_model 序列化；失败时回退到 fallback_body。"""
+    try:
+        return JSONResponse(status_code=status_code, content=response_model.model_dump())
+    except Exception:
+        return JSONResponse(status_code=status_code, content=fallback_body)
+
+
 def create_validation_error_response(
     exc: Union[RequestValidationError, ValidationError],
     request: Request,
@@ -219,7 +272,6 @@ def create_database_error_response(exc: SQLAlchemyError, request: Request) -> Er
 
 async def app_exception_handler(request: Request, exc: BaseAppException) -> JSONResponse:
     """应用程序异常处理器"""
-    # 记录异常信息
     logger.warning(
         "应用程序异常",
         error_code=exc.error_code,
@@ -228,229 +280,134 @@ async def app_exception_handler(request: Request, exc: BaseAppException) -> JSON
         traceback_id=exc.traceback_id,
         details=exc.details,
         context=exc.context,
-        exc_info=exc.cause is not None
+        exc_info=exc.cause is not None,
     )
-    
-    # 尝试将异常记录到数据库
-    try:
-        # 获取数据库会话
-        async with get_session() as db:
-            # 创建异常服务实例
-            from app.services.exception_service import ExceptionService
-            exception_service = ExceptionService(db)
-            
-            # 准备请求上下文
-            request_context = {
-                "request_id": getattr(request.state, 'request_id', None),
-                "user_id": getattr(request.state, 'user_id', None),
-                "method": request.method,
-                "endpoint": f"{request.method} {request.url.path}",
-                "ip_address": request.client.host if request.client else None,
-                "user_agent": request.headers.get("user-agent")
-            }
-            
-            # 记录异常到数据库
-            await exception_service.record_exception(
-                exception=exc,
-                request_context=request_context
-            )
-    except Exception as db_error:
-        # 数据库记录失败不影响主流程，只记录错误日志
-        logger.error(
-            f"记录异常到数据库失败: {type(db_error).__name__}: {str(db_error)}",
-            traceback_id=exc.traceback_id
-        )
-    
+
+    # 业务异常时 DB 通常健康，记录到 DB（best-effort）
+    await _record_exception_to_db(
+        request,
+        lambda svc, request_context: svc.record_exception(
+            exception=exc, request_context=request_context
+        ),
+        log_label="应用程序异常",
+        traceback_id=exc.traceback_id,
+    )
+
     response = create_app_exception_response(exc, request)
-    try:
-        return JSONResponse(
-            status_code=exc.status_code,
-            content=response.model_dump()
-        )
-    except Exception as json_error:
-        # 如果序列化失败，使用基本错误响应
-        return JSONResponse(
-            status_code=exc.status_code,
-            content={
-                "success": False,
-                "error_code": exc.error_code,
-                "message": exc.message,
-                "status_code": exc.status_code,
-                "traceback_id": exc.traceback_id,
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            }
-        )
+    return _safe_json_response(
+        exc.status_code,
+        response,
+        {
+            "success": False,
+            "error_code": exc.error_code,
+            "message": exc.message,
+            "status_code": exc.status_code,
+            "traceback_id": exc.traceback_id,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        },
+    )
 
 
 async def http_exception_handler(request: Request, exc: Union[HTTPException, StarletteHTTPException]) -> JSONResponse:
     """HTTP异常处理器"""
-    # 记录HTTP异常信息
     logger.warning(
         "HTTP异常",
         status_code=exc.status_code,
         error_message=exc.detail,
         method=request.method,
-        url=str(request.url)
+        url=str(request.url),
     )
-    
-    # 尝试将异常记录到数据库
-    try:
-        # 获取数据库会话
-        async with get_session() as db:
-            # 创建异常服务实例
-            from app.services.exception_service import ExceptionService
-            exception_service = ExceptionService(db)
-            
-            # 准备请求上下文
-            request_context = {
-                "request_id": getattr(request.state, 'request_id', None),
-                "user_id": getattr(request.state, 'user_id', None),
-                "method": request.method,
-                "endpoint": f"{request.method} {request.url.path}",
-                "ip_address": request.client.host if request.client else None,
-                "user_agent": request.headers.get("user-agent")
-            }
-            
-            # 记录异常到数据库
-            await exception_service.record_exception(
-                exception=exc,
-                request_context=request_context
-            )
-    except Exception as db_error:
-        # 数据库记录失败不影响主流程，只记录错误日志
-        logger.error(
-            f"记录HTTP异常到数据库失败: {type(db_error).__name__}: {str(db_error)}"
-        )
-    
+
+    await _record_exception_to_db(
+        request,
+        lambda svc, request_context: svc.record_exception(
+            exception=exc, request_context=request_context
+        ),
+        log_label="HTTP异常",
+    )
+
     response = create_http_exception_response(exc, request)
-    try:
-        return JSONResponse(
-            status_code=exc.status_code,
-            content=response.model_dump()
-        )
-    except Exception as json_error:
-        # 如果序列化失败，使用基本错误响应
-        return JSONResponse(
-            status_code=exc.status_code,
-            content={
-                "success": False,
-                "error_code": f"HTTP_{exc.status_code}",
-                "message": exc.detail,
-                "status_code": exc.status_code,
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            }
-        )
+    return _safe_json_response(
+        exc.status_code,
+        response,
+        {
+            "success": False,
+            "error_code": f"HTTP_{exc.status_code}",
+            "message": exc.detail,
+            "status_code": exc.status_code,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        },
+    )
 
 
 async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     """验证异常处理器"""
-    # 记录验证错误
     logger.warning(
         "请求验证失败",
         errors=exc.errors(),
         method=request.method,
-        url=str(request.url)
+        url=str(request.url),
     )
-    
-    # 尝试将验证错误记录到数据库
-    try:
-        # 获取数据库会话
-        async with get_session() as db:
-            # 创建异常服务实例
-            from app.services.exception_service import ExceptionService
-            exception_service = ExceptionService(db)
-            
-            # 准备请求上下文
-            request_context = {
-                "request_id": getattr(request.state, 'request_id', None),
-                "user_id": getattr(request.state, 'user_id', None),
-                "method": request.method,
-                "endpoint": f"{request.method} {request.url.path}",
-                "ip_address": request.client.host if request.client else None,
-                "user_agent": request.headers.get("user-agent")
-            }
-            
-            # 记录验证错误到数据库
-            await exception_service.record_validation_error(
-                errors=exc.errors(),
-                request_context=request_context
-            )
-    except Exception as db_error:
-        # 数据库记录失败不影响主流程，只记录错误日志
-        logger.error(
-            f"记录验证错误到数据库失败: {type(db_error).__name__}: {str(db_error)}"
-        )
-    
+
+    await _record_exception_to_db(
+        request,
+        lambda svc, request_context: svc.record_validation_error(
+            errors=exc.errors(), request_context=request_context
+        ),
+        log_label="验证错误",
+    )
+
     response = create_validation_error_response(exc, request)
-    try:
-        return JSONResponse(
-            status_code=422,
-            content=response.model_dump()
-        )
-    except Exception as json_error:
-        # 如果序列化失败，使用基本错误响应
-        return JSONResponse(
-            status_code=422,
-            content={
-                "success": False,
-                "error_code": "VALIDATION_FAILED",
-                "message": "数据验证失败",
-                "status_code": 422,
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            }
-        )
+    return _safe_json_response(
+        422,
+        response,
+        {
+            "success": False,
+            "error_code": "VALIDATION_FAILED",
+            "message": "数据验证失败",
+            "status_code": 422,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        },
+    )
 
 
 async def pydantic_validation_exception_handler(request: Request, exc: ValidationError) -> JSONResponse:
-    """Pydantic验证异常处理器"""
-    # 记录验证错误
+    """Pydantic验证异常处理器（不写 DB：纯 schema 校验失败无需入库）"""
     logger.warning(
         "Pydantic验证失败",
         errors=exc.errors(),
         method=request.method,
-        url=str(request.url)
+        url=str(request.url),
     )
-    
+
     response = create_validation_error_response(exc, request)
-    try:
-        return JSONResponse(
-            status_code=422,
-            content=response.model_dump()
-        )
-    except Exception as json_error:
-        # 如果序列化失败，使用基本错误响应
-        return JSONResponse(
-            status_code=422,
-            content={
-                "success": False,
-                "error_code": "VALIDATION_FAILED",
-                "message": "数据验证失败",
-                "status_code": 422,
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            }
-        )
+    return _safe_json_response(
+        422,
+        response,
+        {
+            "success": False,
+            "error_code": "VALIDATION_FAILED",
+            "message": "数据验证失败",
+            "status_code": 422,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        },
+    )
 
 
 async def database_exception_handler(request: Request, exc: SQLAlchemyError) -> JSONResponse:
     """数据库异常处理器"""
     response = create_database_error_response(exc, request)
-    try:
-        return JSONResponse(
-            status_code=500,
-            content=response.model_dump()
-        )
-    except Exception as json_error:
-        # 如果序列化失败，使用基本错误响应
-        return JSONResponse(
-            status_code=500,
-            content={
-                "success": False,
-                "error_code": "DATABASE_ERROR",
-                "message": "数据库操作失败",
-                "status_code": 500,
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            }
-        )
+    return _safe_json_response(
+        500,
+        response,
+        {
+            "success": False,
+            "error_code": "DATABASE_ERROR",
+            "message": "数据库操作失败",
+            "status_code": 500,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        },
+    )
 
 
 async def general_exception_handler(request: Request, exc: Exception) -> JSONResponse:
@@ -461,24 +418,17 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
     日志走 loguru（stdout/文件），DB 记录由业务异常处理器（健康路径）负责。
     """
     response = create_server_error_response(exc, request)
-
-    try:
-        return JSONResponse(
-            status_code=500,
-            content=response.model_dump()
-        )
-    except Exception as json_error:
-        # 如果序列化失败，使用基本错误响应
-        return JSONResponse(
-            status_code=500,
-            content={
-                "success": False,
-                "error_code": "INTERNAL_SERVER_ERROR",
-                "message": "内部服务器错误",
-                "status_code": 500,
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            }
-        )
+    return _safe_json_response(
+        500,
+        response,
+        {
+            "success": False,
+            "error_code": "INTERNAL_SERVER_ERROR",
+            "message": "内部服务器错误",
+            "status_code": 500,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        },
+    )
 
 
 def setup_exception_handlers(app: FastAPI) -> None:

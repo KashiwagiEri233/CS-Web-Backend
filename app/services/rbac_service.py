@@ -109,14 +109,5 @@ class RBACService:
         if permission in role.permissions:
             role.permissions.remove(permission)
             await self.db.commit()
-        
+
         return True
-    
-    # 别名方法，与测试用例匹配
-    async def assign_role_to_user(self, user_id: int, role_id: int) -> bool:
-        """为用户分配角色（alias for grant_role_to_user）"""
-        return await self.grant_role_to_user(user_id, role_id)
-    
-    async def check_user_permission(self, user_id: int, resource: str, action: str) -> bool:
-        """检查用户权限（alias for check_permission）"""
-        return await self.check_permission(user_id, resource, action)
