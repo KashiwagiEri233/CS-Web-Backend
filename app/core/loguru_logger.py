@@ -451,8 +451,6 @@ def configure_logging(
 
 
 _LIBRARY_LOGGERS = (
-    "uvicorn",
-    "uvicorn.access",
     "sqlalchemy.engine",
     "sqlalchemy.pool",
     "sqlalchemy.dialects",
@@ -460,17 +458,42 @@ _LIBRARY_LOGGERS = (
     "sqlalchemy.compiler",
 )
 
-_LIBRARY_LOGGER_LEVELS = {
-    "uvicorn.error": logging.ERROR,
-}
-
 
 def suppress_library_logging():
     """统一设置第三方库日志级别，减少噪音输出"""
     for name in _LIBRARY_LOGGERS:
         logging.getLogger(name).setLevel(logging.WARNING)
-    for name, level in _LIBRARY_LOGGER_LEVELS.items():
-        logging.getLogger(name).setLevel(level)
+
+
+class InterceptHandler(logging.Handler):
+    """将标准库 logging 的输出重定向到 loguru，实现统一日志格式"""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        # 获取对应的 loguru 级别
+        try:
+            level: Union[str, int] = loguru_logger.level(record.levelname).name
+        except ValueError:
+            level = record.levelno
+
+        # 找到真正的调用栈深度，让 loguru 显示正确的模块/行号
+        frame, depth = logging.currentframe(), 2
+        while frame and frame.f_code.co_filename == logging.__file__:
+            frame = frame.f_back
+            depth += 1
+
+        # 用 record.name 绑定 extra[name]，匹配 format 中的 {extra[name]}
+        loguru_logger.opt(depth=depth, exception=record.exc_info).bind(
+            name=record.name
+        ).log(level, record.getMessage())
+
+
+def setup_uvicorn_logging() -> None:
+    """将 uvicorn / 标准 logging 的输出拦截到 loguru，统一日志格式"""
+    # 替换 uvicorn 所有 logger 的 handler
+    for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+        uv_logger = logging.getLogger(name)
+        uv_logger.handlers = [InterceptHandler()]
+        uv_logger.propagate = False
 
 
 # 注意：不在模块级别初始化配置，由应用程序统一配置

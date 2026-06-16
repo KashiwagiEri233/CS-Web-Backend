@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import api_router
 from app.core.config import settings
-from app.core.loguru_logger import configure_logging, get_logger, suppress_library_logging
+from app.core.loguru_logger import get_logger
 from app.database import engine
 from app.models import Base
 from app.middleware.monitoring import SecurityHeadersMiddleware, MetricsMiddleware, LoggingMiddleware
@@ -66,21 +66,7 @@ async def _log_startup_status(logger):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 日志配置：每个参数独立可配，开发环境也能按需开启文件/JSON/error日志
-    # 各环境推荐值见 .env.development / .env.test / .env.example
-    configure_logging(
-        level=settings.LOG_LEVEL,
-        enable_console=settings.LOG_ENABLE_CONSOLE,
-        enable_file=settings.LOG_ENABLE_FILE,
-        enable_error_file=settings.LOG_ENABLE_ERROR_FILE,
-        log_dir=settings.LOG_DIR,
-        app_name="fastapi_app",
-        serialize=settings.LOG_SERIALIZE,
-        rotation=settings.LOG_ROTATION,
-        retention=settings.LOG_RETENTION,
-        backtrace=settings.LOG_BACKTRACE,
-    )
-    suppress_library_logging()
+    # 日志已在模块加载时配置完成，这里只做业务初始化
     logger = get_logger("main")
 
     # 应用启动

@@ -12,6 +12,7 @@ FastAPI RBAC Framework 启动脚本
 
 import argparse
 import os
+
 import uvicorn
 
 # 环境配置文件映射
@@ -50,13 +51,36 @@ def main():
         env_names = {1: "开发", 2: "测试", 3: "生产"}
         print(f"[启动] 使用 {env_names[args.env]} 环境配置: {env_file}")
 
+    # 在 uvicorn 启动前配置 loguru 日志系统
+    from app.core.config import settings
+    from app.core.loguru_logger import (
+        configure_logging,
+        setup_uvicorn_logging,
+        suppress_library_logging,
+    )
+
+    configure_logging(
+        level=settings.LOG_LEVEL,
+        enable_console=settings.LOG_ENABLE_CONSOLE,
+        enable_file=settings.LOG_ENABLE_FILE,
+        enable_error_file=settings.LOG_ENABLE_ERROR_FILE,
+        log_dir=settings.LOG_DIR,
+        app_name="fastapi_app",
+        serialize=settings.LOG_SERIALIZE,
+        rotation=settings.LOG_ROTATION,
+        retention=settings.LOG_RETENTION,
+        backtrace=settings.LOG_BACKTRACE,
+    )
+    suppress_library_logging()
+    setup_uvicorn_logging()
+
     uvicorn.run(
         "app.main:app",
         host=args.host,
         port=args.port,
         reload=not args.prod,
         workers=args.workers if args.prod else 1,
-        log_level=None,  # 日志级别由 loguru 统一管理，避免与 configure_logging 冲突
+        log_config=None,  # 禁用 uvicorn 默认 log_config，由 setup_uvicorn_logging 接管
         access_log=False,
     )
 
