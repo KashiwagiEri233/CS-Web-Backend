@@ -352,6 +352,83 @@ def basicConfig(**kwargs):
     )
 
 
+# 日志 profile 预置配置
+# dev: 开发级（彩色控制台 + DEBUG + 完整回溯栈，无文件）
+# prod: 生产级（JSON 序列化 + 文件轮转 + 独立 error 日志 + INFO）
+LOG_PROFILES: Dict[str, Dict[str, Any]] = {
+    "dev": {
+        "level": "DEBUG",
+        "serialize": False,
+        "backtrace": True,
+        "enable_console": True,
+        "enable_file": False,
+        "enable_error_file": False,
+    },
+    "prod": {
+        "level": "INFO",
+        "serialize": True,
+        "backtrace": False,
+        "enable_console": True,
+        "enable_file": True,
+        "enable_error_file": True,
+    },
+}
+
+
+def resolve_log_config(
+    profile: str = "dev",
+    level: str = "",
+    serialize: Optional[bool] = None,
+    backtrace: Optional[bool] = None,
+    enable_console: Optional[bool] = None,
+    enable_file: Optional[bool] = None,
+    enable_error_file: Optional[bool] = None,
+    log_dir: str = "logs",
+    rotation: str = "10 MB",
+    retention: str = "30 days",
+    app_name: str = "fastapi_app",
+) -> Dict[str, Any]:
+    """根据 profile 解析最终日志配置，显式传参覆盖 profile 默认值。
+
+    Args:
+        profile: 日志 profile，dev 或 prod
+        level: 日志级别，留空用 profile 默认
+        serialize: 是否 JSON 序列化，None 用 profile 默认
+        backtrace: 是否完整回溯栈，None 用 profile 默认
+        enable_console: 是否控制台输出，None 用 profile 默认
+        enable_file: 是否文件输出，None 用 profile 默认
+        enable_error_file: 是否独立 error 文件，None 用 profile 默认
+        log_dir: 日志目录
+        rotation: 轮转大小
+        retention: 保留时间
+        app_name: 应用名称
+
+    Returns:
+        configure_logging 的完整参数 dict
+    """
+    base = LOG_PROFILES.get(profile, LOG_PROFILES["dev"]).copy()
+
+    # 显式传参覆盖 profile 默认值
+    if level:
+        base["level"] = level
+    if serialize is not None:
+        base["serialize"] = serialize
+    if backtrace is not None:
+        base["backtrace"] = backtrace
+    if enable_console is not None:
+        base["enable_console"] = enable_console
+    if enable_file is not None:
+        base["enable_file"] = enable_file
+    if enable_error_file is not None:
+        base["enable_error_file"] = enable_error_file
+
+    base["log_dir"] = log_dir
+    base["rotation"] = rotation
+    base["retention"] = retention
+    base["app_name"] = app_name
+    return base
+
+
 # 配置函数
 def configure_logging(
     level: Union[int, str] = logging.INFO,

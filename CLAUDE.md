@@ -59,22 +59,15 @@ app/
 
 ### 日志
 - 统一使用 `from app.core.loguru_logger import get_logger`。
-- 日志配置由 `configure_logging` 在 `main.py` lifespan 中统一管理。
-- 每个参数独立可配（不绑定 DEBUG 标志），开发环境也能按需开启文件/JSON/error 日志。
-- 配置字段（均在 `.env` 中设置）：
+- 日志配置由 `configure_logging` 在 `run.py` 中 `uvicorn.run()` 之前统一管理。
+- 通过 `LOG_PROFILE` 一键切换日志风格，`.env` 中各 `LOG_*` 字段可覆盖 profile 默认值。
 
-| 字段 | 说明 | 开发推荐 | 线上推荐 |
-|------|------|---------|---------|
-| LOG_LEVEL | 日志级别 | DEBUG | INFO |
-| LOG_DIR | 日志目录 | logs | logs |
-| LOG_SERIALIZE | JSON 序列化 | False | True |
-| LOG_ROTATION | 轮转大小 | 10 MB | 10 MB |
-| LOG_RETENTION | 保留时间 | 30 days | 30 days |
-| LOG_BACKTRACE | 完整回溯栈 | True | False |
-| LOG_ENABLE_CONSOLE | 控制台输出 | True | True |
-| LOG_ENABLE_FILE | 全级别文件 | False | True |
-| LOG_ENABLE_ERROR_FILE | 独立 error 文件 | False | True |
+| LOG_PROFILE | 级别 | 序列化 | 控制台 | 文件 | Error文件 | 回溯栈 |
+|-------------|------|--------|--------|------|-----------|--------|
+| dev | DEBUG | False(彩色) | True | False | False | True |
+| prod | INFO | True(JSON) | True | True | True | False |
 
+- `LOG_PROFILE` 在 `.env` 中设置，可选字段留空/注释则用 profile 默认值。
 - 禁止直接 `print()` 调试输出。
 
 ### 异常处理

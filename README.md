@@ -31,18 +31,25 @@ cp .env.example .env        # 生产
 
 ## 日志系统
 
-每个日志参数独立可配，开发环境也能按需开启文件/JSON/error 日志。
+通过 `LOG_PROFILE` 一键切换日志风格，`.env` 中各字段可覆盖 profile 默认值。
 
-| 配置项 | 开发推荐 | 生产推荐 | 说明 |
-|--------|---------|---------|------|
-| LOG_LEVEL | DEBUG | INFO | 日志级别 |
-| LOG_SERIALIZE | False | True | JSON 序列化（线上采集用） |
-| LOG_ENABLE_CONSOLE | True | True | 控制台输出 |
-| LOG_ENABLE_FILE | False | True | 全级别文件日志 |
-| LOG_ENABLE_ERROR_FILE | False | True | 独立 ERROR 日志文件 |
-| LOG_BACKTRACE | True | False | 完整回溯栈 |
-| LOG_ROTATION | 10 MB | 10 MB | 文件轮转大小 |
-| LOG_RETENTION | 30 days | 30 days | 保留时间 |
+| LOG_PROFILE | 级别 | 序列化 | 控制台 | 文件 | Error文件 | 回溯栈 |
+|-------------|------|--------|--------|------|-----------|--------|
+| `dev` | DEBUG | False(彩色) | True | False | False | True |
+| `prod` | INFO | True(JSON) | True | True | True | False |
+
+在 `.env` 中设置：
+```bash
+LOG_PROFILE=dev   # 开发：DEBUG + 彩色控制台 + 完整回溯栈
+LOG_PROFILE=prod  # 生产：INFO + JSON + 文件轮转 + 独立 error 日志
+```
+
+可选覆盖字段（取消注释即生效）：
+```bash
+# LOG_LEVEL=WARNING       # 覆盖级别
+# LOG_ENABLE_FILE=True    # 开发环境也开文件日志
+# LOG_SERIALIZE=False     # 强制彩色输出
+```
 
 ## 功能特性
 

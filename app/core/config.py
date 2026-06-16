@@ -35,15 +35,19 @@ class Settings(BaseSettings):
     AUTH_RATE_LIMIT_PERIOD: int = 60  # 认证端点时间窗口（秒）
     
     # 日志配置
-    LOG_LEVEL: str = "INFO"  # 日志级别（DEBUG/INFO/WARNING/ERROR）
-    LOG_DIR: str = "logs"  # 日志文件目录
-    LOG_SERIALIZE: bool = False  # 是否序列化为 JSON（线上推荐 True）
-    LOG_ROTATION: str = "10 MB"  # 日志轮转大小
-    LOG_RETENTION: str = "30 days"  # 日志保留时间
-    LOG_BACKTRACE: bool = False  # 是否在日志中记录完整回溯栈（开发推荐 True）
-    LOG_ENABLE_CONSOLE: bool = True  # 是否启用控制台输出
-    LOG_ENABLE_FILE: bool = True  # 是否启用全级别文件日志
-    LOG_ENABLE_ERROR_FILE: bool = True  # 是否启用独立 ERROR 级别日志文件
+    # LOG_PROFILE 是一键开关：dev=开发级（彩色控制台+DEBUG），prod=生产级（JSON+文件轮转+ERROR日志）
+    # 选定 profile 后，下方字段留 None=用 profile 默认；赋值则覆盖
+    LOG_PROFILE: str = "dev"  # dev 或 prod
+    LOG_LEVEL: str = ""  # 留空=按 profile 默认
+    LOG_DIR: str = "logs"
+    LOG_ROTATION: str = "10 MB"
+    LOG_RETENTION: str = "30 days"
+    # 以下字段 None=用 profile 默认值，取消注释赋值则覆盖
+    LOG_SERIALIZE: Optional[bool] = None
+    LOG_BACKTRACE: Optional[bool] = None
+    LOG_ENABLE_CONSOLE: Optional[bool] = None
+    LOG_ENABLE_FILE: Optional[bool] = None
+    LOG_ENABLE_ERROR_FILE: Optional[bool] = None
     
     @validator("DATABASE_URL", pre=True)
     def assemble_db_connection(cls, v: Optional[str], values: Dict[str, Any]) -> Any:

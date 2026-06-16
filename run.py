@@ -55,22 +55,25 @@ def main():
     from app.core.config import settings
     from app.core.loguru_logger import (
         configure_logging,
+        resolve_log_config,
         setup_uvicorn_logging,
         suppress_library_logging,
     )
 
-    configure_logging(
+    # 根据 LOG_PROFILE 一键切换开发级/生产级日志，env 中的各 LOG_* 字段可覆盖默认值
+    log_config = resolve_log_config(
+        profile=settings.LOG_PROFILE,
         level=settings.LOG_LEVEL,
+        serialize=settings.LOG_SERIALIZE,
+        backtrace=settings.LOG_BACKTRACE,
         enable_console=settings.LOG_ENABLE_CONSOLE,
         enable_file=settings.LOG_ENABLE_FILE,
         enable_error_file=settings.LOG_ENABLE_ERROR_FILE,
         log_dir=settings.LOG_DIR,
-        app_name="fastapi_app",
-        serialize=settings.LOG_SERIALIZE,
         rotation=settings.LOG_ROTATION,
         retention=settings.LOG_RETENTION,
-        backtrace=settings.LOG_BACKTRACE,
     )
+    configure_logging(**log_config)
     suppress_library_logging()
     setup_uvicorn_logging()
 
