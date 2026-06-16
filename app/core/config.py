@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     LOG_ROTATION: str = "10 MB"  # 日志轮转大小
     LOG_RETENTION: str = "30 days"  # 日志保留时间
     LOG_BACKTRACE: bool = False  # 是否在日志中记录完整回溯栈（开发推荐 True）
+    LOG_ENABLE_CONSOLE: bool = True  # 是否启用控制台输出
+    LOG_ENABLE_FILE: bool = True  # 是否启用全级别文件日志
+    LOG_ENABLE_ERROR_FILE: bool = True  # 是否启用独立 ERROR 级别日志文件
     
     @validator("DATABASE_URL", pre=True)
     def assemble_db_connection(cls, v: Optional[str], values: Dict[str, Any]) -> Any:
