@@ -103,6 +103,10 @@ async def lifespan(app: FastAPI):
 
     # 应用启动
     logger.info("FastAPI RBAC Framework 启动中...")
+    if not settings.AUTH_ENABLED:
+        logger.warning(
+            "⚠️ 鉴权已全局关闭 (AUTH_ENABLED=False)——所有接口视为超级用户，仅限本地开发，切勿用于生产"
+        )
     await _initialize_database(logger)
 
     try:

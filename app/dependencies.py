@@ -9,27 +9,49 @@ from app.database import get_db
 from app.models.user import User
 from app.services.auth_service import AuthService
 
-# OAuth2密码流
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login")
+# OAuth2密码流。auto_error=False：缺 token 时返回 None 而非自动 401，
+# 以便 AUTH_ENABLED=False 时整条链路可被旁路。
+oauth2_scheme = OAuth2PasswordBearer(
+    tokenUrl=f"{settings.API_V1_STR}/auth/login", auto_error=False
+)
+
+
+def _auth_bypass_user() -> User:
+    """AUTH_ENABLED=False 时返回的虚构超级用户（不持久化、仅存在于请求内）。"""
+    return User(
+        id=0,
+        username="auth-bypass",
+        email="bypass@local",
+        full_name="Auth Bypass (DEV)",
+        hashed_password="",
+        is_active=True,
+        is_superuser=True,
+    )
 
 
 async def get_current_user(
-    token: str = Depends(oauth2_scheme), 
-    db: AsyncSession = Depends(get_db)
+    token: Optional[str] = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db),
 ) -> User:
-    """获取当前用户的依赖项"""
+    """获取当前用户的依赖项。AUTH_ENABLED=False 时直接放行为超级用户。"""
+    if not settings.AUTH_ENABLED:
+        return _auth_bypass_user()
+
     auth_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="无法验证凭据",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    
+
+    if token is None:
+        raise auth_exception
+
     auth_service = AuthService(db)
     user = await auth_service.get_current_user(token)
-    
+
     if user is None:
         raise auth_exception
-    
+
     return user
 
 
@@ -38,7 +60,7 @@ async def get_current_active_user(
 ) -> User:
     """获取当前活跃用户"""
     if not current_user.is_active:
-        raise HTTPException(status_code=400, detail="用户未激活")
+        raise HTTPException(status_code=403, detail="用户未激活")
     return current_user
 
 
@@ -48,6 +70,6 @@ async def get_current_superuser(
     """获取当前超级用户"""
     if not current_user.is_superuser:
         raise HTTPException(
-            status_code=400, detail="权限不足"
+            status_code=403, detail="权限不足"
         )
     return current_user

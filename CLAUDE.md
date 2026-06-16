@@ -43,6 +43,7 @@ python run.py --env 3 --prod   # 生产 + 多 worker
 - `REDIS_URL`（空=纯内存）、`RATE_LIMIT_FALLBACK` / `CACHE_FALLBACK`。
 - `ADMIN_PASSWORD`（空=首启随机生成、日志只提示一次；配置则不写日志）。
 - `LOG_PROFILE=dev|prod`（dev=DEBUG+彩色控制台；prod=INFO+JSON+文件轮转）。
+- `AUTH_ENABLED`（False=全局放行为超级用户，仅本地开发；DEBUG=False 时置 False 会拒绝启动）。
 
 ## 数据库迁移
 - 单一 baseline；改模型后 `alembic revision --autogenerate -m "..."` → `alembic upgrade head`。

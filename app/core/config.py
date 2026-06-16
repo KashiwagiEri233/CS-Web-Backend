@@ -1,6 +1,6 @@
 import os
 from typing import Optional
-from pydantic import field_validator, ValidationInfo
+from pydantic import field_validator, model_validator, ValidationInfo
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     API_V1_STR: str = "/api/v1"
     PROJECT_NAME: str = "FastAPI RBAC Framework"
+    # 一键开关鉴权：False 时所有接口视为超级用户放行（跳过 token 校验与权限检查）。
+    # 仅限本地开发！只允许在 DEBUG=True 下关闭，生产（DEBUG=False）若置 False 会拒绝启动。
+    AUTH_ENABLED: bool = True
     # 启动时是否用 Base.metadata.create_all 自动建表。
     # 开发环境置 True 方便起步；生产环境应置 False，改用 `alembic upgrade head` 管理 schema，
     # 避免 create_all 与迁移双轨并存导致的不一致。
@@ -98,6 +101,15 @@ class Settings(BaseSettings):
         if v == "your-secret-key-here-change-in-production":
             raise ValueError("Please change the default SECRET_KEY in production environment")
         return v
+
+    @model_validator(mode="after")
+    def _guard_auth_disabled(self):
+        # 生产安全锁：禁止在非 DEBUG 环境关闭鉴权
+        if not self.AUTH_ENABLED and not self.DEBUG:
+            raise ValueError(
+                "AUTH_ENABLED=False 仅允许在 DEBUG=True 下使用；生产环境禁止关闭鉴权"
+            )
+        return self
 
     model_config = SettingsConfigDict(
         env_file=os.environ.get("ENV_FILE", ".env"),

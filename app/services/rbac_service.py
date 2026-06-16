@@ -50,12 +50,14 @@ class RBACService:
     
     async def grant_role_to_user(self, user_id: int, role_id: int) -> bool:
         """为用户授予角色"""
-        user = await self.rbac_repo.get_user_by_id(user_id)
+        # 必须用 get_user_with_roles 预加载 roles，否则下面访问 user.roles
+        # 会在异步上下文触发懒加载 -> MissingGreenlet -> 500
+        user = await self.rbac_repo.get_user_with_roles(user_id)
         role = await self.rbac_repo.get_role_by_id(role_id)
-        
+
         if not user or not role:
             return False
-        
+
         if role not in user.roles:
             user.roles.append(role)
             await self.db.commit()
