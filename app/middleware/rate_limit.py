@@ -1,9 +1,10 @@
-import time
-from typing import Dict, List, Optional
-from collections import defaultdict
+from typing import List, Optional
 
-from fastapi import Request, HTTPException, status
+from fastapi import Request, status
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
+
+from app.core.rate_limit import build_limiter
 
 
 def get_client_ip(request: Request) -> str:
@@ -18,7 +19,10 @@ def get_client_ip(request: Request) -> str:
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    """内存速率限制中间件
+    """速率限制中间件
+
+    后端由配置决定：配置 REDIS_URL 则跨实例一致限流（Redis 故障自动降级），
+    否则使用进程内内存限流。
 
     Args:
         app: FastAPI应用
@@ -27,6 +31,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         limit_paths: 仅限制的路径列表（为 None 则限制所有路径）
         error_detail: 超限时的错误提示
     """
+
+    # 限流键命名空间，子类可覆盖以区分不同限流域（如认证端点）
+    scope = "global"
 
     def __init__(
         self,
@@ -43,7 +50,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.error_detail = error_detail or (
             f"Rate limit exceeded. Maximum {calls} requests per {period} seconds."
         )
-        self.clients: Dict[str, list] = defaultdict(list)
+        self.limiter = build_limiter()
 
     async def dispatch(self, request: Request, call_next):
         # 如果指定了限制路径，则仅对匹配路径生效
@@ -51,28 +58,30 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         client_ip = get_client_ip(request)
-        current_time = time.time()
+        key = f"ratelimit:{self.scope}:{client_ip}"
 
-        # 清理过期的请求记录
-        self.clients[client_ip] = [
-            ts for ts in self.clients[client_ip] if current_time - ts < self.period
-        ]
-
-        # 检查是否超过速率限制
-        if len(self.clients[client_ip]) >= self.calls:
-            raise HTTPException(
+        allowed = await self.limiter.is_allowed(key, self.calls, self.period)
+        if not allowed:
+            # 直接返回 429。注意：不能在中间件中 raise HTTPException——
+            # 它会被最外层 ExceptionHandlerMiddleware 当作未处理异常吞成 500。
+            return JSONResponse(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail=self.error_detail,
+                content={
+                    "success": False,
+                    "error_code": "RATE_LIMIT_EXCEEDED",
+                    "message": self.error_detail,
+                    "status_code": status.HTTP_429_TOO_MANY_REQUESTS,
+                },
+                headers={"Retry-After": str(self.period)},
             )
-
-        # 记录当前请求
-        self.clients[client_ip].append(current_time)
 
         return await call_next(request)
 
 
 class AuthRateLimitMiddleware(RateLimitMiddleware):
     """针对认证端点的更严格的速率限制"""
+
+    scope = "auth"
 
     AUTH_PATHS = [
         "/api/v1/auth/login",

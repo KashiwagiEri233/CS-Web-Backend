@@ -33,6 +33,17 @@ class Settings(BaseSettings):
     RATE_LIMIT_PERIOD: int = 60  # 时间窗口（秒）
     AUTH_RATE_LIMIT_CALLS: int = 5  # 认证端点每个时间窗口允许的请求数
     AUTH_RATE_LIMIT_PERIOD: int = 60  # 认证端点时间窗口（秒）
+
+    # Redis 配置（限流/缓存的分布式后端，可选）
+    # 留空 = 纯内存模式（单实例，行为同旧版，不引入 Redis 依赖）
+    # 配置后 = Redis 跨实例一致限流，且 Redis 不可用时自动降级
+    REDIS_URL: Optional[str] = None  # 如 redis://:password@localhost:6379/0
+    REDIS_SOCKET_TIMEOUT: float = 0.5  # 连接/读写超时（秒），设小以便 Redis 故障时快速降级
+    # 限流降级策略：Redis 不可用时的兜底行为
+    #   memory = 降级到进程内内存限流（默认，仍保护单实例）
+    #   open   = 直接放行（牺牲保护换可用性）
+    RATE_LIMIT_FALLBACK: str = "memory"
+    RATE_LIMIT_REDIS_RETRY_INTERVAL: float = 5.0  # 降级后多少秒尝试半开重连 Redis
     
     # 日志配置
     # LOG_PROFILE 是一键开关：dev=开发级（彩色控制台+DEBUG），prod=生产级（JSON+文件轮转+ERROR日志）

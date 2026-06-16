@@ -7,6 +7,9 @@ sqlalchemy==2.0.29
 asyncpg==0.30.0
 alembic==1.13.1
 
+# 缓存 / 限流分布式后端（可选，未配置 REDIS_URL 时不会被加载）
+redis==5.0.4
+
 # 认证相关
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4

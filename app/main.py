@@ -58,6 +58,23 @@ async def _initialize_rbac(logger):
             logger.error("RBAC系统初始化失败", errors=init_result["errors"])
 
 
+async def _initialize_redis(logger):
+    """探测 Redis（可选）。未配置或不可用都不阻断启动——限流会自动降级。"""
+    if not settings.REDIS_URL:
+        logger.info("限流后端: 内存模式（未配置 REDIS_URL）")
+        return
+
+    from app.core.redis_client import ping_redis
+
+    if await ping_redis():
+        logger.info("限流后端: Redis（已连通）", fallback=settings.RATE_LIMIT_FALLBACK)
+    else:
+        logger.warning(
+            "已配置 REDIS_URL 但当前不可用，启动后将按 fallback 策略降级运行",
+            fallback=settings.RATE_LIMIT_FALLBACK,
+        )
+
+
 async def _log_startup_status(logger):
     """输出应用启动状态"""
     logger.info("服务器地址: http://0.0.0.0:8000")
@@ -78,12 +95,17 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"RBAC系统初始化异常: {str(e)}")
 
+    await _initialize_redis(logger)
+
     await _log_startup_status(logger)
     logger.info("FastAPI RBAC Framework 已启动成功 - version: 1.0.0")
 
     yield
 
     # 应用关闭
+    from app.core.redis_client import close_redis_client
+
+    await close_redis_client()
     logger.info("应用已安全关闭 - version: 1.0.0")
 
 
