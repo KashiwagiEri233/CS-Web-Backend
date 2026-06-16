@@ -29,7 +29,7 @@ def main():
         port=args.port,
         reload=not args.prod,
         workers=args.workers if args.prod else 1,
-        log_level="warning",
+        log_level=None,  # 日志级别由 loguru 统一管理，避免与 configure_logging 冲突
         access_log=False,
     )
 

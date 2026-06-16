@@ -66,14 +66,20 @@ async def _log_startup_status(logger):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 配置日志系统
+    # 根据 DEBUG 标志自动切换开发级/线上级日志配置
+    # 开发级（DEBUG=True）：DEBUG 级别 + 彩色控制台 + 完整回溯栈，无文件
+    # 线上级（DEBUG=False）：INFO 级别 + JSON 序列化 + 文件轮转 + 独立 error 日志
     configure_logging(
-        level="INFO",
+        level=settings.LOG_LEVEL,
         enable_console=True,
-        enable_file=True,
-        log_dir="logs",
+        enable_file=not settings.DEBUG,
+        enable_error_file=not settings.DEBUG,
+        log_dir=settings.LOG_DIR,
         app_name="fastapi_app",
-        serialize=False,
+        serialize=settings.LOG_SERIALIZE,
+        rotation=settings.LOG_ROTATION,
+        retention=settings.LOG_RETENTION,
+        backtrace=settings.LOG_BACKTRACE,
     )
     suppress_library_logging()
     logger = get_logger("main")

@@ -362,23 +362,27 @@ def configure_logging(
     app_name: str = "app",
     rotation: str = "10 MB",
     retention: str = "30 days",
-    serialize: bool = False,  # 默认不序列化为JSON，以支持彩色输出
+    serialize: bool = False,
+    enable_error_file: bool = False,
+    backtrace: bool = False,
     **kwargs,
 ):
     """
-    配置loguru日志系统
+    配置loguru日志系统，支持开发级与线上级两种 profile。
 
     Args:
         level: 日志级别
-        format_string: 自定义格式字符串
+        format_string: 自定义格式字符串（serialize=True 时忽略）
         enable_console: 是否启用控制台输出
-        enable_file: 是否启用文件输出
+        enable_file: 是否启用文件输出（全级别）
+        enable_error_file: 是否启用独立的 ERROR 级别日志文件（线上推荐）
         log_dir: 日志文件目录
         app_name: 应用名称
         rotation: 日志轮转设置
         retention: 日志保留时间
-        serialize: 是否序列化为JSON
-        **kwargs: 其他loguru配置参数
+        serialize: 是否序列化为 JSON（线上推荐 True）
+        backtrace: 是否记录完整回溯栈（开发推荐 True）
+        **kwargs: 其他 loguru 配置参数
     """
     # 移除所有现有的处理器
     loguru_logger.remove()
@@ -389,8 +393,8 @@ def configure_logging(
 
     loguru_level = LoguruAdapter("", level)._map_logging_level_to_loguru(level)
 
-    # 默认格式 - 更直观的格式，主要信息突出，参数在下方显示
-    if format_string is None:
+    # JSON 序列化时忽略自定义 format（loguru serialize 自带结构化字段）
+    if not serialize and format_string is None:
         format_string = (
             "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
             "<level>{level: <8}</level> | "
@@ -398,33 +402,50 @@ def configure_logging(
             "{message}"
         )
 
-    # 添加控制台处理器
+    # 添加控制台处理器（开发环境主输出）
     if enable_console:
         loguru_logger.add(
             sys.stdout,
             level=loguru_level,
             format=format_string,
             serialize=serialize,
-            colorize=True,  # 启用颜色
-            catch=True,  # 捕获异常
+            colorize=not serialize,  # JSON 输出时禁用颜色
+            catch=True,
+            backtrace=backtrace,
             **kwargs,
         )
 
-    # 添加文件处理器
+    # 添加全级别文件处理器
     if enable_file:
         log_dir_path = Path(log_dir)
         log_dir_path.mkdir(exist_ok=True)
 
-        log_file = log_dir_path / f"{app_name}.log"
-
         loguru_logger.add(
-            str(log_file),
+            str(Path(log_dir_path) / f"{app_name}.log"),
             level=loguru_level,
             format=format_string,
             rotation=rotation,
             retention=retention,
             serialize=serialize,
-            catch=True,  # 捕获异常
+            catch=True,
+            backtrace=backtrace,
+            **kwargs,
+        )
+
+    # 添加独立 ERROR 级别文件处理器（线上排障用）
+    if enable_error_file:
+        log_dir_path = Path(log_dir)
+        log_dir_path.mkdir(exist_ok=True)
+
+        loguru_logger.add(
+            str(Path(log_dir_path) / f"{app_name}_error.log"),
+            level="ERROR",
+            format=format_string,
+            rotation=rotation,
+            retention=retention,
+            serialize=serialize,
+            catch=True,
+            backtrace=True,  # error 日志始终记录完整栈
             **kwargs,
         )
 
