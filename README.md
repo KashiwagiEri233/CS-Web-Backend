@@ -38,8 +38,6 @@ FastAPI-foundation-framework/
 │   ├── models/         # 数据模型
 │   └── middleware/     # 中间件
 ├── logs/               # 日志文件目录
-├── static/             # 静态文件
-├── templates/          # 模板文件
 ├── tests/              # 测试代码
 ├── run.py              # 统一启动入口
 └── requirements.txt    # 依赖包列表

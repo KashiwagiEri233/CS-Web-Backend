@@ -1,11 +1,8 @@
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 
 from app.api import api_router
 from app.core.config import settings
@@ -65,7 +62,6 @@ async def _log_startup_status(logger):
     """输出应用启动状态"""
     logger.info("服务器地址: http://0.0.0.0:8000")
     logger.info(f"API文档: http://0.0.0.0:8000{settings.API_V1_STR}/docs")
-    logger.info("管理后台: http://0.0.0.0:8000/admin")
 
 
 @asynccontextmanager
@@ -114,10 +110,6 @@ app = FastAPI(
 # 设置全局异常处理器
 setup_exception_handlers(app)
 
-# 配置静态文件和模板
-app.mount("/static", StaticFiles(directory="static"), name="static")
-templates = Jinja2Templates(directory="templates")
-
 # 配置中间件（注意异常处理中间件应该放在最外层）
 app.add_middleware(ExceptionHandlerMiddleware)
 # 添加速率限制中间件
@@ -145,21 +137,6 @@ app.add_middleware(
 # 注册API路由
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
-# 注册管理后台路由
-from app.admin_routes import create_admin_router
-
-admin_router = create_admin_router(templates)
-app.include_router(admin_router, prefix="/admin", tags=["管理后台"])
-
-
-# 登录页面
-@app.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request):
-    """登录页面"""
-    return templates.TemplateResponse(
-        "login.html", {"request": request, "title": "登录", "settings": settings}
-    )
-
 
 # 根路径
 @app.get("/")
@@ -168,7 +145,6 @@ async def root():
         "message": "欢迎使用企业级FastAPI RBAC框架",
         "docs_url": f"{settings.API_V1_STR}/docs",
         "redoc_url": f"{settings.API_V1_STR}/redoc",
-        "admin_url": "/admin",
     }
 
 
