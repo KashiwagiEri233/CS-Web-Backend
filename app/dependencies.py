@@ -21,7 +21,7 @@ def _auth_bypass_user() -> User:
     return User(
         id=0,
         username="auth-bypass",
-        email="bypass@local",
+        email="bypass@local.dev",  # 合法邮箱格式，避免 EmailStr 校验报错
         full_name="Auth Bypass (DEV)",
         hashed_password="",
         is_active=True,

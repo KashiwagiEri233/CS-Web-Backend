@@ -30,8 +30,65 @@ AI Agent 工作约定，作用域内优先于通用行为。配合 `CLAUDE.md`�
 4. **service** `app/services/<x>_service.py`：构造函数收 `db`，写业务逻辑；不依赖 `Request`（这样 worker/脚本也能复用）。
 5. **路由** `app/api/v1/<x>.py`：端点用 `Depends(get_db)`，鉴权用 `Depends(require_permission("<res>","<act>"))`。
 6. 在 `app/api/v1/__init__.py` 注册 router。
-7. `alembic revision --autogenerate` 生成迁移。
+7. **建表/迁移**：按下方「Alembic 迁移管理」执行。
 8. 在 `tests/` 对应子包补测试。
+
+## Alembic 迁移管理（核心：规避双轨爆炸）
+
+### 铁律：`create_all` 与 `alembic` 不同库共存，绝不在同一库同时用
+
+| 环境 | `DB_AUTO_CREATE` | 建表方式 | 跑 alembic？ |
+|---|---|---|---|
+| 开发 `.env.development` | `True` | `create_all`（启动自动） | **否**（表已建，跑 alembic 会报"表已存在"） |
+| 测试 `.env.test` | `True` | `create_all` | **否** |
+| 生产 `.env` | **`False`** | `alembic upgrade head` | **是** |
+
+爆炸根因：开发库已经 `create_all` 建了表，又跑 `alembic upgrade` → baseline 试图重建已存在的表 → 报错。
+**开发/测试环境根本不用 alembic**，直接靠 `create_all`；只有生产用 alembic，且生产绝不 `create_all`。
+
+### 改模型后的正确流程（增量迁移，禁止重建全库）
+
+1. 改 `app/models/<x>.py`，在 `app/models/__init__.py` 登记。
+2. **不要**动 baseline 或已有迁移文件——它们是历史事实，不可改。
+3. 生成增量迁移：
+   ```bash
+   # 生产环境配置下执行（确保能连到干净的库或 alembic 能对比差异）
+   alembic revision --autogenerate -m "add <table>_<变更摘要>"
+   ```
+4. **检查生成的文件**：autogenerate 不完美，确认 `upgrade()` 只包含本次变更涉及的表，不要混入无关 op。
+5. 提交前确认单一 head：
+   ```bash
+   alembic heads   # 必须只输出一行
+   alembic history # 检查链路：base → baseline → ... → head
+   ```
+6. 生产部署：`alembic upgrade head`。
+
+### 常见爆炸场景与规避
+
+| 症状 | 原因 | 解法 |
+|---|---|---|
+| `alembic upgrade` 报"表已存在" | 开发库被 `create_all` 建过，又跑 alembic | 开发库不跑 alembic；或 `alembic stamp head` 标记当前状态为已应用 |
+| autogenerate 生成空迁移 | 模型与 DB 已一致（`create_all` 已建） | 正常，删掉空迁移文件 |
+| autogenerate 把已有表当成要新建 | baseline 与 `create_all` 的表定义有细微差异 | 以模型为准，手改迁移 op；不要用 autogenerate 的结果直接覆盖 baseline |
+| 多 head（分支） | 两个迁移都指向同一个 down_revision | `alembic merge -m "merge heads" <head1> <head2>` 合并 |
+| downgrade 后再 upgrade 报错 | 数据已存在，downgrade 删了表 | 开发环境直接 drop 整库重建，不要来回 downgrade |
+
+### 开发环境快速重置（表结构大改时）
+
+开发环境不要纠结 alembic 链，直接重建：
+```bash
+# 连 PG 删库重建（开发库 domefff）
+psql -U postgres -c "DROP DATABASE IF EXISTS domefff;"
+psql -U postgres -c "CREATE DATABASE domefff;"
+# 重启服务，create_all 自动建所有表
+python run.py --env 1
+```
+
+### 迁移文件命名约定
+
+- 文件名：`<revision>_<动词>_<表名>.py`（如 `a1b2c3d4e5f6_add_refresh_tokens.py`）
+- 一个迁移只做一件事（加表/加列/改列/加索引），不要把多个不相关变更塞进同一个迁移
+- `down_revision` 必须指向当前 head，不要指向历史节点（会造成多 head）
 
 ## 不变量（贯穿全项目，勿打破）
 - **DB 会话**：路由用 `Depends(get_db)`；路由外（worker/脚本/后台任务）用 `async with get_session() as db:`。两者都不自动提交，需显式 `await db.commit()`。
