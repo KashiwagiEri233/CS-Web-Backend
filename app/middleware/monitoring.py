@@ -82,8 +82,14 @@ class MetricsMiddleware(BaseHTTPMiddleware):
     # 超过阈值说明 path 混入了参数化高频变体（如把 id 拼进 path），应由调用方治理。
     _MAX_PATH_ENTRIES = 1024
 
+    # 当前进程内的实例引用，供 /metrics/json 端点读取指标快照。
+    # Starlette 的 app.user_middleware 只存 Middleware 规格（类+参数），不暴露实例，
+    # 故在实例化时登记此处，避免端点脆弱地遍历中间件栈。
+    _instance: "MetricsMiddleware | None" = None
+
     def __init__(self, app):
         super().__init__(app)
+        MetricsMiddleware._instance = self
         self._start_time = time.time()
         self._lock = asyncio.Lock()
         self._total_requests = 0

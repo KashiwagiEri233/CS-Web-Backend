@@ -18,15 +18,11 @@ from app.core.observability import setup_telemetry, shutdown_telemetry
 
 # 启动横幅（witchcat）。{name}/{version} 在 lifespan 里填充。
 _STARTUP_BANNER = r"""
-              /\                 /\
-             /  \               /  \         .  *  .
-            / /\ \             / /\ \    *  W I T C H   C A T  *
-           /_/  \_\___________/_/  \_\       .  *  .
-                    /\_____/\
-                   ( o     o )      {name}
-                   (    ^    )      v{version}
-                    ) ~~~~~ (       starting up...
-                   (_/     \_)
+           |\      _,,,---,,_            .  *  .
+     ZZzz /,`.-'`'    -.  ;-;;,_
+          |,4-  ) )-,_. ,\ (  `'-'      WitchCat
+         '---''(_/--'  `-'\_)           {name}
+                                        v{version}  |  starting up...
 """
 
 
@@ -239,17 +235,10 @@ async def metrics_json():
     注：分布式监控请用 OpenTelemetry（OTEL_ENABLED=True，指标经 OTLP 导出，
     含延迟直方图/分位数）；本端点仅为单实例快速排查保留。
     """
-    # 获取中间件实例
-    for middleware in app.user_middleware:
-        if (
-            hasattr(middleware.cls, "__name__")
-            and "MetricsMiddleware" in middleware.cls.__name__
-        ):
-            metrics_instance = middleware.instance
-            if hasattr(metrics_instance, "get_metrics"):
-                return metrics_instance.get_metrics()
-
-    return {"error": "Metrics not available"}
+    instance = MetricsMiddleware._instance
+    if instance is None:
+        return {"error": "Metrics not available"}
+    return instance.get_metrics()
 
 
 # 状态端点
