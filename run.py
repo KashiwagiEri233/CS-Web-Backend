@@ -54,31 +54,13 @@ def main():
         sys.stdout.write(f"[启动] 使用 {env_names[args.env]} 环境配置: {env_file}\n")
         sys.stdout.flush()
 
-    # 在 uvicorn 启动前配置 loguru 日志系统
+    # 在 uvicorn 启动前配置 loguru 日志系统。
+    # 注意：reload 模式下 server 在子进程重新 import 应用，此处配置不会生效于子进程，
+    # 故 lifespan 启动时会再调用一次 init_logging（见 app/main.py），保证格式统一。
     from app.core.config import settings
-    from app.core.loguru_logger import (
-        configure_logging,
-        resolve_log_config,
-        setup_uvicorn_logging,
-        suppress_library_logging,
-    )
+    from app.core.loguru_logger import init_logging
 
-    # 根据 LOG_PROFILE 一键切换开发级/生产级日志，env 中的各 LOG_* 字段可覆盖默认值
-    log_config = resolve_log_config(
-        profile=settings.LOG_PROFILE,
-        level=settings.LOG_LEVEL,
-        serialize=settings.LOG_SERIALIZE,
-        backtrace=settings.LOG_BACKTRACE,
-        enable_console=settings.LOG_ENABLE_CONSOLE,
-        enable_file=settings.LOG_ENABLE_FILE,
-        enable_error_file=settings.LOG_ENABLE_ERROR_FILE,
-        log_dir=settings.LOG_DIR,
-        rotation=settings.LOG_ROTATION,
-        retention=settings.LOG_RETENTION,
-    )
-    configure_logging(**log_config)
-    suppress_library_logging()
-    setup_uvicorn_logging()
+    init_logging(settings)
 
     uvicorn.run(
         "app.main:app",

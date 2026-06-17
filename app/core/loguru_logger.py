@@ -337,9 +337,12 @@ def basicConfig(**kwargs):
     # 重新添加处理器
     format_str = kwargs.get(
         "format",
-        "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
-        "<level>{level: <8}</level> | "
-        "<cyan>{extra[name]}</cyan> | "
+        "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green>"
+        "<light-white> | </light-white>"
+        "<level>{level: <8}</level>"
+        "<light-white> | </light-white>"
+        "<cyan>{extra[name]}</cyan>"
+        "<light-white> | </light-white>"
         "\n"
         "<level>→ {message}</level>",
     )
@@ -474,11 +477,15 @@ def configure_logging(
 
     # JSON 序列化时忽略自定义 format（loguru serialize 自带结构化字段）
     if not serialize and format_string is None:
+        # 分隔符 | 显式用 <light-white>（亮白），避免回退到不可控的终端默认配色（曾显示为红色）
         format_string = (
-            "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
-            "<level>{level: <8}</level> | "
-            "<cyan>{extra[name]}</cyan> | "
-            "{message}"
+            "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green>"
+            "<light-white> | </light-white>"
+            "<level>{level: <8}</level>"
+            "<light-white> | </light-white>"
+            "<cyan>{extra[name]}</cyan>"
+            "<light-white> | </light-white>"
+            "<level>{message}</level>"
         )
 
     # 添加控制台处理器（开发环境主输出）
@@ -575,4 +582,32 @@ def setup_uvicorn_logging() -> None:
         uv_logger.propagate = False
 
 
-# 注意：不在模块级别初始化配置，由应用程序统一配置
+def init_logging(settings) -> None:
+    """根据 settings 一键初始化日志（run.py 与应用启动 lifespan 共用）。
+
+    关键：uvicorn 开启 reload 时，server 在**子进程**里重新 import 应用，run.py 的 main()
+    不会在该子进程执行——必须在 lifespan 启动时再调用一次，保证子进程也用统一格式，否则会
+    回退到 loguru 默认格式（来源恒显示为 loguru_logger:_log，且分隔符配色不可控）。
+    幂等：configure_logging 内部先 remove 再 add。
+
+    Args:
+        settings: 应用配置实例（含 LOG_* 字段）。以参数传入，避免本模块反向依赖 config。
+    """
+    log_config = resolve_log_config(
+        profile=settings.LOG_PROFILE,
+        level=settings.LOG_LEVEL,
+        serialize=settings.LOG_SERIALIZE,
+        backtrace=settings.LOG_BACKTRACE,
+        enable_console=settings.LOG_ENABLE_CONSOLE,
+        enable_file=settings.LOG_ENABLE_FILE,
+        enable_error_file=settings.LOG_ENABLE_ERROR_FILE,
+        log_dir=settings.LOG_DIR,
+        rotation=settings.LOG_ROTATION,
+        retention=settings.LOG_RETENTION,
+    )
+    configure_logging(**log_config)
+    suppress_library_logging()
+    setup_uvicorn_logging()
+
+
+# 注意：不在模块级别初始化配置，由应用程序统一配置（run.py / lifespan 调用 init_logging）

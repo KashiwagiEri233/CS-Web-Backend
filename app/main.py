@@ -7,13 +7,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from app import __version__
 from app.api import api_router
 from app.core.config import settings
-from app.core.loguru_logger import get_logger
+from app.core.loguru_logger import get_logger, init_logging
 from app.database import engine
 from app.models import Base
 from app.middleware.monitoring import SecurityHeadersMiddleware, MetricsMiddleware, LoggingMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware, AuthRateLimitMiddleware
 from app.core.exceptions import setup_exception_handlers, ExceptionHandlerMiddleware
 from app.core.observability import setup_telemetry, shutdown_telemetry
+
+
+# 在产生任何应用日志前，于模块导入早期统一初始化日志。
+# 关键：uvicorn reload 子进程只 import 本模块、不执行 run.py，若不在此初始化，
+# import 阶段的日志（如 setup_telemetry 的 OTel 提示）会落到 loguru 默认 sink（写 stderr，
+# 终端常显示为红色），与后续自定义格式（stdout，白色）不一致。幂等：内部先 remove 再 add。
+init_logging(settings)
 
 
 # 启动横幅（witchcat）。{name}/{version} 在 lifespan 里填充。
@@ -114,7 +121,7 @@ async def _log_startup_status(logger):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 日志已在模块加载时配置完成，这里只做业务初始化
+    # 日志已在模块导入早期 init_logging 完成（见上），这里只做业务初始化
     logger = get_logger("main")
 
     # 应用启动
