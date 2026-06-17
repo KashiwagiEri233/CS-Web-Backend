@@ -31,3 +31,10 @@ mypy==1.8.0
 
 # 日志
 loguru==0.7.2
+
+# 可观测性 OpenTelemetry（可选：OTEL_ENABLED=False 时不加载，traces+metrics 经 OTLP 导出）
+opentelemetry-sdk==1.42.1
+opentelemetry-exporter-otlp==1.42.1
+opentelemetry-instrumentation-fastapi==0.63b1
+opentelemetry-instrumentation-sqlalchemy==0.63b1
+opentelemetry-instrumentation-redis==0.63b1

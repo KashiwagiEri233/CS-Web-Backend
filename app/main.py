@@ -12,6 +12,7 @@ from app.models import Base
 from app.middleware.monitoring import SecurityHeadersMiddleware, MetricsMiddleware, LoggingMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware, AuthRateLimitMiddleware
 from app.core.exceptions import setup_exception_handlers, ExceptionHandlerMiddleware
+from app.core.observability import setup_telemetry, shutdown_telemetry
 
 
 async def _initialize_database(logger):
@@ -125,6 +126,7 @@ async def lifespan(app: FastAPI):
     from app.core.redis_client import close_redis_client
 
     await close_redis_client()
+    shutdown_telemetry()  # flush 并释放 OTel providers（未启用时 no-op）
     logger.info("应用已安全关闭 - version: 1.0.0")
 
 
@@ -171,6 +173,10 @@ app.add_middleware(
     allow_headers=settings.allowed_headers_list,
 )
 
+# 可观测性（OpenTelemetry）：在中间件装配完成后接入。
+# OTEL_ENABLED=False 时为 no-op；自动埋点 FastAPI / SQLAlchemy / Redis。
+setup_telemetry(app, engine)
+
 # 注册API路由
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
@@ -185,16 +191,34 @@ async def root():
     }
 
 
-# 健康检查端点
+# 健康检查端点（liveness：进程是否存活，浅检查，供 k8s livenessProbe）
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
 
 
-# 监控端点
-@app.get("/metrics")
-async def metrics():
-    """获取应用性能指标"""
+# 就绪探针（readiness：依赖是否就绪，供 k8s readinessProbe）
+# DB 不通时返回 503，避免把流量打到尚未就绪/依赖故障的实例。
+@app.get("/readyz")
+async def readiness_check():
+    from fastapi.responses import JSONResponse
+    from app.utils.status import check_application_status
+
+    status_info = await check_application_status()
+    db_ok = status_info.get("database", {}).get("status") == "connected"
+    if db_ok:
+        return {"status": "ready", **status_info}
+    return JSONResponse(status_code=503, content={"status": "not_ready", **status_info})
+
+
+# 指标端点（人读 JSON 版；OTel 启用后标准指标经 OTLP 导出至 collector）
+@app.get("/metrics/json")
+async def metrics_json():
+    """获取应用性能指标（手搓内存版，便于 curl 速览）。
+
+    注：分布式监控请用 OpenTelemetry（OTEL_ENABLED=True，指标经 OTLP 导出，
+    含延迟直方图/分位数）；本端点仅为单实例快速排查保留。
+    """
     # 获取中间件实例
     for middleware in app.user_middleware:
         if (

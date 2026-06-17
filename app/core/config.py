@@ -77,6 +77,17 @@ class Settings(BaseSettings):
     #   off    = get 恒未命中、set 静默丢弃（缓存视为可有可无）
     CACHE_FALLBACK: str = "memory"
     
+    # 可观测性（OpenTelemetry，可选，默认关闭）
+    # 与 Redis 同理当作增强项：OTEL_ENABLED=False 时完全 no-op，不引入任何运行时开销；
+    # 启用但未配 endpoint 时降级为控制台导出（仅适合本地调试），绝不阻断启动。
+    OTEL_ENABLED: bool = False
+    OTEL_SERVICE_NAME: str = "fastapi-rbac-framework"
+    # OTLP collector 端点（如 http://localhost:4317）。留空 + 启用 = 降级控制台导出。
+    OTEL_EXPORTER_OTLP_ENDPOINT: Optional[str] = None
+    OTEL_EXPORTER_OTLP_PROTOCOL: str = "grpc"  # grpc 或 http/protobuf
+    OTEL_TRACES_SAMPLER_RATIO: float = 1.0  # 采样率 0.0~1.0；生产高流量可调小
+    OTEL_CONSOLE_EXPORT: bool = False  # 强制控制台导出（本地调试用，优先于 OTLP）
+
     # 日志配置
     # LOG_PROFILE 是一键开关：dev=开发级（彩色控制台+DEBUG），prod=生产级（JSON+文件轮转+ERROR日志）
     # 选定 profile 后，下方字段留 None=用 profile 默认；赋值则覆盖

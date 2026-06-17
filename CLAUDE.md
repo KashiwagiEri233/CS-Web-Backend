@@ -44,6 +44,12 @@ python run.py --env 3 --prod   # 生产 + 多 worker
 - `ADMIN_PASSWORD`（空=首启随机生成、日志只提示一次；配置则不写日志）。
 - `LOG_PROFILE=dev|prod`（dev=DEBUG+彩色控制台；prod=INFO+JSON+文件轮转）。
 - `AUTH_ENABLED`（False=全局放行为超级用户，仅本地开发；DEBUG=False 时置 False 会拒绝启动）。
+- `OTEL_ENABLED`（可观测性，默认 False=no-op）、`OTEL_EXPORTER_OTLP_ENDPOINT`（OTLP collector；空+启用=降级控制台）、`OTEL_TRACES_SAMPLER_RATIO`。启用后自动埋点 FastAPI/SQLAlchemy/Redis，traces+metrics 经 OTLP 导出。
+
+## 运维端点（无版本前缀，根路径挂载）
+- `/health` liveness（浅检查，进程存活）；`/readyz` readiness（探 DB，不通返回 503）。
+- `/metrics/json` 手搓内存指标（单实例速览）；分布式监控用 OTel（OTLP 导出，含延迟分位数）。
+- `/status` 应用各组件状态明细。
 
 ## 数据库迁移
 - 单一 baseline；改模型后 `alembic revision --autogenerate -m "..."` → `alembic upgrade head`。
