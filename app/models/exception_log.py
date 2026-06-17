@@ -5,10 +5,9 @@
 """
 
 from datetime import datetime, timezone
-from typing import Dict, Any
+from typing import Any, Dict, Optional
 
 from sqlalchemy import (
-    Column,
     String,
     Integer,
     DateTime as _DateTime,
@@ -19,7 +18,7 @@ from sqlalchemy import (
     JSON,
     Float,
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
@@ -31,27 +30,27 @@ class ExceptionLog(Base):
 
     __tablename__ = "exception_logs"
 
-    id = Column(Integer, primary_key=True, index=True)
-    traceback_id = Column(String(64), nullable=False, index=True, comment="异常跟踪ID")
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    traceback_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, comment="异常跟踪ID")
 
-    exception_type = Column(String(100), nullable=False, index=True, comment="异常类型")
-    error_code = Column(String(100), nullable=True, index=True, comment="错误代码")
-    exception_message = Column(Text, nullable=False, comment="异常消息")
+    exception_type: Mapped[str] = mapped_column(String(100), nullable=False, index=True, comment="异常类型")
+    error_code: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True, comment="错误代码")
+    exception_message: Mapped[str] = mapped_column(Text, nullable=False, comment="异常消息")
 
-    status_code = Column(Integer, nullable=True, index=True, comment="HTTP状态码")
-    method = Column(String(10), nullable=True, comment="HTTP方法")
-    endpoint = Column(String(255), nullable=True, index=True, comment="请求端点")
+    status_code: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True, comment="HTTP状态码")
+    method: Mapped[Optional[str]] = mapped_column(String(10), nullable=True, comment="HTTP方法")
+    endpoint: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True, comment="请求端点")
 
-    request_id = Column(String(64), nullable=True, index=True, comment="请求ID")
-    user_id = Column(String(64), nullable=True, index=True, comment="用户ID")
-    ip_address = Column(String(45), nullable=True, comment="客户端IP地址")
-    user_agent = Column(Text, nullable=True, comment="用户代理")
+    request_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True, comment="请求ID")
+    user_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True, comment="用户ID")
+    ip_address: Mapped[Optional[str]] = mapped_column(String(45), nullable=True, comment="客户端IP地址")
+    user_agent: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="用户代理")
 
-    details = Column(JSON, nullable=True, comment="异常详细信息")
-    traceback = Column(Text, nullable=True, comment="异常堆栈")
-    context = Column(JSON, nullable=True, comment="异常上下文信息")
+    details: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True, comment="异常详细信息")
+    traceback: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="异常堆栈")
+    context: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True, comment="异常上下文信息")
 
-    created_at = Column(
+    created_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=lambda: datetime.now(timezone.utc),
         nullable=False,
@@ -59,26 +58,26 @@ class ExceptionLog(Base):
         comment="创建时间",
     )
 
-    is_resolved = Column(Boolean, default=False, nullable=False, comment="是否已解决")
-    resolved_at = Column(DateTime, nullable=True, comment="解决时间")
-    resolved_by = Column(String(64), nullable=True, comment="解决人")
-    resolution_notes = Column(Text, nullable=True, comment="解决备注")
+    is_resolved: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, comment="是否已解决")
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, comment="解决时间")
+    resolved_by: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, comment="解决人")
+    resolution_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="解决备注")
 
-    severity = Column(
+    severity: Mapped[str] = mapped_column(
         String(20), default="medium", nullable=False, index=True, comment="严重程度"
     )
-    priority = Column(
+    priority: Mapped[str] = mapped_column(
         String(20), default="normal", nullable=False, index=True, comment="优先级"
     )
 
-    parent_exception_id = Column(
+    parent_exception_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("exception_logs.id"), nullable=True, comment="父异常ID"
     )
-    related_incident_id = Column(
+    related_incident_id: Mapped[Optional[str]] = mapped_column(
         String(64), nullable=True, index=True, comment="关联事件ID"
     )
 
-    response_time_ms = Column(Float, nullable=True, comment="响应时间(毫秒)")
+    response_time_ms: Mapped[Optional[float]] = mapped_column(Float, nullable=True, comment="响应时间(毫秒)")
 
     __table_args__ = (
         Index("idx_exception_type_created", "exception_type", "created_at"),
@@ -90,7 +89,9 @@ class ExceptionLog(Base):
         Index("idx_is_resolved_created", "is_resolved", "created_at"),
     )
 
-    parent_exception = relationship("ExceptionLog", remote_side=[id])
+    parent_exception: Mapped[Optional["ExceptionLog"]] = relationship(
+        "ExceptionLog", remote_side=[id]
+    )
 
     def __repr__(self):
         return f"<ExceptionLog(id={self.id}, traceback_id={self.traceback_id}, exception_type={self.exception_type}, status_code={self.status_code})>"

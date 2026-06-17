@@ -115,12 +115,22 @@ def _safe_json_response(
     status_code: int,
     response_model,
     fallback_body: dict,
+    headers: Optional[Dict[str, str]] = None,
 ) -> JSONResponse:
-    """优先用 response_model 序列化；失败时回退到 fallback_body。"""
+    """优先用 response_model 序列化；失败时回退到 fallback_body。
+
+    headers 用于透传异常携带的自定义响应头（如 OAuth2 的 WWW-Authenticate）。
+    """
     try:
-        return JSONResponse(status_code=status_code, content=response_model.model_dump())
+        return JSONResponse(
+            status_code=status_code,
+            content=response_model.model_dump(),
+            headers=headers,
+        )
     except Exception:
-        return JSONResponse(status_code=status_code, content=fallback_body)
+        return JSONResponse(
+            status_code=status_code, content=fallback_body, headers=headers
+        )
 
 
 def create_validation_error_response(
@@ -305,6 +315,7 @@ async def app_exception_handler(request: Request, exc: BaseAppException) -> JSON
             "traceback_id": exc.traceback_id,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         },
+        headers=getattr(exc, "headers", None),
     )
 
 
@@ -434,36 +445,42 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
 def setup_exception_handlers(app: FastAPI) -> None:
     """
     设置全局异常处理器
-    
+
+    注册顺序说明：FastAPI 按异常类型的精确匹配（最具体优先）派发，不依赖注册顺序；
+    因此只要每个类型都注册了对应 handler 即可。这里按"业务异常 → HTTP → 验证 →
+    数据库 → 兜底 Exception"分组列出，新增异常子类时只需在对应列表里追加。
+
     Args:
         app: FastAPI应用实例
     """
-    # 自定义应用程序异常
-    app.add_exception_handler(BaseAppException, app_exception_handler)
-    
-    # 业务异常子类
-    app.add_exception_handler(BusinessException, app_exception_handler)
-    app.add_exception_handler(AuthenticationException, app_exception_handler)
-    app.add_exception_handler(AuthorizationException, app_exception_handler)
-    app.add_exception_handler(ValidationException, app_exception_handler)
-    app.add_exception_handler(NotFoundException, app_exception_handler)
-    app.add_exception_handler(ConflictException, app_exception_handler)
-    app.add_exception_handler(DatabaseException, app_exception_handler)
-    app.add_exception_handler(ExternalServiceException, app_exception_handler)
-    app.add_exception_handler(RateLimitException, app_exception_handler)
-    
+    # 自定义应用异常（基类 + 所有业务子类，统一走 app_exception_handler）
+    app_exception_types = (
+        BaseAppException,
+        BusinessException,
+        AuthenticationException,
+        AuthorizationException,
+        ValidationException,
+        NotFoundException,
+        ConflictException,
+        DatabaseException,
+        ExternalServiceException,
+        RateLimitException,
+    )
+    for exc_type in app_exception_types:
+        app.add_exception_handler(exc_type, app_exception_handler)
+
     # HTTP异常
     app.add_exception_handler(HTTPException, http_exception_handler)
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)
-    
+
     # 验证异常
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
     app.add_exception_handler(ValidationError, pydantic_validation_exception_handler)
-    
-    # 数据库异常
+
+    # 数据库异常（IntegrityError 是 SQLAlchemyError 子类，FastAPI 会按最具体匹配优先）
     app.add_exception_handler(SQLAlchemyError, database_exception_handler)
     app.add_exception_handler(IntegrityError, database_exception_handler)
-    
+
     # 通用异常处理器（必须放在最后，作为后备）
     app.add_exception_handler(Exception, general_exception_handler)
 
@@ -495,17 +512,23 @@ class ExceptionHandlerMiddleware:
             # 会被错误地吞成 500。
             if isinstance(exc, (HTTPException, StarletteHTTPException)):
                 response = create_http_exception_response(exc, request)
+                # HTTPException 自带 headers（如 OAuth2 的 WWW-Authenticate）
+                extra_headers = getattr(exc, "headers", None)
             elif isinstance(exc, BaseAppException):
                 response = create_app_exception_response(exc, request)
+                # 业务异常可通过 BaseAppException.headers 携带自定义响应头
+                extra_headers = getattr(exc, "headers", None)
             else:
                 response = create_server_error_response(exc, request)
+                extra_headers = None
 
             try:
                 # 创建响应，使用 model_dump 来正确处理 datetime
                 content = response.model_dump()
                 response_obj = JSONResponse(
                     status_code=response.status_code,
-                    content=content
+                    content=content,
+                    headers=extra_headers,
                 )
             except Exception as json_error:
                 # 如果序列化失败，使用基本错误响应（保留原始状态码）
@@ -519,7 +542,8 @@ class ExceptionHandlerMiddleware:
                 }
                 response_obj = JSONResponse(
                     status_code=response.status_code if response else 500,
-                    content=content
+                    content=content,
+                    headers=extra_headers,
                 )
 
             # 发送响应

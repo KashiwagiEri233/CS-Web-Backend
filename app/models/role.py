@@ -1,4 +1,6 @@
 from datetime import datetime, timezone
+from typing import List, Optional
+
 from sqlalchemy import (
     Boolean,
     Column,
@@ -9,7 +11,7 @@ from sqlalchemy import (
     Table,
     Text,
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
@@ -17,6 +19,8 @@ from app.database import Base
 DateTime = _DateTime(timezone=True)
 
 # 角色权限关联表
+# 多对多关联表保持 Table + Column 写法（SQLAlchemy 2.0 推荐做法）；
+# mapped_column 只用于 ORM 类属性，不能传给 Table()。
 role_permissions = Table(
     "role_permissions",
     Base.metadata,
@@ -28,20 +32,24 @@ role_permissions = Table(
 class Role(Base):
     __tablename__ = "roles"
 
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(50), unique=True, index=True, nullable=False)
-    description = Column(Text, nullable=True)
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
     # 关联关系
-    users = relationship("User", secondary="user_roles", back_populates="roles")
-    permissions = relationship(
+    users: Mapped[List["User"]] = relationship(
+        "User", secondary="user_roles", back_populates="roles"
+    )
+    permissions: Mapped[List["Permission"]] = relationship(
         "Permission", secondary=role_permissions, back_populates="roles"
     )
 

@@ -40,6 +40,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        compare_type=True,  # 检测列类型变更（如 String(50)->String(100)）
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -57,7 +58,9 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection,
+            target_metadata=target_metadata,
+            compare_type=True,  # 检测列类型变更（如 String(50)->String(100)）
         )
         with context.begin_transaction():
             context.run_migrations()

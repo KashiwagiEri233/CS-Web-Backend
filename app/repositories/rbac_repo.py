@@ -141,20 +141,3 @@ class RBACRepository:
             await self.db.commit()
 
         return True
-
-    async def check_user_permission(self, user_id: int, resource: str, action: str) -> bool:
-        """检查用户是否有特定权限"""
-        user = await self.get_user_with_roles(user_id)
-        if not user:
-            return False
-
-        if user.is_superuser:
-            return True
-
-        for role in user.roles:
-            role_with_perms = await self.get_role_with_permissions(role.id)
-            for permission in role_with_perms.permissions:
-                if permission.resource == resource and permission.action == action:
-                    return True
-
-        return False

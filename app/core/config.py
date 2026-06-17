@@ -1,17 +1,21 @@
 import os
 from typing import Optional
-from pydantic import field_validator, model_validator, ValidationInfo
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     # 数据库配置
-    DATABASE_URL: str = "postgresql+asyncpg://postgres:123456@localhost/rqaiqt"
+    # DATABASE_URL 与 DATABASE_PASSWORD 均不提供默认值，强制从环境变量设置（与 SECRET_KEY 同标准）。
+    # 单独的 host/port/name/user 保留本地默认值（不含密码）。
+    # 组装逻辑见 _assemble_database_url (model_validator mode=after)，
+    # 此时所有字段均已处理，可安全引用。
+    DATABASE_URL: Optional[str] = None
     DATABASE_HOST: str = "localhost"
     DATABASE_PORT: int = 5432
-    DATABASE_NAME: str = "rqaiqt"
+    DATABASE_NAME: str = "domefff"
     DATABASE_USER: str = "postgres"
-    DATABASE_PASSWORD: str = "123456"
+    DATABASE_PASSWORD: Optional[str] = None
     
     # JWT 配置
     SECRET_KEY: Optional[str] = None  # 强制要求从环境变量设置（见 validate_secret_key）
@@ -90,14 +94,11 @@ class Settings(BaseSettings):
     
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
-    def assemble_db_connection(cls, v, info: ValidationInfo):
-        if isinstance(v, str):
-            return v
-        d = info.data
-        return (
-            f"postgresql+asyncpg://{d.get('DATABASE_USER')}:{d.get('DATABASE_PASSWORD')}"
-            f"@{d.get('DATABASE_HOST')}:{d.get('DATABASE_PORT')}/{d.get('DATABASE_NAME')}"
-        )
+    def _strip_database_url(cls, v):
+        """仅做轻量清洗：空字符串视作未配置。组装见 _assemble_database_url。"""
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
 
     @field_validator("ALLOWED_ORIGINS", "ALLOWED_METHODS", "ALLOWED_HEADERS", mode="before")
     @classmethod
@@ -131,6 +132,29 @@ class Settings(BaseSettings):
         if v == "your-secret-key-here-change-in-production":
             raise ValueError("Please change the default SECRET_KEY in production environment")
         return v
+
+    @model_validator(mode="after")
+    def _assemble_database_url(self):
+        """组装数据库连接 URL 并校验凭据。
+
+        优先使用显式配置的 DATABASE_URL；否则由 host/port/name/user/password 组装。
+        DATABASE_PASSWORD 与 DATABASE_URL 均无默认值（与 SECRET_KEY 同标准），
+        两者同时缺失时直接拒绝启动，避免无意中用无密码连接跑起来。
+        """
+        if self.DATABASE_URL:
+            return self
+
+        if not self.DATABASE_PASSWORD:
+            raise ValueError(
+                "DATABASE_URL 或 DATABASE_PASSWORD 必须从环境变量设置；"
+                "不允许使用无密码或写死密码的默认连接"
+            )
+
+        self.DATABASE_URL = (
+            f"postgresql+asyncpg://{self.DATABASE_USER}:{self.DATABASE_PASSWORD}"
+            f"@{self.DATABASE_HOST}:{self.DATABASE_PORT}/{self.DATABASE_NAME}"
+        )
+        return self
 
     @model_validator(mode="after")
     def _guard_auth_disabled(self):

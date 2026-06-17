@@ -1,10 +1,15 @@
 from typing import Optional
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.exceptions import (
+    AuthenticationException,
+    PermissionDeniedException,
+    UserNotActiveException,
+)
 from app.database import get_db
 from app.models.user import User
 from app.services.auth_service import AuthService
@@ -33,32 +38,28 @@ async def get_current_user(
     token: Optional[str] = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    """获取当前用户的依赖项。AUTH_ENABLED=False 时直接放行为超级用户。"""
+    """获取当前用户的依赖项。AUTH_ENABLED=False 时直接放行为超级用户。
+
+    统一抛 BaseAppException 子类（而非 HTTPException），使响应走全局 ErrorResponse
+    体系（含 traceback_id），并自动携带 OAuth2 规范要求的 WWW-Authenticate 头。
+    """
     if not settings.AUTH_ENABLED:
         return _auth_bypass_user()
 
-    auth_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="无法验证凭据",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-
     if token is None:
-        raise auth_exception
+        raise AuthenticationException(message="无法验证凭据")
 
     auth_service = AuthService(db)
     user = await auth_service.get_current_user(token)
 
     if user is None:
-        raise auth_exception
+        raise AuthenticationException(message="无法验证凭据")
 
     # 黑名单检查：登出/改密后让未过期 access token 立即失效
     if await auth_service.is_access_revoked(token):
-        # 复用 auth_exception（401 + WWW-Authenticate）以保持语义一致
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="令牌已被撤销",
-            headers={"WWW-Authenticate": "Bearer"},
+        raise AuthenticationException(
+            message="令牌已被撤销",
+            details={"reason": "revoked"},
         )
 
     return user
@@ -69,7 +70,7 @@ async def get_current_active_user(
 ) -> User:
     """获取当前活跃用户"""
     if not current_user.is_active:
-        raise HTTPException(status_code=403, detail="用户未激活")
+        raise UserNotActiveException(user_id=current_user.id)
     return current_user
 
 
@@ -78,7 +79,5 @@ async def get_current_superuser(
 ) -> User:
     """获取当前超级用户"""
     if not current_user.is_superuser:
-        raise HTTPException(
-            status_code=403, detail="权限不足"
-        )
+        raise PermissionDeniedException(required_permissions=["superuser"])
     return current_user

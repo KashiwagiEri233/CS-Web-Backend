@@ -21,7 +21,8 @@ class BaseAppException(Exception):
         status_code: int = 500,
         details: Optional[Dict[str, Any]] = None,
         context: Optional[Dict[str, Any]] = None,
-        cause: Optional[Exception] = None
+        cause: Optional[Exception] = None,
+        headers: Optional[Dict[str, str]] = None
     ):
         """
         初始化基础异常
@@ -33,6 +34,7 @@ class BaseAppException(Exception):
             details: 错误详细信息
             context: 错误上下文信息
             cause: 原始异常对象
+            headers: 附加到 HTTP 响应的自定义头（如 OAuth2 的 WWW-Authenticate）
         """
         super().__init__(message)
         self.message = message
@@ -41,6 +43,7 @@ class BaseAppException(Exception):
         self.details = details or {}
         self.context = context or {}
         self.cause = cause
+        self.headers = headers
         self.traceback_id = str(uuid4())  # 用于跟踪异常的唯一ID
         self.timestamp = None  # 将在处理器中设置
     
@@ -103,14 +106,20 @@ class AuthenticationException(BaseAppException):
         message: str = "认证失败",
         error_code: Optional[str] = None,
         details: Optional[Dict[str, Any]] = None,
-        context: Optional[Dict[str, Any]] = None
+        context: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, str]] = None
     ):
+        # OAuth2 规范要求 401 响应携带 WWW-Authenticate 头；
+        # 调用方未显式传入时默认带 Bearer scheme。
+        if headers is None:
+            headers = {"WWW-Authenticate": "Bearer"}
         super().__init__(
             message=message,
             error_code=error_code or "AUTHENTICATION_FAILED",
             status_code=401,
             details=details,
-            context=context
+            context=context,
+            headers=headers
         )
 
 

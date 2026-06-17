@@ -1,4 +1,6 @@
 from datetime import datetime, timezone
+from typing import List, Optional
+
 from sqlalchemy import (
     Boolean,
     Column,
@@ -7,9 +9,8 @@ from sqlalchemy import (
     Integer,
     String,
     Table,
-    Text,
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
@@ -17,6 +18,8 @@ from app.database import Base
 DateTime = _DateTime(timezone=True)
 
 # 用户角色关联表
+# 多对多关联表保持 Table + Column 写法（SQLAlchemy 2.0 推荐做法）；
+# mapped_column 只用于 ORM 类属性，不能传给 Table()。
 user_roles = Table(
     "user_roles",
     Base.metadata,
@@ -28,22 +31,26 @@ user_roles = Table(
 class User(Base):
     __tablename__ = "users"
 
-    id = Column(Integer, primary_key=True, index=True)
-    username = Column(String(50), unique=True, index=True, nullable=False)
-    email = Column(String(100), unique=True, index=True, nullable=False)
-    hashed_password = Column(String(255), nullable=False)
-    full_name = Column(String(100), nullable=True)
-    is_active = Column(Boolean, default=True)
-    is_superuser = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    username: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
+    email: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)
+    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    full_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_superuser: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
     # 关联关系
-    roles = relationship("Role", secondary=user_roles, back_populates="users")
+    roles: Mapped[List["Role"]] = relationship(
+        "Role", secondary=user_roles, back_populates="users"
+    )
 
     def __repr__(self):
         return f"<User(id={self.id}, username='{self.username}', email='{self.email}')>"

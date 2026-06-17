@@ -1,14 +1,13 @@
 from datetime import datetime, timezone
+from typing import Optional
 
 from sqlalchemy import (
-    Boolean,
-    Column,
     DateTime as _DateTime,
     ForeignKey,
     Integer,
     String,
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
@@ -28,19 +27,21 @@ class RefreshToken(Base):
 
     __tablename__ = "refresh_tokens"
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     # sha256(refresh_token 明文)，长度固定 64（十六进制）。唯一索引防止重复。
-    token_hash = Column(String(64), unique=True, index=True, nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
     # 同一次登录派生的刷新链标识；同一 family 内的旧 token 再次被用 = 窃取/重放
-    family_id = Column(String(64), index=True, nullable=False)
-    expires_at = Column(DateTime, nullable=False)
-    revoked_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    family_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc)
+    )
 
-    user = relationship("User", backref="refresh_tokens")
+    user: Mapped["User"] = relationship("User", backref="refresh_tokens")
 
     @property
     def is_active(self) -> bool:

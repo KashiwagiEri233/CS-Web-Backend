@@ -1,6 +1,8 @@
 from datetime import datetime, timezone
-from sqlalchemy import Column, DateTime as _DateTime, Integer, String, Text
-from sqlalchemy.orm import relationship
+from typing import List, Optional
+
+from sqlalchemy import DateTime as _DateTime, Integer, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
@@ -11,22 +13,24 @@ DateTime = _DateTime(timezone=True)
 class Permission(Base):
     __tablename__ = "permissions"
 
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(100), unique=True, index=True, nullable=False)
-    resource = Column(String(50), nullable=False)  # 资源名称，如"user", "role"等
-    action = Column(
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)
+    resource: Mapped[str] = mapped_column(String(50), nullable=False)  # 资源名称，如"user", "role"等
+    action: Mapped[str] = mapped_column(
         String(50), nullable=False
     )  # 操作名称，如"create", "read", "update", "delete"等
-    description = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
     # 关联关系
-    roles = relationship(
+    roles: Mapped[List["Role"]] = relationship(
         "Role", secondary="role_permissions", back_populates="permissions"
     )
 
