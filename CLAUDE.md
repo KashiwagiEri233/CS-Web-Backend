@@ -45,7 +45,7 @@ python run.py --env 3 --prod   # 生产 + 多 worker
 - `LOG_PROFILE=dev|prod`（dev=DEBUG+彩色控制台；prod=INFO+JSON+文件轮转）。
 - `AUTH_ENABLED`（False=全局放行为超级用户，仅本地开发；DEBUG=False 时置 False 会拒绝启动）。
 - `OTEL_ENABLED`（可观测性，默认 False=no-op）、`OTEL_EXPORTER_OTLP_ENDPOINT`（OTLP collector；空+启用=降级控制台）、`OTEL_TRACES_SAMPLER_RATIO`。启用后自动埋点 FastAPI/SQLAlchemy/Redis，traces+metrics 经 OTLP 导出。
-- `QUEUE_ENABLED`（异步任务队列 arq，**可选模块**，默认 False=eager 就地执行）。core 不依赖，可整建删除 `app/core/queue/`；启用见 `docs/system/queue.md`。
+- 异步任务队列（arq，**可选模块**）：开关 `QUEUE_ENABLED` 由队列模块自读环境变量/.env（**不在 Settings**），默认 eager 就地执行；core 不依赖，可整建删除 `app/core/queue/`。详见 `docs/system/queue.md`。
 
 ## 运维端点（无版本前缀，根路径挂载）
 - `/health` liveness（浅检查，进程存活）；`/readyz` readiness（探 DB，不通返回 503）。

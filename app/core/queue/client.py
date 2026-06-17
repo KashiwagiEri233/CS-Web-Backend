@@ -8,6 +8,7 @@ arq 仅在真正需要投递到 broker 时**惰性 import**——所以"未装 a
 这条路径不会触发 import 错误。
 """
 
+import os
 from typing import Any, Optional
 
 from app.core.config import settings
@@ -17,6 +18,28 @@ from app.core.queue.tasks import TASKS
 logger = get_logger("queue")
 
 _TASK_NAMES = {fn.__name__ for fn in TASKS}
+
+
+def _read_queue_enabled() -> bool:
+    """队列总开关。**刻意不放进核心 `Settings`**——保持 core 不依赖 queue，删本模块即净。
+
+    优先读真实环境变量 `QUEUE_ENABLED`；缺失时回退 `ENV_FILE` 指向的 .env 文件
+    （与 config.py 同源，因 pydantic 不会把 .env 值写入 os.environ），
+    使 .env 里写 `QUEUE_ENABLED=True` 同样生效。
+    """
+    val = os.getenv("QUEUE_ENABLED")
+    if val is None:
+        try:
+            from dotenv import dotenv_values
+
+            env_file = os.environ.get("ENV_FILE", ".env")
+            val = dotenv_values(env_file).get("QUEUE_ENABLED")
+        except Exception:  # noqa: BLE001 - 读取 .env 失败按未启用处理
+            val = None
+    return str(val).strip().lower() in ("1", "true", "yes", "on") if val is not None else False
+
+
+_QUEUE_ENABLED = _read_queue_enabled()
 
 # arq 连接池惰性单例（模式同 app/core/redis_client.py）
 _pool: Any = None
@@ -76,7 +99,7 @@ async def enqueue(task, *args, **kwargs) -> Optional[str]:
             "worker 无法执行；请先登记。"
         )
 
-    if not settings.QUEUE_ENABLED:
+    if not _QUEUE_ENABLED:
         return await _run_eager(task, *args, **kwargs)
 
     pool = await _get_pool()

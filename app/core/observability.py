@@ -18,6 +18,7 @@
 
 from typing import Any, Optional
 
+from app import __version__
 from app.core.config import settings
 from app.core.loguru_logger import get_logger
 
@@ -58,7 +59,7 @@ def setup_telemetry(app, engine) -> None:
         return
 
     resource = Resource.create(
-        {"service.name": settings.OTEL_SERVICE_NAME, "service.version": "1.0.0"}
+        {"service.name": settings.OTEL_SERVICE_NAME, "service.version": __version__}
     )
 
     span_exporter, metric_exporter, sink = _build_exporters()

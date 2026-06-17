@@ -19,7 +19,7 @@ async def test_enqueue_eager_runs_inline_when_disabled(monkeypatch):
 
     # 把临时任务登记进合法集合（生产由 tasks.TASKS 静态登记）
     monkeypatch.setattr(qc, "_TASK_NAMES", qc._TASK_NAMES | {"spy_task"})
-    monkeypatch.setattr(settings, "QUEUE_ENABLED", False)
+    monkeypatch.setattr(qc, "_QUEUE_ENABLED", False)
 
     job_id = await enqueue(spy_task, 3, y=4)
 
@@ -37,7 +37,7 @@ async def test_enqueue_eager_when_enabled_but_no_broker(monkeypatch):
         ran["called"] = True
 
     monkeypatch.setattr(qc, "_TASK_NAMES", qc._TASK_NAMES | {"spy_task"})
-    monkeypatch.setattr(settings, "QUEUE_ENABLED", True)
+    monkeypatch.setattr(qc, "_QUEUE_ENABLED", True)
     monkeypatch.setattr(settings, "REDIS_URL", None)
     # 重置连接池惰性状态，确保走 _get_pool 的"未配 broker"分支
     monkeypatch.setattr(qc, "_pool", None)

@@ -37,7 +37,11 @@ await enqueue(example_send_notification, user_id=1, message="hi")
 
 ## 配置
 
-`app/core/config.py`：`QUEUE_ENABLED`（默认 `False`）。broker 复用 `REDIS_URL`。
+`QUEUE_ENABLED`（默认 `False`）**由队列模块自己读取**（`client.py:_read_queue_enabled`），
+**刻意不放进核心 `Settings`**——保持 core 不依赖 queue、删模块后 config.py 无残留孤儿字段。
+读取顺序：真实环境变量 `QUEUE_ENABLED` 优先，缺失则回退 `ENV_FILE` 指向的 .env 文件
+（所以 .env 里写 `QUEUE_ENABLED=True` 也生效）。broker 仍复用核心 `settings.REDIS_URL`
+（Redis 是限流/缓存共用的基础设施，合理留在 Settings）。
 
 | 场景 | enqueue 行为 |
 |---|---|

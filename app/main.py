@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app import __version__
 from app.api import api_router
 from app.core.config import settings
 from app.core.loguru_logger import get_logger
@@ -92,9 +93,13 @@ async def _initialize_redis(logger):
 
 
 async def _log_startup_status(logger):
-    """输出应用启动状态"""
-    logger.info("服务器地址: http://0.0.0.0:8000")
-    logger.info(f"API文档: http://0.0.0.0:8000{settings.API_V1_STR}/docs")
+    """输出应用启动状态。
+
+    实际绑定地址由 uvicorn 自行打印（随 --host/--port 变化），这里只记相对路径，
+    避免硬编码 host:port 与真实绑定不一致。
+    """
+    logger.info(f"API 文档路径: {settings.API_V1_STR}/docs")
+    logger.info(f"OpenAPI: {settings.API_V1_STR}/openapi.json")
 
 
 @asynccontextmanager
@@ -118,7 +123,7 @@ async def lifespan(app: FastAPI):
     await _initialize_redis(logger)
 
     await _log_startup_status(logger)
-    logger.info("FastAPI RBAC Framework 已启动成功 - version: 1.0.0")
+    logger.info(f"FastAPI RBAC Framework 已启动成功 - version: {__version__}")
 
     yield
 
@@ -127,14 +132,14 @@ async def lifespan(app: FastAPI):
 
     await close_redis_client()
     shutdown_telemetry()  # flush 并释放 OTel providers（未启用时 no-op）
-    logger.info("应用已安全关闭 - version: 1.0.0")
+    logger.info(f"应用已安全关闭 - version: {__version__}")
 
 
 # 创建FastAPI应用实例
 app = FastAPI(
     title=settings.PROJECT_NAME,
     description="企业级FastAPI框架，包含RBAC权限管理系统",
-    version="1.0.0",
+    version=__version__,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     lifespan=lifespan,
     docs_url=f"{settings.API_V1_STR}/docs",
