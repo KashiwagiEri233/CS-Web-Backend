@@ -1,0 +1,7 @@
+# 异步任务队列（可选模块 app/core/queue/）。
+# 不用队列的项目无需安装本文件——核心 requirements.txt 不含队列依赖。
+# 启用步骤见 docs/system/queue.md：
+#   pip install -r requirements-queue.txt
+#   配置 QUEUE_ENABLED=True 与 REDIS_URL（broker）
+#   起 worker：arq app.core.queue.worker.WorkerSettings
+arq==0.28.0

@@ -9,7 +9,8 @@ docs/
 ├── README.md              # 本文件：分类约定 + 文档模板 + 索引
 ├── system/                # 系统级：框架/基础设施，与具体业务无关
 │   ├── exception_handling.md   # 异常体系（自定义异常 + 全局处理器 + 中间件）
-│   └── observability.md        # 可观测性（OpenTelemetry traces/metrics）
+│   ├── observability.md        # 可观测性（OpenTelemetry traces/metrics）
+│   └── queue.md                # 异步任务队列（arq，可选/可删除模块）
 └── modules/               # 业务模块级：与具体业务实体绑定
     ├── auth.md            # 认证（登录/注册/刷新/登出）
     ├── users.md           # 用户管理（CRUD）
@@ -80,6 +81,7 @@ docs/
 |---|---|---|
 | [exception_handling.md](system/exception_handling.md) | `app/core/exceptions/` | ✅ |
 | [observability.md](system/observability.md) | `app/core/observability.py`、运维端点 | ✅ |
+| [queue.md](system/queue.md) | `app/core/queue/`（可选模块，arq） | ✅ |
 | _rate_limit.md_ | `app/core/rate_limit/`、`app/middleware/rate_limit.py` | ⬜ 待补 |
 | _cache.md_ | `app/core/cache/` | ⬜ 待补 |
 | _security_auth.md_ | `app/core/security.py`、`app/middleware/rbac.py` | ⬜ 待补 |
