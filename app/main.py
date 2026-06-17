@@ -165,10 +165,10 @@ app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(ExceptionHandlerMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,  # 从配置文件读取允许的源
+    allow_origins=settings.allowed_origins_list,
     allow_credentials=True,
-    allow_methods=settings.ALLOWED_METHODS,  # 从配置文件读取允许的方法
-    allow_headers=settings.ALLOWED_HEADERS,  # 从配置文件读取允许的头部
+    allow_methods=settings.allowed_methods_list,
+    allow_headers=settings.allowed_headers_list,
 )
 
 # 注册API路由

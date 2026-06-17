@@ -46,10 +46,11 @@ class Settings(BaseSettings):
     DB_AUTO_CREATE_DATABASE: bool = True
     DB_MAINTENANCE_DB: str = "postgres"  # 用于建库的维护库名
     
-    # CORS配置
-    ALLOWED_ORIGINS: list = ["http://localhost:3000", "http://localhost:8080", "http://127.0.0.1:3000", "http://127.0.0.1:8080"]
-    ALLOWED_METHODS: list = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
-    ALLOWED_HEADERS: list = ["*"]
+    # CORS配置（.env 文件里写逗号分隔字符串，如 ALLOWED_ORIGINS=http://a,http://b）
+    # 用 str 类型 + validator 转 list，避免 pydantic-settings v2 对 list 字段强制 JSON 解析
+    ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:8080,http://127.0.0.1:3000,http://127.0.0.1:8080"
+    ALLOWED_METHODS: str = "GET,POST,PUT,DELETE,OPTIONS"
+    ALLOWED_HEADERS: str = "*"
     
     # 安全配置
     RATE_LIMIT_CALLS: int = 100  # 每个时间窗口允许的请求数
@@ -97,6 +98,30 @@ class Settings(BaseSettings):
             f"postgresql+asyncpg://{d.get('DATABASE_USER')}:{d.get('DATABASE_PASSWORD')}"
             f"@{d.get('DATABASE_HOST')}:{d.get('DATABASE_PORT')}/{d.get('DATABASE_NAME')}"
         )
+
+    @field_validator("ALLOWED_ORIGINS", "ALLOWED_METHODS", "ALLOWED_HEADERS", mode="before")
+    @classmethod
+    def parse_comma_separated_list(cls, v):
+        """统一接受 str（逗号分隔）或 list 输入，存储为逗号分隔 str。
+
+        main.py 通过 allowed_origins_list / allowed_methods_list / allowed_headers_list
+        获取 list 形式（见下方 model_validator）。
+        """
+        if isinstance(v, list):
+            return ",".join(str(item) for item in v)
+        return v
+
+    @property
+    def allowed_origins_list(self) -> list[str]:
+        return [s.strip() for s in self.ALLOWED_ORIGINS.split(",") if s.strip()]
+
+    @property
+    def allowed_methods_list(self) -> list[str]:
+        return [s.strip() for s in self.ALLOWED_METHODS.split(",") if s.strip()]
+
+    @property
+    def allowed_headers_list(self) -> list[str]:
+        return [s.strip() for s in self.ALLOWED_HEADERS.split(",") if s.strip()]
 
     @field_validator("SECRET_KEY", mode="before")
     @classmethod

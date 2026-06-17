@@ -11,12 +11,7 @@ from sqlalchemy import select, delete, and_, or_, func, desc, asc
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.exception_log import (
-    ExceptionLog,
-    ExceptionPattern,
-    ExceptionAlert,
-    ExceptionMetrics,
-)
+from app.models.exception_log import ExceptionLog
 
 
 class ExceptionLogRepository:
@@ -308,12 +303,3 @@ class ExceptionLogRepository:
             "by_user": by_user,
         }
 
-
-# 向后兼容：从拆分后的模块重新导出
-from app.repositories.exception_pattern_repo import (
-    ExceptionPatternRepository,
-)  # noqa: F401
-from app.repositories.exception_alert_repo import ExceptionAlertRepository  # noqa: F401
-from app.repositories.exception_metrics_repo import (
-    ExceptionMetricsRepository,
-)  # noqa: F401
