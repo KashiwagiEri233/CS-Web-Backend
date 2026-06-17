@@ -4,8 +4,11 @@
 """
 
 import traceback
+from datetime import datetime
 from typing import Any, Dict, Optional, Union
 from uuid import uuid4
+
+from .error_codes import ErrorCode
 
 
 class BaseAppException(Exception):
@@ -45,7 +48,7 @@ class BaseAppException(Exception):
         self.cause = cause
         self.headers = headers
         self.traceback_id = str(uuid4())  # 用于跟踪异常的唯一ID
-        self.timestamp = None  # 将在处理器中设置
+        self.timestamp: Optional[datetime] = None  # 将在处理器中设置
     
     def to_dict(self) -> Dict[str, Any]:
         """将异常转换为字典格式"""
@@ -91,7 +94,7 @@ class BusinessException(BaseAppException):
     ):
         super().__init__(
             message=message,
-            error_code=error_code or "BUSINESS_ERROR",
+            error_code=error_code or ErrorCode.Business.BUSINESS_ERROR,
             status_code=400,
             details=details,
             context=context
@@ -115,7 +118,7 @@ class AuthenticationException(BaseAppException):
             headers = {"WWW-Authenticate": "Bearer"}
         super().__init__(
             message=message,
-            error_code=error_code or "AUTHENTICATION_FAILED",
+            error_code=error_code or ErrorCode.Auth.AUTHENTICATION_FAILED,
             status_code=401,
             details=details,
             context=context,
@@ -135,7 +138,7 @@ class AuthorizationException(BaseAppException):
     ):
         super().__init__(
             message=message,
-            error_code=error_code or "AUTHORIZATION_FAILED",
+            error_code=error_code or ErrorCode.Authorization.AUTHORIZATION_FAILED,
             status_code=403,
             details=details,
             context=context
@@ -154,7 +157,7 @@ class ValidationException(BaseAppException):
     ):
         super().__init__(
             message=message,
-            error_code=error_code or "VALIDATION_FAILED",
+            error_code=error_code or ErrorCode.Validation.VALIDATION_FAILED,
             status_code=422,
             details=details,
             context=context
@@ -189,7 +192,7 @@ class NotFoundException(BaseAppException):
             
         super().__init__(
             message=detailed_message,
-            error_code="RESOURCE_NOT_FOUND",
+            error_code=ErrorCode.NotFound.RESOURCE_NOT_FOUND,
             status_code=404,
             details=error_details,
             context=context
@@ -208,7 +211,7 @@ class ConflictException(BaseAppException):
     ):
         super().__init__(
             message=message,
-            error_code=error_code or "RESOURCE_CONFLICT",
+            error_code=error_code or ErrorCode.Conflict.RESOURCE_CONFLICT,
             status_code=409,
             details=details,
             context=context
@@ -244,7 +247,7 @@ class DatabaseException(BaseAppException):
             
         super().__init__(
             message=detailed_message,
-            error_code="DATABASE_ERROR",
+            error_code=ErrorCode.Database.DATABASE_ERROR,
             status_code=500,
             details=error_details,
             context=context,
@@ -280,7 +283,7 @@ class ExternalServiceException(BaseAppException):
             
         super().__init__(
             message=detailed_message,
-            error_code="EXTERNAL_SERVICE_ERROR",
+            error_code=ErrorCode.ExternalService.EXTERNAL_SERVICE_ERROR,
             status_code=status_code,
             details=error_details,
             context=context,
@@ -308,7 +311,7 @@ class RateLimitException(BaseAppException):
             
         super().__init__(
             message=message,
-            error_code="RATE_LIMIT_EXCEEDED",
+            error_code=ErrorCode.RateLimit.RATE_LIMIT_EXCEEDED,
             status_code=429,
             details=error_details,
             context=context
@@ -340,7 +343,7 @@ class UserAlreadyExistsException(ConflictException):
         
         super().__init__(
             message=message,
-            error_code="USER_ALREADY_EXISTS",
+            error_code=ErrorCode.Conflict.USER_ALREADY_EXISTS,
             details=error_details
         )
 
@@ -351,7 +354,7 @@ class InvalidCredentialsException(AuthenticationException):
     def __init__(self, details: Optional[Dict[str, Any]] = None):
         super().__init__(
             message="用户名或密码错误",
-            error_code="INVALID_CREDENTIALS",
+            error_code=ErrorCode.Auth.INVALID_CREDENTIALS,
             details=details
         )
 
@@ -369,7 +372,7 @@ class UserNotActiveException(AuthenticationException):
             
         super().__init__(
             message=message,
-            error_code="USER_NOT_ACTIVE",
+            error_code=ErrorCode.Auth.USER_NOT_ACTIVE,
             details=error_details
         )
 
@@ -391,7 +394,7 @@ class PermissionDeniedException(AuthorizationException):
             
         super().__init__(
             message=message,
-            error_code="PERMISSION_DENIED",
+            error_code=ErrorCode.Authorization.PERMISSION_DENIED,
             details=error_details
         )
 

@@ -29,6 +29,7 @@ AI Agent 工作约定，作用域内优先于通用行为。配合 `CLAUDE.md`�
 | API 资源 | `app/api/v1/<name>.py`（`router = APIRouter()`） | `app/api/v1/__init__.py` → `api_router.include_router(router, prefix=..., tags=[...])` |
 | ORM 模型 | `app/models/<name>.py` | `app/models/__init__.py`：import + 加入 `__all__`（否则 `create_all` 与 alembic autogenerate 都看不到） |
 | 业务异常 | 继承 `BaseAppException`（`app/core/exceptions/base_exceptions.py`） | `app/core/exceptions/__init__.py` 的 `__all__`；若需专属处理逻辑，再在 `setup_exception_handlers` 注册 |
+| 错误码 | `ErrorCode` 命名空间（`app/core/exceptions/error_codes.py`） | 见下方「错误码（ErrorCode 注册表）」——禁止裸字符串 |
 | 中间件 | `app/middleware/<name>.py` | `app/main.py` 按顺序 `add_middleware`（见下方顺序约定） |
 | 配置项 | `app/core/config.py` 的 `Settings` | 同步加到 `.env.example` |
 | 迁移 | `alembic revision --autogenerate -m "..."`（改完模型后） | 提交前确认只有单一 head |
@@ -46,6 +47,43 @@ AI Agent 工作约定，作用域内优先于通用行为。配合 `CLAUDE.md`�
 6. 在 `app/api/v1/__init__.py` 注册 router。
 7. **建表/迁移**：按下方「Alembic 迁移管理」执行。
 8. 在 `tests/` 对应子包补测试。
+
+## 错误码（ErrorCode 注册表）
+
+错误码是客户端对照的契约，必须**单一事实源**。所有错误码常量集中定义在
+`app/core/exceptions/error_codes.py` 的 `ErrorCode` 类里，**禁止在异常类、handler、
+service、路由中写裸字符串**（如 `error_code="USER_NOT_FOUND"`）。
+
+### 组织方式：类命名空间
+
+`ErrorCode` 用嵌套类形成命名空间，访问形式固定为 `ErrorCode.<Namespace>.<NAME>`：
+
+```python
+from app.core.exceptions import ErrorCode
+
+raise AuthenticationException(error_code=ErrorCode.Auth.INVALID_CREDENTIALS)
+```
+
+当前命名空间**按异常类层次划分**（`Auth` / `Authorization` / `Validation` /
+`NotFound` / `Conflict` / `Database` / `ExternalService` / `RateLimit` /
+`Business` / `System`），因为现阶段所有异常都集中在 core。
+
+### 加一个错误码
+
+1. 在 `error_codes.py` 找到对应命名空间类，加 `XXX = "XXX"`（常量名 = 字符串值，便于全局检索）。
+2. 在抛出处引用 `ErrorCode.<Namespace>.XXX`，不要写字面量。
+3. 若该错误码对应 HTTP 异常的状态码兜底，登记到 `exception_handlers.py` 的 `_HTTP_ERROR_CODES`（同样用常量，不写字面量）。
+4. 仅 `response_models.py` 里 `json_schema_extra` 的示例 JSON 与 `f"HTTP_{status}"` 动态模板属例外，可保留字面量（前者是文档示例，后者是动态命名）。
+
+### 第二步预留：业务模块自治（演进方向，暂不执行）
+
+设计已为「错误码随业务模块走」预留，触发条件：某业务域长大、自成模块时。迁移步骤：
+
+1. 在业务模块内建 `app/services/<domain>/errors.py`，定义该域的 `class <Domain>ErrorCode: ...`。
+2. 把该域相关的内嵌命名空间类（连同其常量、对应的业务异常子类）整块从 core 搬过去。
+3. 在 `app/core/exceptions/__init__.py` 把业务模块的错误码 re-export 回全局 `ErrorCode`。
+
+**关键约束**：迁移后调用方写法 `ErrorCode.<Namespace>.<NAME>` **保持不变**，只有 import/定义位置变化——这是当前命名空间设计要守住的契约，新增错误码时不要破坏这种可迁移性（例如不要把多个业务域的码混塞进同一个命名空间类）。
 
 ## Alembic 迁移管理（核心：规避双轨爆炸）
 
@@ -110,7 +148,7 @@ python run.py --env 1
 - **权限**：用依赖 `require_permission / require_role / require_superuser`（`app/middleware/rbac.py`），不要用装饰器。
 - **中间件抛错**：中间件里要短路就 `return JSONResponse(...)`，**不要 `raise HTTPException`**（注册的处理器只覆盖路由层；中间件异常由最外层 `ExceptionHandlerMiddleware` 兜底映射状态码）。
 - **中间件顺序**（`main.py`，后 `add` 的在外层）：CORS → 异常处理 → 安全头 → 日志 → 指标 → 限流 → 认证限流。
-- **异常**：业务错误抛 `BaseAppException` 子类，别在路由里 `try/except` 吞掉再返回自定义格式。
+- **异常**：业务错误抛 `BaseAppException` 子类，别在路由里 `try/except` 吞掉再返回自定义格式；错误码一律用 `ErrorCode.*` 常量，禁止裸字符串（见「错误码（ErrorCode 注册表）」）。
 - **日志**：`from app.core.loguru_logger import get_logger`；禁止 `print`、禁止直接配置 loguru handler。
 - **Redis 可降级**：限流/缓存把 Redis 当增强项——未配置走内存、故障自动降级；不要把它写成强依赖。
 

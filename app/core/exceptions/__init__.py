@@ -3,6 +3,8 @@ FastAPI应用的异常处理模块
 提供自定义异常类体系、全局异常处理器和统一错误响应格式
 """
 
+from .error_codes import ErrorCode
+
 from .base_exceptions import (
     BaseAppException,
     BusinessException,
@@ -33,6 +35,9 @@ from .response_models import (
 )
 
 __all__ = [
+    # 错误码注册表
+    "ErrorCode",
+
     # 异常类
     "BaseAppException",
     "BusinessException",

@@ -17,6 +17,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.loguru_logger import get_logger
 from app.database import get_session
+from .error_codes import ErrorCode
 from .base_exceptions import (
     BaseAppException,
     BusinessException,
@@ -38,12 +39,14 @@ from .response_models import (
 
 logger = get_logger("exception_handler")
 
+# HTTP 状态码 → 错误码注册表。键为状态码，值取自 ErrorCode 命名空间，
+# 与对应业务异常子类保持同一事实源（修改错误码只需改 error_codes.py）。
 _HTTP_ERROR_CODES: Dict[int, str] = {
-    401: "AUTHENTICATION_FAILED",
-    403: "AUTHORIZATION_FAILED",
-    404: "RESOURCE_NOT_FOUND",
-    409: "RESOURCE_CONFLICT",
-    429: "RATE_LIMIT_EXCEEDED",
+    401: ErrorCode.Auth.AUTHENTICATION_FAILED,
+    403: ErrorCode.Authorization.AUTHORIZATION_FAILED,
+    404: ErrorCode.NotFound.RESOURCE_NOT_FOUND,
+    409: ErrorCode.Conflict.RESOURCE_CONFLICT,
+    429: ErrorCode.RateLimit.RATE_LIMIT_EXCEEDED,
 }
 
 
@@ -159,7 +162,7 @@ def create_validation_error_response(
         ))
     
     return ValidationErrorResponse(
-        error_code="VALIDATION_FAILED",
+        error_code=ErrorCode.Validation.VALIDATION_FAILED,
         message="数据验证失败",
         status_code=status_code,
         validation_errors=validation_errors,
@@ -229,7 +232,7 @@ def create_server_error_response(exc: Exception, request: Request) -> ErrorRespo
         logger.error(f"日志记录错误: {type(log_error).__name__}: {str(log_error)}")
     
     return ErrorResponse(
-        error_code="INTERNAL_SERVER_ERROR",
+        error_code=ErrorCode.System.INTERNAL_SERVER_ERROR,
         message="内部服务器错误",
         status_code=500,
         context=context,
@@ -243,12 +246,12 @@ def create_database_error_response(exc: SQLAlchemyError, request: Request) -> Er
     traceback_id = str(uuid.uuid4())
     
     # 确定错误类型和消息
-    error_code = "DATABASE_ERROR"
+    error_code = ErrorCode.Database.DATABASE_ERROR
     message = "数据库操作失败"
     details = {}
-    
+
     if isinstance(exc, IntegrityError):
-        error_code = "DATABASE_INTEGRITY_ERROR"
+        error_code = ErrorCode.Database.DATABASE_INTEGRITY_ERROR
         message = "数据库完整性错误"
         # 尝试提取更有用的信息
         if exc.orig:
@@ -374,7 +377,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         response,
         {
             "success": False,
-            "error_code": "VALIDATION_FAILED",
+            "error_code": ErrorCode.Validation.VALIDATION_FAILED,
             "message": "数据验证失败",
             "status_code": 422,
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -397,7 +400,7 @@ async def pydantic_validation_exception_handler(request: Request, exc: Validatio
         response,
         {
             "success": False,
-            "error_code": "VALIDATION_FAILED",
+            "error_code": ErrorCode.Validation.VALIDATION_FAILED,
             "message": "数据验证失败",
             "status_code": 422,
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -413,7 +416,7 @@ async def database_exception_handler(request: Request, exc: SQLAlchemyError) -> 
         response,
         {
             "success": False,
-            "error_code": "DATABASE_ERROR",
+            "error_code": ErrorCode.Database.DATABASE_ERROR,
             "message": "数据库操作失败",
             "status_code": 500,
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -434,7 +437,7 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
         response,
         {
             "success": False,
-            "error_code": "INTERNAL_SERVER_ERROR",
+            "error_code": ErrorCode.System.INTERNAL_SERVER_ERROR,
             "message": "内部服务器错误",
             "status_code": 500,
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -453,6 +456,11 @@ def setup_exception_handlers(app: FastAPI) -> None:
     Args:
         app: FastAPI应用实例
     """
+    # 说明：各 handler 的 exc 参数声明了比 Exception 更窄的类型（如 BaseAppException），
+    # 而 FastAPI 的 add_exception_handler 把 handler 形参类型化为宽泛的 Exception，
+    # 静态检查器据逆变规则会判为不兼容——这是 starlette/FastAPI 类型存根的已知误报，
+    # 运行时按异常类型精确派发完全正确，故对受影响的注册行定点豁免 arg-type。
+
     # 自定义应用异常（基类 + 所有业务子类，统一走 app_exception_handler）
     app_exception_types = (
         BaseAppException,
@@ -467,19 +475,19 @@ def setup_exception_handlers(app: FastAPI) -> None:
         RateLimitException,
     )
     for exc_type in app_exception_types:
-        app.add_exception_handler(exc_type, app_exception_handler)
+        app.add_exception_handler(exc_type, app_exception_handler)  # type: ignore[arg-type]
 
     # HTTP异常
-    app.add_exception_handler(HTTPException, http_exception_handler)
-    app.add_exception_handler(StarletteHTTPException, http_exception_handler)
+    app.add_exception_handler(HTTPException, http_exception_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(StarletteHTTPException, http_exception_handler)  # type: ignore[arg-type]
 
     # 验证异常
-    app.add_exception_handler(RequestValidationError, validation_exception_handler)
-    app.add_exception_handler(ValidationError, pydantic_validation_exception_handler)
+    app.add_exception_handler(RequestValidationError, validation_exception_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(ValidationError, pydantic_validation_exception_handler)  # type: ignore[arg-type]
 
     # 数据库异常（IntegrityError 是 SQLAlchemyError 子类，FastAPI 会按最具体匹配优先）
-    app.add_exception_handler(SQLAlchemyError, database_exception_handler)
-    app.add_exception_handler(IntegrityError, database_exception_handler)
+    app.add_exception_handler(SQLAlchemyError, database_exception_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(IntegrityError, database_exception_handler)  # type: ignore[arg-type]
 
     # 通用异常处理器（必须放在最后，作为后备）
     app.add_exception_handler(Exception, general_exception_handler)
@@ -534,7 +542,7 @@ class ExceptionHandlerMiddleware:
                 # 如果序列化失败，使用基本错误响应（保留原始状态码）
                 content = {
                     "success": False,
-                    "error_code": response.error_code if response else "INTERNAL_SERVER_ERROR",
+                    "error_code": response.error_code if response else ErrorCode.System.INTERNAL_SERVER_ERROR,
                     "message": response.message if response else "内部服务器错误",
                     "status_code": response.status_code if response else 500,
                     "traceback_id": response.traceback_id if response else None,
