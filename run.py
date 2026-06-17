@@ -2,7 +2,7 @@
 FastAPI RBAC Framework 启动脚本
 
 用法:
-    python run.py                    # 默认环境（.env），开发模式（热重载）
+    python run.py                    # 默认开发环境（.env.development），热重载
     python run.py --env 1            # 开发环境（.env.development）
     python run.py --env 2            # 测试环境（.env.test）
     python run.py --env 3            # 生产环境（.env）
@@ -31,8 +31,8 @@ def main():
         "--env",
         type=int,
         choices=[1, 2, 3],
-        default=None,
-        help="环境配置: 1=开发(.env.development) 2=测试(.env.test) 3=生产(.env)",
+        default=1,  # 默认开发环境：不带 --env 即加载 .env.development
+        help="环境配置: 1=开发(.env.development，默认) 2=测试(.env.test) 3=生产(.env)",
     )
     parser.add_argument(
         "--prod",

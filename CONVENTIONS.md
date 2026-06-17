@@ -104,6 +104,14 @@ api (路由)  →  service (业务)  →  repository (数据)  →  model (ORM)
 - 单函数圈复杂度建议 ≤ **10**；超过考虑用早返回、查表、策略对象拆分。
 - 避免深度嵌套的 `if/elif` 链，优先改写为「条件 → 动作」的映射。
 
+### 4.5 魔法值与单一事实源
+
+- **禁止散落的魔法值**：重复出现的字面量（版本号、地址、状态码字符串…）必须收敛到单一来源。
+- **版本号**：唯一定义在 `app/__init__.py` 的 `__version__`；`FastAPI(version=)`、OTel `service.version`、启动日志等一律引用它，升级只改一处。
+- **不硬编码 host:port**：绑定地址由 `run.py --host/--port`（uvicorn）决定，代码/日志**不要写死** `0.0.0.0:8000`——真实地址由 uvicorn 自行打印。
+- **错误码**：用 `ErrorCode.*` 常量（见 `AGENTS.md` 「错误码注册表」），禁止裸字符串。
+- **边界**：`Settings` 里带注释的默认值本身就是单一来源，不算魔法值；本地化、仅 1–2 处的字面量按三次法则可不抽。
+
 ---
 
 ## 5. 错误处理约定
@@ -130,12 +138,13 @@ api (路由)  →  service (业务)  →  repository (数据)  →  model (ORM)
 ## 7. 配置约定
 
 - 所有配置项定义在 `app/core/config.py` 的 `Settings` 类。
-- **新增配置字段必须同步 `.env.example`**，否则他人无法知道配置项。
-- 环境分层：
-  - `.env.development`（开发，`DB_AUTO_CREATE=True`）
+- **新增配置字段必须同步 `.env.example` 与 `.env.development`**，否则他人无法知道配置项。
+- 环境分层（`run.py` **默认不带参数即加载 `.env.development`**；`--env 2`=测试、`--env 3`=生产）：
+  - `.env.development`（开发，`DB_AUTO_CREATE=True`）—— **最全的参考样板**，所有可配字段都应在此列出。
   - `.env.test`（测试，`DB_AUTO_CREATE=True`）
   - `.env`（生产，`DB_AUTO_CREATE=False`，走 alembic）
 - **`SECRET_KEY` 必须从环境变量设置，禁止占位值**。
+- 例外：队列开关 `QUEUE_ENABLED` 由可选队列模块自读环境/.env（不在 `Settings`），见 `docs/system/queue.md`。
 
 ---
 

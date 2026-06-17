@@ -16,6 +16,20 @@ from app.core.exceptions import setup_exception_handlers, ExceptionHandlerMiddle
 from app.core.observability import setup_telemetry, shutdown_telemetry
 
 
+# 启动横幅（witchcat）。{name}/{version} 在 lifespan 里填充。
+_STARTUP_BANNER = r"""
+              /\                 /\
+             /  \               /  \         .  *  .
+            / /\ \             / /\ \    *  W I T C H   C A T  *
+           /_/  \_\___________/_/  \_\       .  *  .
+                    /\_____/\
+                   ( o     o )      {name}
+                   (    ^    )      v{version}
+                    ) ~~~~~ (       starting up...
+                   (_/     \_)
+"""
+
+
 async def _initialize_database(logger):
     """初始化数据库（按配置：先确保库存在，再决定是否自动建表）"""
     if settings.DB_AUTO_CREATE_DATABASE:
@@ -108,6 +122,7 @@ async def lifespan(app: FastAPI):
     logger = get_logger("main")
 
     # 应用启动
+    logger.info("\n" + _STARTUP_BANNER.format(name=settings.PROJECT_NAME, version=__version__))
     logger.info("FastAPI RBAC Framework 启动中...")
     if not settings.AUTH_ENABLED:
         logger.warning(
