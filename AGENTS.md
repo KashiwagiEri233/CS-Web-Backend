@@ -34,6 +34,7 @@ AI Agent 工作约定，作用域内优先于通用行为。配合 `CLAUDE.md`�
 | 配置项 | `app/core/config.py` 的 `Settings` | 同步加到 `.env.example` |
 | 迁移 | `alembic revision --autogenerate -m "..."`（改完模型后） | 提交前确认只有单一 head |
 | 测试 | `tests/<镜像 app 的子包>/test_*.py` | 子包需有 `__init__.py`（见 `tests/README.md`） |
+| 模块文档 | 系统级 → `docs/system/<x>.md`；业务级 → `docs/modules/<x>.md` | 登记到 `docs/README.md` 索引表；含「接口」节（见 `docs/README.md` 的分类约定与模板） |
 
 ## 加一个 API 资源（标准配方）
 

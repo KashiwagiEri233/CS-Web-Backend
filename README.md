@@ -126,8 +126,10 @@ FastAPI-foundation-framework/
 │   ├── core/                # 核心模块测试
 │   ├── integration/         # 集成测试
 │   └── middleware/          # 中间件测试
-├── docs/                    # 项目文档
-│   └── exception_handling.md
+├── docs/                    # 项目文档（按 系统级/业务模块级 分类，见 docs/README.md）
+│   ├── README.md            # 文档索引 + 分类约定 + 模板
+│   ├── system/              # 系统级（框架/基础设施）
+│   └── modules/             # 业务模块级（auth / users / rbac）
 ├── scripts/                 # 运维脚本
 │   └── init_database.py
 ├── .env.development         # 开发环境模板
@@ -156,4 +158,6 @@ CORS → ExceptionHandler → SecurityHeaders → Logging → Metrics → RateLi
 | `ARCHITECTURE.md` | 系统设计与模块关系、分层架构、请求生命周期 |
 | `CONVENTIONS.md` | 编码规范、命名、质量红线、安全/错误处理约定 |
 | `tests/README.md` | 测试目录组织与运行方式 |
-| `docs/exception_handling.md` | 异常处理体系详解 |
+| `docs/README.md` | 模块文档索引、系统级/业务模块级分类约定、文档模板 |
+| `docs/system/` | 系统级模块详解（异常体系、可观测性…） |
+| `docs/modules/` | 业务模块详解（认证、用户管理、RBAC） |

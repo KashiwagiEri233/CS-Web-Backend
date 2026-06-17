@@ -274,4 +274,4 @@ core/security, middleware/rbac
 - `AGENTS.md` — AI Agent 扩展约定、中心注册点、Alembic 迁移管理、不变量。
 - `CONVENTIONS.md` — 编码规范、命名、质量红线、安全/错误处理约定。
 - `tests/README.md` — 测试目录组织与运行方式。
-- `docs/exception_handling.md` — 异常处理体系详解。
+- `docs/README.md` — 模块文档索引与「系统级/业务模块级」分类约定；详解见 `docs/system/`、`docs/modules/`。
