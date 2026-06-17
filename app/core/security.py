@@ -1,14 +1,23 @@
+import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Union
 
+import bcrypt
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 
 from app.core.config import settings
 
-# 密码加密上下文
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# bcrypt 最多处理 72 字节密码，超出部分截断（与 bcrypt 算法规范一致）
+_BCRYPT_MAX_BYTES = 72
+
+
+def _truncate_for_bcrypt(password: str) -> bytes:
+    """截断超长密码到 bcrypt 的 72 字节上限。"""
+    raw = password.encode("utf-8")
+    if len(raw) > _BCRYPT_MAX_BYTES:
+        return raw[:_BCRYPT_MAX_BYTES]
+    return raw
 
 
 def generate_token_jti() -> str:
@@ -26,27 +35,27 @@ def hash_refresh_token(token: str) -> str:
 
     用 sha256 而非 bcrypt：refresh token 足够长且高熵，bcrypt 是为了抵抗低熵密码的离线穷举。
     """
-    import hashlib
-
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """验证密码"""
-    # bcrypt有72字节的限制，所以需要截断长密码
-    if len(plain_password.encode("utf-8")) > 72:
-        plain_password = plain_password.encode("utf-8")[:72].decode(
-            "utf-8", errors="ignore"
+    """验证密码（bcrypt）。"""
+    try:
+        return bcrypt.checkpw(
+            _truncate_for_bcrypt(plain_password),
+            hashed_password.encode("utf-8"),
         )
-    return pwd_context.verify(plain_password, hashed_password)
+    except (ValueError, TypeError):
+        # 哈希格式不合法（旧数据/损坏），返回 False 而非抛异常
+        return False
 
 
 def get_password_hash(password: str) -> str:
-    """生成密码哈希"""
-    # bcrypt有72字节的限制，所以需要截断长密码
-    if len(password.encode("utf-8")) > 72:
-        password = password.encode("utf-8")[:72].decode("utf-8", errors="ignore")
-    return pwd_context.hash(password)
+    """生成密码哈希（bcrypt）。"""
+    return bcrypt.hashpw(
+        _truncate_for_bcrypt(password),
+        bcrypt.gensalt(),
+    ).decode("utf-8")
 
 
 def create_access_token(
