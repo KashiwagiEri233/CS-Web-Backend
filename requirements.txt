@@ -32,6 +32,9 @@ mypy==1.8.0
 # 日志
 loguru==0.7.2
 
+# 其他
+email_validator ==2.3.0
+
 # 可观测性 OpenTelemetry（可选：OTEL_ENABLED=False 时不加载，traces+metrics 经 OTLP 导出）
 opentelemetry-sdk==1.42.1
 opentelemetry-exporter-otlp==1.42.1
