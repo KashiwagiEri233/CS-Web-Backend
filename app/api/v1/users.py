@@ -12,24 +12,27 @@ from app.database import get_db
 from app.dependencies import get_current_active_user, get_current_superuser
 from app.models.user import User
 from app.repositories.user_repo import UserRepository
+from app.schemas.pagination import PaginatedResponse, PaginationParams
 from app.schemas.user import UserResponse, UserCreate, UserUpdate
 
 router = APIRouter()
 
 
-@router.get("/", response_model=List[UserResponse])
+@router.get("/", response_model=PaginatedResponse[UserResponse])
 async def read_users(
-    skip: int = 0,
-    limit: int = 100,
+    pagination: PaginationParams = Depends(),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_superuser)
 ) -> Any:
     """
-    获取用户列表（需要超级用户权限）
+    获取用户列表（需要超级用户权限，分页）
     """
     user_repo = UserRepository(db)
-    users = await user_repo.get_all(skip=skip, limit=limit)
-    return users
+    users = await user_repo.get_all(skip=pagination.skip, limit=pagination.limit)
+    total = await user_repo.count()
+    return PaginatedResponse(
+        items=users, total=total, skip=pagination.skip, limit=pagination.limit
+    )
 
 
 @router.get("/me", response_model=UserResponse)

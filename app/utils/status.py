@@ -65,6 +65,25 @@ async def check_database_connection() -> Dict[str, Any]:
         return {"status": "error", "message": f"Connection failed: {str(e)}"}
 
 
+async def check_redis_connection() -> Dict[str, Any]:
+    """检查 Redis 连接状态。
+
+    未配置 REDIS_URL 时返回 not_configured（视为正常，限流/缓存走内存降级）；
+    已配置但 ping 失败返回 error。
+    """
+    if not settings.REDIS_URL:
+        return {"status": "not_configured"}
+
+    try:
+        from app.core.redis_client import ping_redis
+
+        if await ping_redis():
+            return {"status": "connected"}
+        return {"status": "error", "message": "Redis ping failed"}
+    except Exception as e:  # 探测本身异常不应让 /readyz 抛 500
+        return {"status": "error", "message": str(e)}
+
+
 async def check_application_status() -> Dict[str, Any]:
     """
     检查应用整体状态
@@ -75,4 +94,5 @@ async def check_application_status() -> Dict[str, Any]:
     return {
         "application": "running",
         "database": await check_database_connection(),
+        "redis": await check_redis_connection(),
     }

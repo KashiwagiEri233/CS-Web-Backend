@@ -17,10 +17,17 @@ class Base(DeclarativeBase):
 
 
 # 创建异步数据库引擎
+# 连接池参数由 Settings 驱动（见 config.py DB_POOL_*）：生产下 pool_pre_ping 防陈旧连接，
+# pool_recycle 主动回收长连接，pool_size/max_overflow 控制并发上限。
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=False,
     future=True,
+    pool_size=settings.DB_POOL_SIZE,
+    max_overflow=settings.DB_MAX_OVERFLOW,
+    pool_timeout=settings.DB_POOL_TIMEOUT,
+    pool_recycle=settings.DB_POOL_RECYCLE,
+    pool_pre_ping=settings.DB_POOL_PRE_PING,
 )
 
 # 创建异步会话工厂

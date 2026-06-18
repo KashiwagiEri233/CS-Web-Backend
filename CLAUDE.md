@@ -40,6 +40,7 @@ python run.py --env 3 --prod   # 生产 + 多 worker
 ## 配置（定义在 `app/core/config.py` 的 `Settings`，新增字段须同步 `.env.example`）
 - `SECRET_KEY` 必须从环境变量设置，禁止占位值。
 - `DB_AUTO_CREATE`（生产置 False，走 alembic）、`DB_AUTO_CREATE_DATABASE`（启动时缺库则自动建）。
+- 连接池 `DB_POOL_SIZE`/`DB_MAX_OVERFLOW`/`DB_POOL_TIMEOUT`/`DB_POOL_RECYCLE`/`DB_POOL_PRE_PING`（均有默认值，引擎在 `database.py` 由这些字段构建；生产保持 `pool_pre_ping=True`）。
 - `REDIS_URL`（空=纯内存）、`RATE_LIMIT_FALLBACK` / `CACHE_FALLBACK`。
 - `ADMIN_PASSWORD`（空=首启随机生成、日志只提示一次；配置则不写日志）。
 - `LOG_PROFILE=dev|prod`（dev=DEBUG+彩色控制台；prod=INFO+JSON+文件轮转）。
@@ -54,9 +55,14 @@ python run.py --env 3 --prod   # 生产 + 多 worker
 - **必须装 `tzdata`**（已在 requirements.txt）：Windows / alpine / distroless 无系统 IANA 库，缺它 `ZoneInfo("Asia/Shanghai")` 会失败——展示层静默回退 UTC（差 8 小时）、且 `config._validate_timezone` 会误报"时区非法"启动失败。改非 UTC 时区前先确保已装。
 
 ## 运维端点（无版本前缀，根路径挂载）
-- `/health` liveness（浅检查，进程存活）；`/readyz` readiness（探 DB，不通返回 503）。
+- `/health` liveness（浅检查，进程存活）；`/readyz` readiness（探 DB+Redis，DB 不通返回 503；Redis 可降级故只报告不影响就绪）。
 - `/metrics/json` 手搓内存指标（单实例速览）；分布式监控用 OTel（OTLP 导出，含延迟分位数）。
 - `/status` 应用各组件状态明细。
+
+## 分层约定
+- **仓储**：继承 `app/repositories/base.py` 的 `BaseRepository[Model]`（设类属性 `model`），即得通用 `get_by_id/get_all/count/create/update/delete`；特化查询在子类追加。不要再逐个 repo 重写 CRUD。
+- **列表接口**：查询参数用 `PaginationParams`（`Depends()`，`?skip=&limit=`），响应用 `PaginatedResponse[T]`（`app/schemas/pagination.py`，含 `items/total/skip/limit`），保持各列表接口结构一致。
+- **出参时间**：见上「时区」——带 datetime 的响应模型继承 `TZModel`。
 
 ## 数据库迁移
 - 单一 baseline；改模型后 `alembic revision --autogenerate -m "..."` → `alembic upgrade head`。

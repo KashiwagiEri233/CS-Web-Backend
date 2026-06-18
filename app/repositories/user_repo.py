@@ -1,65 +1,30 @@
-from typing import Optional, List
+from typing import Optional
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.user import User
+from app.repositories.base import BaseRepository
 
 
-class UserRepository:
-    def __init__(self, db: AsyncSession):
-        self.db = db
-    
-    async def get_by_id(self, user_id: int) -> Optional[User]:
-        """通过ID获取用户"""
-        stmt = select(User).where(User.id == user_id)
-        result = await self.db.execute(stmt)
-        return result.scalar_one_or_none()
-    
+class UserRepository(BaseRepository[User]):
+    """用户仓储。通用 CRUD（get_by_id/get_all/count/create/update/delete）继承自 BaseRepository，
+    此处仅保留用户特有查询。"""
+
+    model = User
+
     async def get_by_username(self, username: str) -> Optional[User]:
         """通过用户名获取用户"""
         stmt = select(User).where(User.username == username)
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
-    
+
     async def get_by_email(self, email: str) -> Optional[User]:
         """通过邮箱获取用户"""
         stmt = select(User).where(User.email == email)
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
-    
-    async def get_all(self, skip: int = 0, limit: int = 100) -> List[User]:
-        """获取所有用户"""
-        stmt = select(User).offset(skip).limit(limit)
-        result = await self.db.execute(stmt)
-        return result.scalars().all()
-    
-    async def create(self, user_data: dict) -> User:
-        """创建用户"""
-        user = User(**user_data)
-        self.db.add(user)
-        await self.db.commit()
-        await self.db.refresh(user)
-        return user
-    
-    async def update(self, user: User) -> User:
-        """更新用户"""
-        self.db.add(user)
-        await self.db.commit()
-        await self.db.refresh(user)
-        return user
-    
-    async def delete(self, user_id: int) -> bool:
-        """删除用户"""
-        user = await self.get_by_id(user_id)
-        if not user:
-            return False
-        
-        await self.db.delete(user)
-        await self.db.commit()
-        return True
-    
+
     async def get_user_with_roles(self, user_id: int) -> Optional[User]:
         """获取用户及其角色"""
         stmt = select(User).options(selectinload(User.roles)).where(User.id == user_id)

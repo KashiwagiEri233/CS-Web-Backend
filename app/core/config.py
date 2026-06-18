@@ -18,7 +18,14 @@ class Settings(BaseSettings):
     DATABASE_NAME: str = "domefff"
     DATABASE_USER: str = "postgres"
     DATABASE_PASSWORD: Optional[str] = None
-    
+
+    # 连接池（生产参数）。异步引擎默认 AsyncAdaptedQueuePool。
+    DB_POOL_SIZE: int = 10        # 常驻连接数
+    DB_MAX_OVERFLOW: int = 20     # 峰值可额外创建的连接数
+    DB_POOL_TIMEOUT: int = 30     # 池满时等待可用连接的超时（秒）
+    DB_POOL_RECYCLE: int = 1800   # 连接最大存活（秒），主动回收，避免被 PG/中间件掐断的陈旧连接
+    DB_POOL_PRE_PING: bool = True # 取连接前先 ping，自动剔除失效连接（生产强烈建议开）
+
     # JWT 配置
     SECRET_KEY: Optional[str] = None  # 强制要求从环境变量设置（见 validate_secret_key）
     ALGORITHM: str = "HS256"

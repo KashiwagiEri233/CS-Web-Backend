@@ -1,20 +1,10 @@
-from typing import Optional
-
-from pydantic import BaseModel
-
-
-class UserBase(BaseModel):
-    username: str
-    email: str
-    full_name: Optional[str] = None
-    is_active: bool = True
-
-
 from typing import Optional, Any
+
 from pydantic import BaseModel, field_validator, EmailStr, ConfigDict
+
 from app.core.validators import (
-    validate_password_strength, 
-    validate_username, 
+    validate_password_strength,
+    validate_username,
     validate_email,
 )
 
