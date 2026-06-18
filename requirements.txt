@@ -36,6 +36,9 @@ loguru==0.7.2
 
 # 其他
 email_validator ==2.3.0
+# 时区数据：Windows / alpine / distroless 等无系统 IANA 库的环境，zoneinfo 必须靠此包，
+# 否则 ZoneInfo("Asia/Shanghai") 抛 ZoneInfoNotFoundError，展示层时区静默回退 UTC（差 8 小时）。
+tzdata>=2024.1
 
 # 可观测性 OpenTelemetry（可选：OTEL_ENABLED=False 时不加载，traces+metrics 经 OTLP 导出）
 opentelemetry-sdk==1.42.1

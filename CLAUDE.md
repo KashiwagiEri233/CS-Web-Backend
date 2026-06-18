@@ -47,6 +47,12 @@ python run.py --env 3 --prod   # 生产 + 多 worker
 - `OTEL_ENABLED`（可观测性，默认 False=no-op）、`OTEL_EXPORTER_OTLP_ENDPOINT`（OTLP collector；空+启用=降级控制台）、`OTEL_TRACES_SAMPLER_RATIO`。启用后自动埋点 FastAPI/SQLAlchemy/Redis，traces+metrics 经 OTLP 导出。
 - 异步任务队列（arq，**可选模块**）：开关 `QUEUE_ENABLED` 由队列模块自读环境变量/.env（**不在 Settings**），默认 eager 就地执行；core 不依赖，可整建删除 `app/core/queue/`。详见 `docs/system/queue.md`。
 
+## 时区（双时区约定：核心 UTC / 展示本地）
+- **核心/存储一律 UTC**：DB 列用 `DateTime(timezone=True)`、默认值/JWT/token 过期/缓存过期全部走 `app/core/timezone.py` 的 `now_utc()`。**禁止** `datetime.now()`（naive 本地）/ `datetime.utcnow()`（naive）/ 裸 `datetime.now(timezone.utc)`——统一走 `now_utc()`，便于测试 mock。
+- **展示用本地时区**：由 `settings.TIMEZONE`（IANA 名，如 `Asia/Shanghai`）控制；存储的 UTC 经 `utc_to_local()` 转换后呈现。已接入**日志层**（`init_logging` 里 `_apply_timezone_patcher`，时间戳按 TIMEZONE 显示）。
+- **对外 API 出参也转本地**：出参模型继承 `app/schemas/base.py` 的 `TZModel`（带 `from_attributes`），其 `field_serializer("*")` 在序列化边界统一把 datetime 字段从 UTC 转 `settings.TIMEZONE` 并输出 ISO（带 `+08:00`）。**新增带 datetime 的响应模型必须继承 `TZModel`**，不要再手写 per-field serializer。错误响应模型（`ErrorResponse`/`ErrorContext`）同样继承 `TZModel`，故其 timestamp 也是本地时区。
+- **必须装 `tzdata`**（已在 requirements.txt）：Windows / alpine / distroless 无系统 IANA 库，缺它 `ZoneInfo("Asia/Shanghai")` 会失败——展示层静默回退 UTC（差 8 小时）、且 `config._validate_timezone` 会误报"时区非法"启动失败。改非 UTC 时区前先确保已装。
+
 ## 运维端点（无版本前缀，根路径挂载）
 - `/health` liveness（浅检查，进程存活）；`/readyz` readiness（探 DB，不通返回 503）。
 - `/metrics/json` 手搓内存指标（单实例速览）；分布式监控用 OTel（OTLP 导出，含延迟分位数）。

@@ -57,6 +57,10 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        # 给迁移连接设锁超时：DDL 拿不到锁时 10 秒内快速失败（抛 LockNotAvailable），
+        # 而不是无限等待——否则启动期迁移卡在某个锁上会表现成"日志静默、应用起不来"，
+        # 难以排查。失败会明确抛错，由上层 _run_alembic_upgrade 记录。
+        connection.exec_driver_sql("SET lock_timeout = '10s'")
         context.configure(
             connection=connection,
             target_metadata=target_metadata,

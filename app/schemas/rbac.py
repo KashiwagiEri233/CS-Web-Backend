@@ -1,7 +1,9 @@
 from typing import List, Optional
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, field_serializer
+from pydantic import BaseModel
+
+from app.schemas.base import TZModel
 
 
 class PermissionBase(BaseModel):
@@ -22,18 +24,10 @@ class PermissionUpdate(BaseModel):
     description: Optional[str] = None
 
 
-class Permission(PermissionBase):
+class Permission(PermissionBase, TZModel):
     id: int
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-    
-    model_config = ConfigDict(from_attributes=True)
-    
-    @field_serializer('created_at', 'updated_at')
-    def serialize_datetime(self, value: Optional[datetime]) -> Optional[str]:
-        if value:
-            return value.isoformat()
-        return None
 
 
 class RoleBase(BaseModel):
@@ -52,19 +46,11 @@ class RoleUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class Role(RoleBase):
+class Role(RoleBase, TZModel):
     id: int
     permissions: List[Permission] = []
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-    
-    model_config = ConfigDict(from_attributes=True)
-    
-    @field_serializer('created_at', 'updated_at')
-    def serialize_datetime(self, value: Optional[datetime]) -> Optional[str]:
-        if value:
-            return value.isoformat()
-        return None
 
 
 class UserRoleAssignment(BaseModel):

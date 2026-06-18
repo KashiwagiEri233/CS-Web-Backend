@@ -8,10 +8,15 @@ from typing import Any, Dict, List, Optional, Union
 from pydantic import BaseModel, Field, ConfigDict
 
 from app.core.timezone import now_utc
+from app.schemas.base import TZModel
 
 
-class ErrorContext(BaseModel):
-    """错误上下文信息"""
+class ErrorContext(TZModel):
+    """错误上下文信息
+
+    继承 TZModel：timestamp 等 datetime 字段由基类序列化器统一转 settings.TIMEZONE
+    并输出 ISO 字符串（兼容 JSONResponse 的 python 模式 model_dump），无需再手写 model_dump。
+    """
 
     request_id: Optional[str] = Field(None, description="请求唯一ID")
     user_id: Optional[Union[str, int]] = Field(None, description="用户ID")
@@ -20,16 +25,6 @@ class ErrorContext(BaseModel):
     endpoint: Optional[str] = Field(None, description="请求端点")
     method: Optional[str] = Field(None, description="HTTP方法")
     timestamp: Optional[datetime] = Field(None, description="错误发生时间")
-
-    model_config = ConfigDict(from_attributes=True)
-
-    def model_dump(self, **kwargs):
-        """重写 model_dump 方法以正确处理 datetime 对象"""
-        data = super().model_dump(**kwargs)
-        if "timestamp" in data and data["timestamp"] is not None:
-            if isinstance(data["timestamp"], datetime):
-                data["timestamp"] = data["timestamp"].isoformat()
-        return data
 
 
 class ErrorDetail(BaseModel):
@@ -50,8 +45,11 @@ class ErrorDetail(BaseModel):
     )
 
 
-class ErrorResponse(BaseModel):
-    """统一错误响应格式"""
+class ErrorResponse(TZModel):
+    """统一错误响应格式
+
+    继承 TZModel：timestamp 由基类序列化器统一转本地时区并输出 ISO 字符串。
+    """
 
     success: bool = Field(False, description="请求是否成功")
     error_code: str = Field(..., description="错误代码")
@@ -93,15 +91,6 @@ class ErrorResponse(BaseModel):
             }
         }
     )
-
-    def model_dump(self, **kwargs):
-        """重写 model_dump 方法以正确处理 datetime 对象"""
-        data = super().model_dump(**kwargs)
-        if "timestamp" in data and data["timestamp"] is not None:
-            if isinstance(data["timestamp"], datetime):
-                data["timestamp"] = data["timestamp"].isoformat()
-        return data
-
 
 class ValidationErrorResponse(ErrorResponse):
     """验证错误响应"""

@@ -8,10 +8,16 @@ import logging
 import sys
 import uuid
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Union
 from pathlib import Path
 from contextvars import ContextVar
+
+try:
+    # Python 3.9+ 标准库时区支持（跨平台，无需 time.tzset）
+    from zoneinfo import ZoneInfo
+except ImportError:  # pragma: no cover
+    ZoneInfo = None  # type: ignore
 
 from loguru import logger as loguru_logger
 
@@ -619,6 +625,37 @@ def setup_uvicorn_logging() -> None:
         uv_logger.propagate = False
 
 
+def _apply_timezone_patcher(timezone_name: str) -> None:
+    """通过 loguru patcher 把每条日志记录的时间转换为指定时区。
+
+    跨平台方案：使用 zoneinfo（Python 3.9+ 标准库），不依赖 time.tzset()（POSIX 专用，
+    Windows 不支持）。仅影响日志展示层；数据库仍以 UTC 存储带时区列。
+
+    背景：config 里有 TIMEZONE 配置项（含校验与 tzinfo 属性），但若不在此应用，
+    loguru 会默认用机器本地时间打日志——配置项形同虚设（UTC 容器里日志显示 UTC，
+    与 TIMEZONE 设置无关）。本函数把该配置真正接到日志层。
+
+    Args:
+        timezone_name: IANA 时区名（如 "Asia/Shanghai"、"UTC"）。无效则回退到 UTC。
+    """
+    if ZoneInfo is None:
+        # Python < 3.9 无 zoneinfo，跳过（loguru 默认用本地时间）
+        return
+
+    try:
+        tz = ZoneInfo(timezone_name)
+    except Exception:
+        # 无效时区名，回退到 UTC 避免日志崩溃
+        tz = timezone.utc
+
+    def _timezone_patcher(record):
+        # loguru 的 record["time"] 是带时区的 datetime（本地）；转换为配置时区用于展示
+        record["time"] = record["time"].astimezone(tz)
+        return record
+
+    loguru_logger.configure(patcher=_timezone_patcher)
+
+
 def init_logging(settings) -> None:
     """根据 settings 一键初始化日志（run.py 与应用启动 lifespan 共用）。
 
@@ -630,6 +667,11 @@ def init_logging(settings) -> None:
     Args:
         settings: 应用配置实例（含 LOG_* 字段）。以参数传入，避免本模块反向依赖 config。
     """
+    # 应用时区：通过 patcher 把每条日志记录的时间转换为配置时区（如 Asia/Shanghai）。
+    # 跨平台方案：使用 zoneinfo（Python 3.9+ 标准库），不依赖 time.tzset()（POSIX 专用）。
+    # 注意：数据库仍以 UTC 存储带时区列；此转换仅影响日志展示层。
+    _apply_timezone_patcher(getattr(settings, "TIMEZONE", "UTC"))
+
     log_config = resolve_log_config(
         profile=settings.LOG_PROFILE,
         level=settings.LOG_LEVEL,
