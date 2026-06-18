@@ -17,6 +17,7 @@ from app.core.security import (
     verify_token,
 )
 from app.core.security_blacklist import get_blacklist
+from app.core.timezone import now_utc
 from app.models.user import User
 from app.repositories.refresh_token_repo import RefreshTokenRepository
 from app.repositories.user_repo import UserRepository
@@ -193,9 +194,7 @@ class AuthService:
         if exp is None:
             return True
 
-        from datetime import datetime, timezone
-
-        remain = int(exp - datetime.now(timezone.utc).timestamp())
+        remain = int(exp - now_utc().timestamp())
         if remain <= 0:
             return True
 
@@ -216,8 +215,6 @@ class AuthService:
 
     @staticmethod
     def _refresh_expire_at():
-        from datetime import datetime, timezone
-
-        return datetime.now(timezone.utc) + timedelta(
+        return now_utc() + timedelta(
             days=settings.REFRESH_TOKEN_EXPIRE_DAYS
         )

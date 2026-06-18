@@ -3,7 +3,7 @@
 提供异常日志的数据库操作方法
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple, Union
 from uuid import uuid4
 
@@ -11,6 +11,7 @@ from sqlalchemy import select, delete, and_, or_, func, desc, asc
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.timezone import now_utc
 from app.models.exception_log import ExceptionLog
 
 
@@ -205,7 +206,7 @@ class ExceptionLogRepository:
             log_id=log_id,
             update_data={
                 "is_resolved": True,
-                "resolved_at": datetime.now(timezone.utc),
+                "resolved_at": now_utc(),
                 "resolved_by": resolved_by,
                 "resolution_notes": resolution_notes,
             },
@@ -239,7 +240,7 @@ class ExceptionLogRepository:
         Returns:
             统计信息
         """
-        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=time_window_hours)
+        cutoff_time = now_utc() - timedelta(hours=time_window_hours)
 
         # 总体统计
         total_result = await self.db.execute(

@@ -4,7 +4,7 @@
 模式识别/告警/指标已移除——如需 APM 能力建议接入专业工具（Sentry/Datadog）。
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, Optional
 
 from sqlalchemy import (
@@ -20,6 +20,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.timezone import now_utc
 from app.database import Base
 
 DateTime = _DateTime(timezone=True)
@@ -52,7 +53,7 @@ class ExceptionLog(Base):
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=lambda: datetime.now(timezone.utc),
+        default=now_utc,
         nullable=False,
         index=True,
         comment="创建时间",

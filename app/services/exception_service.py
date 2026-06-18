@@ -4,12 +4,13 @@
 模式识别/告警/指标采集已移除——如需 APM 建议接入 Sentry/Datadog。
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions.exception_logging import ExceptionLogger
+from app.core.timezone import now_utc
 from app.models.exception_log import ExceptionLog
 from app.repositories.exception_log_repo import ExceptionLogRepository
 
@@ -70,7 +71,7 @@ class ExceptionService:
         )
 
         exception_log_data = {
-            "traceback_id": log_record.get("traceback_id", datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")),
+            "traceback_id": log_record.get("traceback_id", now_utc().strftime("%Y%m%d%H%M%S%f")),
             "exception_type": "ValidationError",
             "error_code": "VALIDATION_FAILED",
             "exception_message": f"验证失败: {len(errors)} 个错误",

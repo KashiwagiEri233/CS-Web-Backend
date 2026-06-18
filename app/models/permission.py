@@ -1,9 +1,10 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import List, Optional
 
 from sqlalchemy import DateTime as _DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.timezone import now_utc
 from app.database import Base
 
 # 带时区的 DateTime（Postgres TIMESTAMP WITH TIME ZONE），与 UTC aware 约定对齐
@@ -21,12 +22,12 @@ class Permission(Base):
     )  # 操作名称，如"create", "read", "update", "delete"等
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(timezone.utc)
+        DateTime, default=now_utc
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=now_utc,
+        onupdate=now_utc,
     )
 
     # 关联关系

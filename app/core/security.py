@@ -1,12 +1,13 @@
 import hashlib
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Optional, Union
 
 import bcrypt
 from jose import JWTError, jwt
 
 from app.core.config import settings
+from app.core.timezone import now_utc
 
 # bcrypt 最多处理 72 字节密码，超出部分截断（与 bcrypt 算法规范一致）
 _BCRYPT_MAX_BYTES = 72
@@ -71,9 +72,9 @@ def create_access_token(
     """
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
+        expire = now_utc() + expires_delta
     else:
-        expire = datetime.now(timezone.utc) + timedelta(
+        expire = now_utc() + timedelta(
             minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
         )
 

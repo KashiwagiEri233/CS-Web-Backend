@@ -133,6 +133,5 @@ dmypy.json
 .DS_Store
 Thumbs.db
 
-# Alembic
-alembic/versions/*.py
-!alembic/versions/__init__.py
+# Alembic：迁移脚本是 schema 的版本化资产，必须提交（线上靠它建表）！只忽略缓存。
+alembic/versions/__pycache__/

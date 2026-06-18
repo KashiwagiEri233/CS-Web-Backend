@@ -33,6 +33,65 @@ _STARTUP_BANNER = r"""
 """
 
 
+async def _verify_alembic_version(logger) -> None:
+    """校验数据库迁移版本与代码 head 一致；不一致则 fail fast 拒绝启动。
+
+    统一用 alembic 管理 schema 后，应用启动只“检查”不“自动迁移”——既避免多实例并发
+    自动 upgrade 的竞态，又把“忘了跑迁移”从一堆 relation does not exist 变成一句清晰提示。
+    真正的迁移由独立步骤执行：alembic upgrade head。
+    """
+    from pathlib import Path
+
+    from alembic.config import Config
+    from alembic.runtime.migration import MigrationContext
+    from alembic.script import ScriptDirectory
+
+    def _read_revisions(sync_conn):
+        ini_path = Path(__file__).resolve().parent.parent / "alembic.ini"
+        script = ScriptDirectory.from_config(Config(str(ini_path)))
+        head = script.get_current_head()
+        current = MigrationContext.configure(sync_conn).get_current_revision()
+        return head, current
+
+    async with engine.connect() as conn:
+        head, current = await conn.run_sync(_read_revisions)
+
+    if current == head:
+        logger.info("数据库迁移版本已是最新", revision=current)
+        return
+
+    logger.error(
+        "数据库迁移版本不一致，拒绝启动",
+        current=current or "(未迁移/无 alembic_version)",
+        expected=head,
+    )
+    raise RuntimeError(
+        f"数据库迁移版本不一致：当前={current or '(未迁移/无 alembic_version)'}，"
+        f"代码最新={head}。请先执行 `alembic upgrade head` 再启动应用。"
+    )
+
+
+async def _run_alembic_upgrade(logger) -> None:
+    """执行 alembic upgrade head（建表/升级到最新）。
+
+    多 worker 并发安全由调用方的 advisory lock 保证（见 _serialized_startup_init 把
+    建库/迁移/seed 整体串行化），本函数只负责执行 upgrade。
+    """
+    import asyncio
+    from pathlib import Path
+
+    from alembic import command
+    from alembic.config import Config
+
+    def _upgrade():
+        ini_path = Path(__file__).resolve().parent.parent / "alembic.ini"
+        command.upgrade(Config(str(ini_path)), "head")
+
+    # alembic command 是同步阻塞调用，放线程池避免阻塞事件循环
+    await asyncio.to_thread(_upgrade)
+    logger.info("已自动执行 alembic upgrade head (DB_AUTO_MIGRATE=True)")
+
+
 async def _initialize_database(logger):
     """初始化数据库（按配置：先确保库存在，再决定是否自动建表）"""
     if settings.DB_AUTO_CREATE_DATABASE:
@@ -60,6 +119,15 @@ async def _initialize_database(logger):
         msg = db_status.get("message", "Unknown error")
         logger.error("数据库连接失败", message=msg)
         raise Exception(f"Database connection failed: {msg}")
+
+    # 统一 alembic 管理 schema（DB_AUTO_CREATE=False）：
+    #   DB_AUTO_MIGRATE=True  → 启动自动 upgrade head（建表/升级到最新，适合单实例/开发）
+    #   DB_AUTO_MIGRATE=False → 仅校验版本一致性，不一致 fail fast（适合多实例生产）
+    if not settings.DB_AUTO_CREATE:
+        if settings.DB_AUTO_MIGRATE:
+            await _run_alembic_upgrade(logger)
+        else:
+            await _verify_alembic_version(logger)
 
 
 async def _initialize_rbac(logger):
@@ -92,6 +160,39 @@ async def _initialize_rbac(logger):
             logger.error("RBAC系统初始化失败", errors=init_result["errors"])
 
 
+async def _serialized_startup_init(logger) -> None:
+    """用 PostgreSQL advisory lock 串行化一次性启动初始化（建库 / 迁移 / seed）。
+
+    多 worker 场景下 4 个进程同时启动，会并发跑 seed 导致重复 INSERT 撞唯一约束
+    （如 admin email）。这里用集群级全局锁保证同一时刻只有一个进程执行：抢到锁的真正
+    初始化，其余阻塞等待；待其完成释放锁后，迁移已 no-op、seed 检查到已存在直接跳过（幂等）。
+    锁连接用维护库（一定存在）——因为目标库此刻可能还没建。
+    """
+    import asyncpg
+    from sqlalchemy.engine import make_url
+
+    _STARTUP_LOCK_KEY = 873924001
+    url = make_url(settings.DATABASE_URL)
+    lock_conn = await asyncpg.connect(
+        host=url.host or "localhost",
+        port=url.port or 5432,
+        user=url.username,
+        password=url.password,
+        database=settings.DB_MAINTENANCE_DB,
+    )
+    try:
+        # advisory lock 是集群级（跨库跨 session），维护库上持锁即可保护目标库的初始化
+        await lock_conn.execute("SELECT pg_advisory_lock($1)", _STARTUP_LOCK_KEY)
+        await _initialize_database(logger)
+        try:
+            await _initialize_rbac(logger)
+        except Exception as e:
+            logger.error(f"RBAC系统初始化异常: {str(e)}")
+    finally:
+        await lock_conn.execute("SELECT pg_advisory_unlock($1)", _STARTUP_LOCK_KEY)
+        await lock_conn.close()
+
+
 async def _initialize_redis(logger):
     """探测 Redis（可选）。未配置或不可用都不阻断启动——限流会自动降级。"""
     if not settings.REDIS_URL:
@@ -112,11 +213,22 @@ async def _initialize_redis(logger):
 async def _log_startup_status(logger):
     """输出应用启动状态。
 
-    实际绑定地址由 uvicorn 自行打印（随 --host/--port 变化），这里只记相对路径，
+    host/port 来自 run.py 写入的 APP_HOST/APP_PORT 环境变量（单一事实源 = uvicorn 实际绑定参数）。
+    若环境变量缺失（如直接用 `uvicorn app.main:app` 启动而非 run.py），回退为只记相对路径，
     避免硬编码 host:port 与真实绑定不一致。
     """
-    logger.info(f"API 文档路径: {settings.API_V1_STR}/docs")
-    logger.info(f"OpenAPI: {settings.API_V1_STR}/openapi.json")
+    host = os.environ.get("APP_HOST")
+    port = os.environ.get("APP_PORT")
+    if host and port:
+        # 0.0.0.0 / :: 是通配绑定地址，浏览器无法直接访问，展示为 localhost 方便本地点击
+        display_host = "localhost" if host in ("0.0.0.0", "::") else host
+        base_url = f"http://{display_host}:{port}"
+        logger.info(f"应用访问地址: {base_url}")
+        logger.info(f"API 文档（Swagger）: {base_url}{settings.API_V1_STR}/docs")
+        logger.info(f"OpenAPI: {base_url}{settings.API_V1_STR}/openapi.json")
+    else:
+        logger.info(f"API 文档路径: {settings.API_V1_STR}/docs")
+        logger.info(f"OpenAPI: {settings.API_V1_STR}/openapi.json")
 
 
 @asynccontextmanager
@@ -131,12 +243,9 @@ async def lifespan(app: FastAPI):
         logger.warning(
             "⚠️ 鉴权已全局关闭 (AUTH_ENABLED=False)——所有接口视为超级用户，仅限本地开发，切勿用于生产"
         )
-    await _initialize_database(logger)
-
-    try:
-        await _initialize_rbac(logger)
-    except Exception as e:
-        logger.error(f"RBAC系统初始化异常: {str(e)}")
+    # 建库 / 迁移 / seed 用 advisory lock 整体串行化：多 worker 下只有一个进程真正执行，
+    # 其余等待后迁移 no-op、seed 幂等跳过，避免并发 seed 撞唯一约束。
+    await _serialized_startup_init(logger)
 
     await _initialize_redis(logger)
 

@@ -1,7 +1,9 @@
 import os
+from datetime import timezone
 from typing import Optional
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
 class Settings(BaseSettings):
@@ -38,6 +40,11 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     API_V1_STR: str = "/api/v1"
     PROJECT_NAME: str = "FastAPI RBAC Framework"
+    # 应用统一时区（IANA 名称，如 Asia/Shanghai、UTC、America/New_York）。
+    # 影响：展示层（日志、错误响应 timestamp、ErrorResponse.timestamp）按此时区呈现。
+    # 存储层（数据库、JWT exp）一律 UTC，保证跨时区一致性。
+    # 留空 / "UTC" = UTC（行为与改造前完全一致，向后兼容）。
+    TIMEZONE: str = "UTC"
     # 一键开关鉴权：False 时所有接口视为超级用户放行（跳过 token 校验与权限检查）。
     # 仅限本地开发！只允许在 DEBUG=True 下关闭，生产（DEBUG=False）若置 False 会拒绝启动。
     AUTH_ENABLED: bool = True
@@ -49,6 +56,12 @@ class Settings(BaseSettings):
     # 开发便利用 True；生产通常由 DBA/运维预建库，可置 False。
     DB_AUTO_CREATE_DATABASE: bool = True
     DB_MAINTENANCE_DB: str = "postgres"  # 用于建库的维护库名
+    # 启动时是否自动执行 alembic upgrade head（建表/升级到最新）。仅在 DB_AUTO_CREATE=False 时生效。
+    # True（默认）：空库启动自动迁移到位；多 worker 下由 advisory lock 串行化（只有一个进程真正
+    #   建表，其余等待后 no-op），安全无竞态。
+    # False：启动只做版本一致性检查（不一致 fail fast），迁移完全交给独立步骤——适合要求
+    #   迁移与发布严格分离/受控审查的部署流程。
+    DB_AUTO_MIGRATE: bool = True
     
     # CORS配置（.env 文件里写逗号分隔字符串，如 ALLOWED_ORIGINS=http://a,http://b）
     # 用 str 类型 + validator 转 list，避免 pydantic-settings v2 对 list 字段强制 JSON 解析
@@ -175,6 +188,34 @@ class Settings(BaseSettings):
                 "AUTH_ENABLED=False 仅允许在 DEBUG=True 下使用；生产环境禁止关闭鉴权"
             )
         return self
+
+    @model_validator(mode="after")
+    def _validate_timezone(self):
+        """校验 TIMEZONE 是合法 IANA 时区名，并把解析结果缓存到 _tzinfo。
+
+        非法名直接拒绝启动（快速失败优于静默回退到错误时区）。
+        """
+        tz_name = (self.TIMEZONE or "UTC").strip() or "UTC"
+        # UTC 直接回退 timezone.utc，避免 Windows 缺少 tzdata 时 ZoneInfo 报错
+        if tz_name.upper() == "UTC":
+            self._tzinfo = timezone.utc
+            self.TIMEZONE = "UTC"
+            return self
+        try:
+            # ZoneInfo 缓存命中时不触发磁盘 IO，因此每次校验成本极低
+            self._tzinfo = ZoneInfo(tz_name)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError(
+                f"TIMEZONE 配置非法：{tz_name!r} 不是有效的 IANA 时区名"
+                "（示例：Asia/Shanghai / UTC / America/New_York）"
+            ) from exc
+        self.TIMEZONE = tz_name  # 规范化（去空白）
+        return self
+
+    @property
+    def tzinfo(self):
+        """已校验的 ZoneInfo 实例，供展示层转换使用。"""
+        return self._tzinfo
 
     model_config = SettingsConfigDict(
         env_file=os.environ.get("ENV_FILE", ".env"),

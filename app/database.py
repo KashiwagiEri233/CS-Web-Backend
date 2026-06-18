@@ -58,8 +58,16 @@ async def ensure_database_exists() -> bool:
         )
         if exists:
             return False
-        await conn.execute(f'CREATE DATABASE "{db_name}"')
-        return True
+        try:
+            await conn.execute(f'CREATE DATABASE "{db_name}"')
+            return True
+        except (
+            asyncpg.exceptions.DuplicateDatabaseError,
+            asyncpg.exceptions.UniqueViolationError,
+        ):
+            # 多 worker 并发抢先建库：DuplicateDatabase（检测到已存在）或 pg_database 唯一索引
+            # 冲突 UniqueViolation（两进程几乎同时 CREATE）——都视为已存在（幂等，不报错）
+            return False
     finally:
         await conn.close()
 

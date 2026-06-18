@@ -434,6 +434,47 @@ def resolve_log_config(
     return base
 
 
+def _add_file_sink(
+    *,
+    log_dir: str,
+    file_name: str,
+    level,
+    format_string,
+    rotation: str,
+    retention: str,
+    serialize: bool,
+    backtrace: bool,
+    **kwargs,
+) -> None:
+    """添加文件日志 sink；目录/文件不可写时降级（仅告警，不中断启动）。
+
+    线上常见场景：容器以非 root 用户运行，挂载的 /app/logs 属主为 root 不可写，
+    导致 loguru 创建文件 sink 时抛 PermissionError。日志属于基础设施，绝不应让它
+    把整个应用拖垮——故此处捕获 OSError 并降级为仅控制台输出（已在前面添加）。
+    """
+    try:
+        log_dir_path = Path(log_dir)
+        log_dir_path.mkdir(parents=True, exist_ok=True)
+        loguru_logger.add(
+            str(log_dir_path / file_name),
+            level=level,
+            format=format_string,
+            rotation=rotation,
+            retention=retention,
+            serialize=serialize,
+            catch=True,
+            backtrace=backtrace,
+            **kwargs,
+        )
+    except OSError as e:
+        # 不能用 loguru 自身记录（此刻文件 sink 尚未建立），直接写 stderr 保证可见
+        sys.stderr.write(
+            f"[日志降级] 无法写入日志文件 {log_dir}/{file_name}（{e}）；"
+            f"已降级为仅控制台输出，应用继续启动。\n"
+        )
+        sys.stderr.flush()
+
+
 # 配置函数
 def configure_logging(
     level: Union[int, str] = logging.INFO,
@@ -475,8 +516,10 @@ def configure_logging(
 
     loguru_level = LoguruAdapter("", level)._map_logging_level_to_loguru(level)
 
-    # JSON 序列化时忽略自定义 format（loguru serialize 自带结构化字段）
-    if not serialize and format_string is None:
+    # format 兜底：即使 serialize=True（JSON 输出时 format 不影响内容），loguru.add() 仍会
+    # 校验 format 必须是 str/callable，传 None 会抛 TypeError——故 format_string 为 None 时
+    # 必须始终赋默认值，不能仅在 not serialize 时赋值（否则生产 serialize=True 直接启动崩溃）。
+    if format_string is None:
         # 分隔符 | 显式用 <light-white>（亮白），避免回退到不可控的终端默认配色（曾显示为红色）
         format_string = (
             "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green>"
@@ -503,34 +546,28 @@ def configure_logging(
 
     # 添加全级别文件处理器
     if enable_file:
-        log_dir_path = Path(log_dir)
-        log_dir_path.mkdir(exist_ok=True)
-
-        loguru_logger.add(
-            str(Path(log_dir_path) / f"{app_name}.log"),
+        _add_file_sink(
+            log_dir=log_dir,
+            file_name=f"{app_name}.log",
             level=loguru_level,
-            format=format_string,
+            format_string=format_string,
             rotation=rotation,
             retention=retention,
             serialize=serialize,
-            catch=True,
             backtrace=backtrace,
             **kwargs,
         )
 
     # 添加独立 ERROR 级别文件处理器（线上排障用）
     if enable_error_file:
-        log_dir_path = Path(log_dir)
-        log_dir_path.mkdir(exist_ok=True)
-
-        loguru_logger.add(
-            str(Path(log_dir_path) / f"{app_name}_error.log"),
+        _add_file_sink(
+            log_dir=log_dir,
+            file_name=f"{app_name}_error.log",
             level="ERROR",
-            format=format_string,
+            format_string=format_string,
             rotation=rotation,
             retention=retention,
             serialize=serialize,
-            catch=True,
             backtrace=True,  # error 日志始终记录完整栈
             **kwargs,
         )

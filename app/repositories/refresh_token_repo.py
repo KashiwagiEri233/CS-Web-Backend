@@ -1,14 +1,15 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.timezone import now_utc
 from app.models.refresh_token import RefreshToken
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return now_utc()
 
 
 class RefreshTokenRepository:

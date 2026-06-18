@@ -3,9 +3,11 @@
 定义统一的错误响应格式和数据结构
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 from pydantic import BaseModel, Field, ConfigDict
+
+from app.core.timezone import now_utc
 
 
 class ErrorContext(BaseModel):
@@ -62,7 +64,7 @@ class ErrorResponse(BaseModel):
     context: Optional[ErrorContext] = Field(None, description="错误上下文")
     traceback_id: Optional[str] = Field(None, description="异常跟踪ID")
     timestamp: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc), description="响应时间"
+        default_factory=now_utc, description="响应时间"
     )
 
     model_config = ConfigDict(

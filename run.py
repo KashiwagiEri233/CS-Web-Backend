@@ -62,6 +62,11 @@ def main():
 
     init_logging(settings)
 
+    # 将 host/port 写入环境变量，供 main.py 的启动日志拼接完整访问 URL。
+    # reload 子进程独立 import 应用、拿不到这里的命令行参数，故经环境变量传递。
+    os.environ["APP_HOST"] = args.host
+    os.environ["APP_PORT"] = str(args.port)
+
     uvicorn.run(
         "app.main:app",
         host=args.host,

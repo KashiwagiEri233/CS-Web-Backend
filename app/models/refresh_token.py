@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import (
@@ -9,6 +9,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.timezone import now_utc
 from app.database import Base
 
 # 带时区的 DateTime（Postgres TIMESTAMP WITH TIME ZONE），与 UTC aware 约定对齐
@@ -38,7 +39,7 @@ class RefreshToken(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(timezone.utc)
+        DateTime, default=now_utc
     )
 
     user: Mapped["User"] = relationship("User", backref="refresh_tokens")
@@ -48,7 +49,7 @@ class RefreshToken(Base):
         """是否仍有效：未撤销且未过期。"""
         if self.revoked_at is not None:
             return False
-        if self.expires_at is not None and datetime.now(timezone.utc) >= self.expires_at:
+        if self.expires_at is not None and now_utc() >= self.expires_at:
             return False
         return True
 

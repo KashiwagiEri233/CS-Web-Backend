@@ -16,6 +16,7 @@ from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.loguru_logger import get_logger
+from app.core.timezone import now_utc, utc_to_local
 from app.database import get_session
 from .error_codes import ErrorCode
 from .base_exceptions import (
@@ -69,7 +70,7 @@ def create_error_context(request: Request) -> ErrorContext:
         user_agent=user_agent,
         endpoint=f"{request.method} {request.url.path}",
         method=request.method,
-        timestamp=datetime.now(timezone.utc)
+        timestamp=now_utc()
     )
 
 
@@ -176,7 +177,7 @@ def create_app_exception_response(exc: BaseAppException, request: Request) -> Er
     context = create_error_context(request)
     
     # 更新异常的时间戳
-    exc.timestamp = datetime.now(timezone.utc)
+    exc.timestamp = now_utc()
     
     return ErrorResponse(
         error_code=exc.error_code,
@@ -316,7 +317,7 @@ async def app_exception_handler(request: Request, exc: BaseAppException) -> JSON
             "message": exc.message,
             "status_code": exc.status_code,
             "traceback_id": exc.traceback_id,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": now_utc().isoformat(),
         },
         headers=getattr(exc, "headers", None),
     )
@@ -349,7 +350,7 @@ async def http_exception_handler(request: Request, exc: Union[HTTPException, Sta
             "error_code": f"HTTP_{exc.status_code}",
             "message": exc.detail,
             "status_code": exc.status_code,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": now_utc().isoformat(),
         },
     )
 
@@ -380,7 +381,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             "error_code": ErrorCode.Validation.VALIDATION_FAILED,
             "message": "数据验证失败",
             "status_code": 422,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": now_utc().isoformat(),
         },
     )
 
@@ -403,7 +404,7 @@ async def pydantic_validation_exception_handler(request: Request, exc: Validatio
             "error_code": ErrorCode.Validation.VALIDATION_FAILED,
             "message": "数据验证失败",
             "status_code": 422,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": now_utc().isoformat(),
         },
     )
 
@@ -419,7 +420,7 @@ async def database_exception_handler(request: Request, exc: SQLAlchemyError) -> 
             "error_code": ErrorCode.Database.DATABASE_ERROR,
             "message": "数据库操作失败",
             "status_code": 500,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": now_utc().isoformat(),
         },
     )
 
@@ -440,7 +441,7 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
             "error_code": ErrorCode.System.INTERNAL_SERVER_ERROR,
             "message": "内部服务器错误",
             "status_code": 500,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": now_utc().isoformat(),
         },
     )
 
@@ -515,6 +516,17 @@ class ExceptionHandlerMiddleware:
         try:
             await self.app(scope, receive, send)
         except Exception as exc:
+            # 客户端在响应发送完成前断开连接（健康检查 curl、浏览器取消请求、网关超时等）。
+            # 此时连接已断，既无法也无需再回写响应；这是良性事件，绝不能当成服务端 500 错误
+            # 打完整堆栈（否则 Docker healthcheck 每 30s 就刷一屏 ClientDisconnected 噪音）。
+            # 用类名匹配以同时覆盖 starlette.requests.ClientDisconnect 与
+            # uvicorn.protocols.utils.ClientDisconnected，避免硬依赖 uvicorn 内部路径。
+            if type(exc).__name__ in ("ClientDisconnect", "ClientDisconnected"):
+                get_logger("exception_handler").debug(
+                    "客户端提前断开连接，已忽略", endpoint=f"{scope.get('method')} {scope.get('path')}"
+                )
+                return
+
             # 注意：中间件层抛出的异常不会经过 app.add_exception_handler 注册的处理器
             # （那些只覆盖路由层），必须在此按类型显式区分，否则 HTTPException 与业务异常
             # 会被错误地吞成 500。
@@ -546,7 +558,7 @@ class ExceptionHandlerMiddleware:
                     "message": response.message if response else "内部服务器错误",
                     "status_code": response.status_code if response else 500,
                     "traceback_id": response.traceback_id if response else None,
-                    "timestamp": datetime.now(timezone.utc).isoformat()
+                    "timestamp": now_utc().isoformat()
                 }
                 response_obj = JSONResponse(
                     status_code=response.status_code if response else 500,
@@ -554,5 +566,11 @@ class ExceptionHandlerMiddleware:
                     headers=extra_headers,
                 )
 
-            # 发送响应
-            await response_obj(scope, receive, send)
+            # 发送响应；若此刻客户端已断开（如健康检查 curl 已收完即断），发送会再抛
+            # ClientDisconnected——同样静默忽略，不让它冒泡成二次未处理异常堆栈。
+            try:
+                await response_obj(scope, receive, send)
+            except Exception as send_exc:
+                if type(send_exc).__name__ in ("ClientDisconnect", "ClientDisconnected"):
+                    return
+                raise
