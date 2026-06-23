@@ -1,6 +1,8 @@
-# FastAPI RBAC Framework
+# FastAPI WitchCat Framework
 
-企业级 FastAPI 权限管理脚手架（纯后端），提供 RBAC 权限控制、JWT 双 Token 认证、结构化异常处理、环境感知日志系统、可降级 Redis 限流/缓存。
+> 女巫猫框架 — 企业级 FastAPI 权限管理脚手架（纯后端）
+
+提供 RBAC 权限控制、JWT 双 Token 认证、结构化异常处理、环境感知日志系统、可降级 Redis 限流/缓存。
 
 ## 快速启动
 

@@ -36,6 +36,7 @@ AI Agent 工作约定，作用域内优先于通用行为。配合 `CLAUDE.md`�
 | 中间件 | `app/middleware/<name>.py` | `app/main.py` 按顺序 `add_middleware`（见下方顺序约定） |
 | 配置项 | `app/core/config.py` 的 `Settings` | 同步加到 `.env.example` |
 | 迁移 | `alembic revision --autogenerate -m "..."`（改完模型后） | 提交前确认只有单一 head |
+| 启动/关闭任务 | `@register_startup` / `@register_shutdown` 装饰器（`app/core/lifecycle/`） | 注册点模块须在 `app/core/lifecycle/__init__.py` 的 `_import_registrants()` 中 import 触发登记；详见 `docs/system/lifecycle.md` |
 | 测试 | `tests/<镜像 app 的子包>/test_*.py` | 子包需有 `__init__.py`（见 `tests/README.md`） |
 | 模块文档 | 系统级 → `docs/system/<x>.md`；业务级 → `docs/modules/<x>.md` | 登记到 `docs/README.md` 索引表；含「接口」节（见 `docs/README.md` 的分类约定与模板） |
 
@@ -155,6 +156,7 @@ python run.py --env 1
 - **异常**：业务错误抛 `BaseAppException` 子类，别在路由里 `try/except` 吞掉再返回自定义格式；错误码一律用 `ErrorCode.*` 常量，禁止裸字符串（见「错误码（ErrorCode 注册表）」）。
 - **日志**：`from app.core.loguru_logger import get_logger`；禁止 `print`、禁止直接配置 loguru handler。
 - **Redis 可降级**：限流/缓存把 Redis 当增强项——未配置走内存、故障自动降级；不要把它写成强依赖。
+- **启动逻辑走注册表**：启动 / 关闭的初始化用 `@register_startup` / `@register_shutdown`（`app/core/lifecycle/`）自注册，`main.py` 的 `lifespan` 只调 `run_startup()` / `run_shutdown()`。**禁止**把启动逻辑硬编码回 `main.py`；只有应用级一次性展示（横幅、AUTH_ENABLED 告警）可直接留在 `lifespan` 内。
 
 ## Git
 需要 commit 时：`<type>(<scope>): <subject>`（type：feat/fix/refactor/chore/docs/test）。

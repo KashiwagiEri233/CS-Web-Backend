@@ -86,3 +86,38 @@ def _mask_url(url: str) -> str:
         scheme_user = head.rsplit(":", 1)[0]
         return f"{scheme_user}:***@{tail}"
     return f"***@{tail}"
+
+
+# ---------------------------------------------------------------------------
+# 启动 / 关闭任务：Redis 探测 + 释放连接
+# ---------------------------------------------------------------------------
+# 原散落在 main.py 的 _initialize_redis / lifespan 关闭段，现收敛到本模块并以
+# @register_startup / @register_shutdown 自注册。Redis 是增强项，全部非 critical。
+
+from app.core.lifecycle import register_shutdown, register_startup  # noqa: E402
+
+
+@register_startup("redis_probe", priority=30, critical=False)
+async def startup_redis_probe() -> None:
+    """启动任务：探测 Redis（可选）。未配置或不可用都不阻断启动——限流会自动降级。
+
+    critical=False：探测纯粹是「记一条启动日志方便运维判断后端」，任何情况都
+    不应阻止应用起来。
+    """
+    if not settings.REDIS_URL:
+        logger.info("限流后端: 内存模式（未配置 REDIS_URL）")
+        return
+
+    if await ping_redis():
+        logger.info("限流后端: Redis（已连通）", fallback=settings.RATE_LIMIT_FALLBACK)
+    else:
+        logger.warning(
+            "已配置 REDIS_URL 但当前不可用，启动后将按 fallback 策略降级运行",
+            fallback=settings.RATE_LIMIT_FALLBACK,
+        )
+
+
+@register_shutdown("redis", priority=20)
+async def shutdown_redis() -> None:
+    """关闭任务：释放 Redis 连接。"""
+    await close_redis_client()

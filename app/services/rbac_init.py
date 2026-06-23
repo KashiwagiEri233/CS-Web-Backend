@@ -306,3 +306,51 @@ async def initialize_rbac(db: AsyncSession) -> Dict[str, any]:
         result["admin_password_generated"] = False
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# 启动任务：RBAC seed（权限 / 角色 / 默认管理员）
+# ---------------------------------------------------------------------------
+# 原散落在 main.py 的 _initialize_rbac，现收敛到本模块并以 @register_startup 自注册。
+# 依赖 DB 已就绪 → priority=20 紧随 schema 初始化（priority=10）之后。
+
+from app.core.lifecycle import register_startup  # noqa: E402
+
+
+@register_startup("rbac_seed", priority=20, critical=False)
+async def startup_rbac_seed() -> None:
+    """启动任务：初始化 RBAC 权限系统（幂等：查重再插，已存在即跳过）。
+
+    critical=False：seed 失败不阻断启动（仅记 error）——与原 main.py 行为一致，
+    避免初始化数据问题导致整个服务无法启动。DB 未就绪会在 DB 任务阶段先 fail。
+    """
+    from app.core.config import settings
+    from app.database import AsyncSessionLocal
+
+    async with AsyncSessionLocal() as db:
+        try:
+            init_result = await initialize_rbac(db)
+            if init_result["success"]:
+                logger.info(
+                    "RBAC系统初始化成功",
+                    permissions_created=init_result["permissions_created"],
+                    roles_created=init_result["roles_created"],
+                    admin_created=init_result["admin_created"],
+                )
+                if init_result["admin_created"]:
+                    if init_result.get("admin_password_generated"):
+                        # 自动生成的初始密码仅在确实创建管理员时提示一次
+                        logger.warning(
+                            "默认管理员已创建，初始密码为随机生成，请立即登录并修改（仅显示这一次）",
+                            username=settings.ADMIN_USERNAME,
+                            password=init_result["generated_admin_password"],
+                        )
+                    else:
+                        logger.info(
+                            "默认管理员已创建（密码来自 ADMIN_PASSWORD 配置，未写入日志）",
+                            username=settings.ADMIN_USERNAME,
+                        )
+            else:
+                logger.error("RBAC系统初始化失败", errors=init_result["errors"])
+        except Exception as e:  # noqa: BLE001 - seed 失败不阻断启动
+            logger.error(f"RBAC系统初始化异常: {str(e)}")

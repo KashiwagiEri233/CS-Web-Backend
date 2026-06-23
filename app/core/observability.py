@@ -175,3 +175,19 @@ def shutdown_telemetry() -> None:
                 logger.warning(f"可观测性(OTel): {label} provider 关闭异常", error=str(exc))
     _tracer_provider = None
     _meter_provider = None
+
+
+# ---------------------------------------------------------------------------
+# 关闭任务：OTel providers 释放
+# ---------------------------------------------------------------------------
+# 原在 main.py lifespan 关闭段直接调用 shutdown_telemetry()，现收敛到本模块并以
+# @register_shutdown 自注册。priority=10 先于 Redis（priority=20）关闭——OTel 先 flush，
+# 避免后续关闭动作的 span 丢失。OTel 关闭是同步调用，包一层 async 适配注册表签名。
+
+from app.core.lifecycle import register_shutdown  # noqa: E402
+
+
+@register_shutdown("telemetry", priority=10)
+async def shutdown_telemetry_task() -> None:
+    """关闭任务：flush 并释放 OTel providers（未启用时 no-op）。"""
+    shutdown_telemetry()

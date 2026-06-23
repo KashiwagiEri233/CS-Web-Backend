@@ -126,7 +126,7 @@ JWT 签发/校验  ──→  当前用户解析  ──→  权限校验依赖
 
 - Redis 是**增强项**，不是强依赖；未配置或故障自动降级到内存。
 - 降级策略由 `RATE_LIMIT_FALLBACK` / `CACHE_FALLBACK` 控制。
-- 启动时 `_initialize_redis` 仅探测连通性，**不阻断启动**。
+- 启动时 Redis 探测任务（lifecycle `redis_probe`，见第 7 节）仅记连通性日志，**不阻断启动**。
 
 ### 4.5 日志（`app/core/loguru_logger.py`）
 
@@ -168,22 +168,32 @@ JWT 签发/校验  ──→  当前用户解析  ──→  权限校验依赖
 
 ---
 
-## 7. 启动生命周期（`main.py` lifespan）
+## 7. 启动生命周期（`main.py` lifespan + `app/core/lifecycle/`）
+
+启动 / 关闭的初始化逻辑走**任务注册表**：各能力模块用 `@register_startup` /
+`@register_shutdown` 自注册，`lifespan` 只调 `run_startup()` / `run_shutdown()` 遍历执行。
+新增启动任务无需回 `main.py`（与「中心注册点」哲学一致）。
 
 ```
-应用启动
-  ├─ 检查 AUTH_ENABLED（关闭则告警）
-  ├─ _initialize_database
-  │    ├─ ensure_database_exists（DB_AUTO_CREATE_DATABASE=True 时）
-  │    ├─ create_all（DB_AUTO_CREATE=True 时；开发/测试）
-  │    └─ 连接检查
-  ├─ _initialize_rbac（初始化权限/角色/管理员；失败不阻断启动）
-  ├─ _initialize_redis（探测连通性；失败不阻断启动）
-  └─ 日志输出启动状态
-应用运行
-应用关闭
-  └─ close_redis_client
+lifespan 启动段
+  ├─ 应用级展示（不进注册表）：启动横幅、AUTH_ENABLED 告警
+  └─ run_startup() —— 按 priority 升序执行已注册任务：
+       ├─ priority=10  database      [critical] 建库 + schema(create_all/alembic) + 连通性探测
+       │                                    └─ advisory lock 串行化 schema 操作（多 worker 安全）
+       ├─ priority=20  rbac_seed     [降级]   权限/角色/默认管理员（幂等；失败仅告警）
+       ├─ priority=30  redis_probe   [降级]   探测 Redis 连通性（未配置/故障都降级）
+       └─ priority=90  log_status    [降级]   输出访问地址 / 文档路径
+lifespan yield（应用运行）
+lifespan 关闭段
+  └─ run_shutdown() —— 按 priority 降序执行（后启动的先关，异常一律吞掉）：
+       ├─ priority=20  redis         释放 Redis 连接
+       └─ priority=10  telemetry     flush 并释放 OTel providers
 ```
+
+**失败语义**：`critical=True` 任务失败 → raise 中止启动（仅 DB）；`critical=False` 失败 →
+仅告警继续（Redis/OTel/RBAC seed）。关闭阶段任何异常都吞掉只记日志，绝不向外抛。
+
+详见 `docs/system/lifecycle.md`。
 
 ---
 
@@ -195,6 +205,7 @@ main.py
   ├── app/middleware       （中间件注册）
   ├── app/core/exceptions  （异常处理器注册）
   ├── app/core/config      （settings）
+  ├── app/core/lifecycle   （run_startup / run_shutdown 驱动启动/关闭任务）
   ├── app/core/loguru_logger
   ├── app/database         （engine、lifespan 用）
   └── app/models           （Base，create_all 用）
@@ -264,7 +275,7 @@ core/security, middleware/rbac
 6. 建表/迁移（按环境策略）。
 7. `tests/` 镜像补测试。
 
-**中心注册点**（必须登记，否则不生效）：ORM 模型、业务异常、中间件、配置项、API router、测试子包 `__init__.py`。
+**中心注册点**（必须登记，否则不生效）：ORM 模型、业务异常、中间件、配置项、API router、启动/关闭任务（`@register_startup`/`@register_shutdown`）、测试子包 `__init__.py`。
 
 ---
 
