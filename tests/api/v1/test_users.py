@@ -93,3 +93,81 @@ def test_list_users_requires_auth():
     resp = TestClient(app, raise_server_exceptions=False).get("/users/")
     # 未提供凭证：必须被拒（401/403），绝不能放行返回 200
     assert resp.status_code != 200
+
+
+def test_update_user_password_revokes_refresh_tokens(monkeypatch):
+    """改密成功后应撤销该用户全部 refresh token（安全：作废旧会话）。"""
+    revoked = {"user_id": None}
+
+    class _FakeUserService:
+        def __init__(self, db):
+            pass
+
+        async def update_user(self, user_id, update_data):
+            return _fake_user(user_id)
+
+    class _FakeAuthService:
+        def __init__(self, db):
+            pass
+
+        async def revoke_all_user_tokens(self, user_id):
+            revoked["user_id"] = user_id
+            return 1
+
+    monkeypatch.setattr(users_module, "UserService", _FakeUserService)
+    monkeypatch.setattr(users_module, "AuthService", _FakeAuthService)
+
+    app = FastAPI()
+    app.include_router(users_router, prefix="/users")
+
+    async def _fake_db():
+        yield None
+
+    app.dependency_overrides[get_db] = _fake_db
+    app.dependency_overrides[get_current_superuser] = lambda: _fake_user(1)
+
+    resp = TestClient(app, raise_server_exceptions=False).put(
+        "/users/5",
+        json={"password": "NewStr0ng!Pass"},
+    )
+    assert resp.status_code == 200
+    assert revoked["user_id"] == 5
+
+
+def test_update_user_without_password_keeps_tokens(monkeypatch):
+    """非改密更新（如改邮箱）不应撤销 refresh token。"""
+    revoked = {"called": False}
+
+    class _FakeUserService:
+        def __init__(self, db):
+            pass
+
+        async def update_user(self, user_id, update_data):
+            return _fake_user(user_id)
+
+    class _FakeAuthService:
+        def __init__(self, db):
+            pass
+
+        async def revoke_all_user_tokens(self, user_id):
+            revoked["called"] = True
+            return 0
+
+    monkeypatch.setattr(users_module, "UserService", _FakeUserService)
+    monkeypatch.setattr(users_module, "AuthService", _FakeAuthService)
+
+    app = FastAPI()
+    app.include_router(users_router, prefix="/users")
+
+    async def _fake_db():
+        yield None
+
+    app.dependency_overrides[get_db] = _fake_db
+    app.dependency_overrides[get_current_superuser] = lambda: _fake_user(1)
+
+    resp = TestClient(app, raise_server_exceptions=False).put(
+        "/users/5",
+        json={"email": "new@t.com"},
+    )
+    assert resp.status_code == 200
+    assert revoked["called"] is False

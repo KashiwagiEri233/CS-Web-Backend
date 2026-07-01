@@ -73,7 +73,12 @@ async def update_user(
 ) -> Any:
     """更新用户信息（需要超级用户权限）"""
     user_service = UserService(db)
-    return await user_service.update_user(user_id, user_data.model_dump(exclude_unset=True))
+    updated = await user_service.update_user(user_id, user_data.model_dump(exclude_unset=True))
+    # 改密即作废旧会话：撤销该用户全部 refresh token
+    if user_data.password is not None:
+        auth_service = AuthService(db)
+        await auth_service.revoke_all_user_tokens(user_id)
+    return updated
 
 
 @router.put("/me", response_model=UserResponse)
@@ -84,9 +89,14 @@ async def update_user_me(
 ) -> Any:
     """更新当前用户信息（自助资料：不可改 is_active）"""
     user_service = UserService(db)
-    return await user_service.update_profile(
+    updated = await user_service.update_profile(
         current_user, user_data.model_dump(exclude_unset=True)
     )
+    # 改密即作废旧会话：撤销自己全部 refresh token
+    if user_data.password is not None:
+        auth_service = AuthService(db)
+        await auth_service.revoke_all_user_tokens(current_user.id)
+    return updated
 
 
 @router.delete("/{user_id}")
