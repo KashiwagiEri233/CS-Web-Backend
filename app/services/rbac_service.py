@@ -29,24 +29,43 @@ class RBACService:
         
         return permissions
     
+    async def get_user_roles(self, user_id: int) -> List[Role]:
+        """获取用户的角色列表（含角色自身的权限，便于上层展示）。"""
+        user = await self.rbac_repo.get_user_with_roles(user_id)
+        return list(user.roles) if user else []
+
     async def check_permission(self, user_id: int, resource: str, action: str) -> bool:
-        """检查用户是否有特定权限"""
+        """检查用户是否有特定权限。
+
+        超级用户拥有全部权限；否则单次加载用户授权后聚合判断，
+        避免重复 DB 查询。
+        """
         user = await self.rbac_repo.get_user_with_roles(user_id)
         if not user:
             return False
-
         if user.is_superuser:
             return True
 
-        required_permission = f"{resource}:{action}"
-        # 复用已查询的 user 对象，避免重复 DB 查询
-        permissions = set()
+        required = f"{resource}:{action}"
+        permissions: Set[str] = set()
         for role in user.roles:
             for permission in role.permissions:
-                perm_str = f"{permission.resource}:{permission.action}"
-                permissions.add(perm_str)
+                permissions.add(f"{permission.resource}:{permission.action}")
+        return required in permissions
 
-        return required_permission in permissions
+    async def update_role(self, role_id: int, update_data: dict) -> Optional[Role]:
+        """更新角色：角色不存在返回 None，否则返回更新后的角色。"""
+        role = await self.rbac_repo.get_role_by_id(role_id)
+        if not role:
+            return None
+        return await self.rbac_repo.update_role(role, update_data)
+
+    async def update_permission(self, permission_id: int, update_data: dict) -> Optional[Permission]:
+        """更新权限：权限不存在返回 None，否则返回更新后的权限。"""
+        permission = await self.rbac_repo.get_permission_by_id(permission_id)
+        if not permission:
+            return None
+        return await self.rbac_repo.update_permission(permission, update_data)
     
     async def grant_role_to_user(self, user_id: int, role_id: int) -> bool:
         """为用户授予角色"""

@@ -1,9 +1,7 @@
 from typing import Any, List
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import (
     ConflictException,
@@ -13,13 +11,12 @@ from app.core.exceptions import (
 from app.database import get_db
 from app.dependencies import get_current_active_user, get_current_superuser
 from app.models.user import User
-from app.models.role import Role as RoleModel
-from app.models.permission import Permission as PermissionModel
 from app.repositories.rbac_repo import RBACRepository
 from app.schemas.rbac import (
     Role, RoleCreate, RoleUpdate,
     Permission, PermissionCreate, PermissionUpdate,
-    UserPermissionCheck, UserPermissionResult
+    UserPermissionCheck, UserPermissionResult,
+    UserPermissionsResponse,
 )
 from app.services.rbac_service import RBACService
 
@@ -93,31 +90,16 @@ async def update_role(
     current_user: User = Depends(get_current_superuser)
 ) -> Any:
     """更新角色（需要超级用户权限）"""
-    rbac_repo = RBACRepository(db)
-    role = await rbac_repo.get_role_by_id(role_id)
+    rbac_service = RBACService(db)
+    updated_role = await rbac_service.update_role(role_id, role_data.model_dump(exclude_unset=True))
 
-    if not role:
+    if updated_role is None:
         raise NotFoundException(
             message="角色不存在",
             resource_type="role",
             resource_id=role_id,
         )
-    
-    # 更新角色信息
-    if role_data.name is not None:
-        role.name = role_data.name
-    if role_data.description is not None:
-        role.description = role_data.description
-    if role_data.is_active is not None:
-        role.is_active = role_data.is_active
-    
-    # 更新角色
-    await db.commit()
-    
-    # 预加载权限关系，避免 MissingGreenlet 错误
-    stmt = select(Role).options(selectinload(Role.permissions)).where(Role.id == role.id)
-    result = await db.execute(stmt)
-    updated_role = result.scalar_one()
+
     return updated_role
 
 
@@ -209,32 +191,18 @@ async def update_permission(
     current_user: User = Depends(get_current_superuser)
 ) -> Any:
     """更新权限（需要超级用户权限）"""
-    rbac_repo = RBACRepository(db)
-    permission = await rbac_repo.get_permission_by_id(permission_id)
+    rbac_service = RBACService(db)
+    updated_permission = await rbac_service.update_permission(
+        permission_id, permission_data.model_dump(exclude_unset=True)
+    )
 
-    if not permission:
+    if updated_permission is None:
         raise NotFoundException(
             message="权限不存在",
             resource_type="permission",
             resource_id=permission_id,
         )
 
-    # 更新权限信息
-    if permission_data.name is not None:
-        permission.name = permission_data.name
-    if permission_data.resource is not None:
-        permission.resource = permission_data.resource
-    if permission_data.action is not None:
-        permission.action = permission_data.action
-    if permission_data.description is not None:
-        permission.description = permission_data.description
-
-    await db.commit()
-
-    # 预加载角色关系，避免 MissingGreenlet 错误
-    stmt = select(PermissionModel).options(selectinload(PermissionModel.roles)).where(PermissionModel.id == permission.id)
-    result = await db.execute(stmt)
-    updated_permission = result.scalar_one()
     return updated_permission
 
 
@@ -364,3 +332,64 @@ async def check_user_permission(
     )
 
     return UserPermissionResult(has_permission=has_permission)
+
+
+# 用户授权查询（只读）
+@router.get("/me/permissions", response_model=UserPermissionsResponse)
+async def get_my_permissions(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """获取当前登录用户的权限集合"""
+    rbac_service = RBACService(db)
+    # 超级用户视为拥有全部权限，这里以通配符表示
+    if current_user.is_superuser:
+        permissions = {"*:*"}
+    else:
+        permissions = await rbac_service.get_user_permissions(current_user.id)
+    return UserPermissionsResponse(user_id=current_user.id, permissions=sorted(permissions))
+
+
+@router.get("/me/roles", response_model=List[Role])
+async def get_my_roles(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """获取当前登录用户的角色列表"""
+    rbac_service = RBACService(db)
+    return await rbac_service.get_user_roles(current_user.id)
+
+
+@router.get("/users/{user_id}/permissions", response_model=UserPermissionsResponse)
+async def get_user_permissions(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_superuser),
+) -> Any:
+    """获取指定用户的权限集合（需要超级用户权限）"""
+    rbac_service = RBACService(db)
+    if not await rbac_service.rbac_repo.get_user_by_id(user_id):
+        raise NotFoundException(
+            message="用户不存在",
+            resource_type="user",
+            resource_id=user_id,
+        )
+    permissions = await rbac_service.get_user_permissions(user_id)
+    return UserPermissionsResponse(user_id=user_id, permissions=sorted(permissions))
+
+
+@router.get("/users/{user_id}/roles", response_model=List[Role])
+async def get_user_roles(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_superuser),
+) -> Any:
+    """获取指定用户的角色列表（需要超级用户权限）"""
+    rbac_service = RBACService(db)
+    if not await rbac_service.rbac_repo.get_user_by_id(user_id):
+        raise NotFoundException(
+            message="用户不存在",
+            resource_type="user",
+            resource_id=user_id,
+        )
+    return await rbac_service.get_user_roles(user_id)

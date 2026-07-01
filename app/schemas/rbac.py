@@ -70,3 +70,9 @@ class UserPermissionCheck(BaseModel):
 
 class UserPermissionResult(BaseModel):
     has_permission: bool
+
+
+class UserPermissionsResponse(BaseModel):
+    """用户的权限集合响应（权限已聚合为 "resource:action" 字符串）。"""
+    user_id: int
+    permissions: List[str] = []
