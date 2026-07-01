@@ -11,7 +11,7 @@ from app.core.exceptions import (
 from app.database import get_db
 from app.dependencies import get_current_active_user, get_current_superuser
 from app.models.user import User
-from app.repositories.rbac_repo import RBACRepository
+from app.schemas.pagination import PaginatedResponse, PaginationParams
 from app.schemas.rbac import (
     Role, RoleCreate, RoleUpdate,
     Permission, PermissionCreate, PermissionUpdate,
@@ -24,15 +24,19 @@ router = APIRouter()
 
 
 # 角色管理
-@router.get("/roles", response_model=List[Role])
+@router.get("/roles", response_model=PaginatedResponse[Role])
 async def get_roles(
+    pagination: PaginationParams = Depends(),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_superuser)
 ) -> Any:
-    """获取所有角色（需要超级用户权限）"""
-    rbac_repo = RBACRepository(db)
-    roles = await rbac_repo.get_all_roles()
-    return roles
+    """获取角色列表（需要超级用户权限，分页）"""
+    rbac_service = RBACService(db)
+    roles = await rbac_service.get_all_roles(skip=pagination.skip, limit=pagination.limit)
+    total = await rbac_service.count_roles()
+    return PaginatedResponse(
+        items=roles, total=total, skip=pagination.skip, limit=pagination.limit
+    )
 
 
 @router.post("/roles", response_model=Role)
@@ -42,24 +46,21 @@ async def create_role(
     current_user: User = Depends(get_current_superuser)
 ) -> Any:
     """创建角色（需要超级用户权限）"""
-    rbac_repo = RBACRepository(db)
+    rbac_service = RBACService(db)
 
     # 按名称查重（避免全表遍历）
-    existing = await rbac_repo.get_role_by_name(role_data.name)
-    if existing:
+    if await rbac_service.get_role_by_name(role_data.name):
         raise ConflictException(
             message="角色名称已存在",
             details={"name": role_data.name},
         )
-    
+
     role_dict = {
         "name": role_data.name,
         "description": role_data.description,
         "is_active": role_data.is_active
     }
-    
-    created_role = await rbac_repo.create_role(role_dict)
-    return created_role
+    return await rbac_service.create_role(role_dict)
 
 
 @router.get("/roles/{role_id}", response_model=Role)
@@ -69,8 +70,8 @@ async def get_role(
     current_user: User = Depends(get_current_superuser)
 ) -> Any:
     """获取指定角色信息（需要超级用户权限）"""
-    rbac_repo = RBACRepository(db)
-    role = await rbac_repo.get_role_with_permissions(role_id)
+    rbac_service = RBACService(db)
+    role = await rbac_service.get_role(role_id)
 
     if not role:
         raise NotFoundException(
@@ -78,7 +79,7 @@ async def get_role(
             resource_type="role",
             resource_id=role_id,
         )
-    
+
     return role
 
 
@@ -110,8 +111,8 @@ async def delete_role(
     current_user: User = Depends(get_current_superuser)
 ) -> Any:
     """删除角色（需要超级用户权限）"""
-    rbac_repo = RBACRepository(db)
-    success = await rbac_repo.delete_role(role_id)
+    rbac_service = RBACService(db)
+    success = await rbac_service.delete_role(role_id)
 
     if not success:
         raise NotFoundException(
@@ -124,15 +125,21 @@ async def delete_role(
 
 
 # 权限管理
-@router.get("/permissions", response_model=List[Permission])
+@router.get("/permissions", response_model=PaginatedResponse[Permission])
 async def get_permissions(
+    pagination: PaginationParams = Depends(),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_superuser)
 ) -> Any:
-    """获取所有权限（需要超级用户权限）"""
-    rbac_repo = RBACRepository(db)
-    permissions = await rbac_repo.get_all_permissions()
-    return permissions
+    """获取权限列表（需要超级用户权限，分页）"""
+    rbac_service = RBACService(db)
+    permissions = await rbac_service.get_all_permissions(
+        skip=pagination.skip, limit=pagination.limit
+    )
+    total = await rbac_service.count_permissions()
+    return PaginatedResponse(
+        items=permissions, total=total, skip=pagination.skip, limit=pagination.limit
+    )
 
 
 @router.post("/permissions", response_model=Permission)
@@ -142,11 +149,10 @@ async def create_permission(
     current_user: User = Depends(get_current_superuser)
 ) -> Any:
     """创建权限（需要超级用户权限）"""
-    rbac_repo = RBACRepository(db)
+    rbac_service = RBACService(db)
 
     # 按名称查重（避免全表遍历）
-    existing = await rbac_repo.get_permission_by_name(permission_data.name)
-    if existing:
+    if await rbac_service.get_permission_by_name(permission_data.name):
         raise ConflictException(
             message="权限名称已存在",
             details={"name": permission_data.name},
@@ -158,9 +164,7 @@ async def create_permission(
         "action": permission_data.action,
         "description": permission_data.description
     }
-
-    created_permission = await rbac_repo.create_permission(permission_dict)
-    return created_permission
+    return await rbac_service.create_permission(permission_dict)
 
 
 @router.get("/permissions/{permission_id}", response_model=Permission)
@@ -170,8 +174,8 @@ async def get_permission(
     current_user: User = Depends(get_current_superuser)
 ) -> Any:
     """获取指定权限信息（需要超级用户权限）"""
-    rbac_repo = RBACRepository(db)
-    permission = await rbac_repo.get_permission_by_id(permission_id)
+    rbac_service = RBACService(db)
+    permission = await rbac_service.get_permission(permission_id)
 
     if not permission:
         raise NotFoundException(
@@ -213,8 +217,8 @@ async def delete_permission(
     current_user: User = Depends(get_current_superuser)
 ) -> Any:
     """删除权限（需要超级用户权限）"""
-    rbac_repo = RBACRepository(db)
-    success = await rbac_repo.delete_permission(permission_id)
+    rbac_service = RBACService(db)
+    success = await rbac_service.delete_permission(permission_id)
 
     if not success:
         raise NotFoundException(
@@ -368,7 +372,7 @@ async def get_user_permissions(
 ) -> Any:
     """获取指定用户的权限集合（需要超级用户权限）"""
     rbac_service = RBACService(db)
-    if not await rbac_service.rbac_repo.get_user_by_id(user_id):
+    if not await rbac_service.user_exists(user_id):
         raise NotFoundException(
             message="用户不存在",
             resource_type="user",
@@ -386,7 +390,7 @@ async def get_user_roles(
 ) -> Any:
     """获取指定用户的角色列表（需要超级用户权限）"""
     rbac_service = RBACService(db)
-    if not await rbac_service.rbac_repo.get_user_by_id(user_id):
+    if not await rbac_service.user_exists(user_id):
         raise NotFoundException(
             message="用户不存在",
             resource_type="user",

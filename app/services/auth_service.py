@@ -59,23 +59,36 @@ class AuthService:
         """通过ID获取用户"""
         return await self.user_repo.get_by_id(user_id)
 
-    async def create_user(self, user_data):
-        """创建新用户"""
-        from app.core.security import get_password_hash
+    async def create_user(self, user_data, is_superuser: bool = False) -> User:
+        """创建新用户（统一入口：查重 + 哈希密码 + 落库）。
 
+        - user_data: 含 username/email/password 以及可选 full_name/is_active 的对象
+          （schemas.auth.UserCreate 或同形态对象）。
+        - is_superuser: 是否设为超级用户，默认 False。创建接口不应让请求体直接决定该字段。
+
+        用户名/邮箱重复抛 UserAlreadyExistsException。
+        """
         if await self.user_repo.get_by_username(user_data.username):
             raise UserAlreadyExistsException(username=user_data.username)
 
         if await self.user_repo.get_by_email(user_data.email):
             raise UserAlreadyExistsException(email=user_data.email)
 
-        hashed_password = get_password_hash(user_data.password)
+        from app.core.security import get_password_hash
+
         user_dict = {
             "username": user_data.username,
             "email": user_data.email,
-            "hashed_password": hashed_password,
-            "is_active": True,
+            "hashed_password": get_password_hash(user_data.password),
+            # 未传则按模型默认（is_active 默认 True）
+            "is_active": getattr(user_data, "is_active", True),
+            "is_superuser": is_superuser,
         }
+        # full_name 可选字段，存在才写入
+        full_name = getattr(user_data, "full_name", None)
+        if full_name is not None:
+            user_dict["full_name"] = full_name
+
         return await self.user_repo.create(user_dict)
 
     # ------------------------------------------------------------------ token 套件

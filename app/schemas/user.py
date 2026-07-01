@@ -1,8 +1,13 @@
-from typing import List, Optional
+"""用户管理相关 schema。
 
-from pydantic import BaseModel, ConfigDict, EmailStr
+UserCreate / UserUpdate 统一复用 schemas.auth 中的定义（含密码强度、用户名、
+邮箱、full_name 校验），避免两处定义造成校验规则漂移（如曾出现用户管理接口
+绕过密码强度校验的缺陷）。UserResponse / UserInDB 为本模块特有响应模型。
+"""
 
-from app.schemas.auth import UserBase
+from pydantic import ConfigDict
+
+from app.schemas.auth import UserBase, UserCreate, UserUpdate
 
 
 class UserResponse(UserBase):
@@ -10,17 +15,6 @@ class UserResponse(UserBase):
     is_superuser: bool
 
     model_config = ConfigDict(from_attributes=True)
-
-
-class UserCreate(UserBase):
-    password: str
-
-
-class UserUpdate(BaseModel):
-    email: Optional[EmailStr] = None
-    full_name: Optional[str] = None
-    password: Optional[str] = None
-    is_active: Optional[bool] = None
 
 
 class UserInDB(UserResponse):

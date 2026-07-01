@@ -18,6 +18,12 @@ from app.models.exception_log import ExceptionLog
 class ExceptionLogRepository:
     """异常日志仓储"""
 
+    # 允许排序的字段白名单，避免把任意用户输入映射到 ORM 列
+    _SORTABLE_FIELDS = {
+        "id", "created_at", "status_code",
+        "exception_type", "error_code", "severity", "priority",
+    }
+
     def __init__(self, db: AsyncSession):
         self.db = db
 
@@ -142,8 +148,9 @@ class ExceptionLogRepository:
             query = query.where(and_(*conditions))
             count_query = count_query.where(and_(*conditions))
 
-        # 排序
-        sort_column = getattr(ExceptionLog, sort_by, ExceptionLog.created_at)
+        # 排序：仅允许白名单字段，非法值回退到 created_at
+        sort_by = sort_by if sort_by in self._SORTABLE_FIELDS else "created_at"
+        sort_column = getattr(ExceptionLog, sort_by)
         if sort_order.lower() == "desc":
             query = query.order_by(desc(sort_column))
         else:

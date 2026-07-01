@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import ErrorCode
 from app.core.exceptions.exception_logging import ExceptionLogger
 from app.core.timezone import now_utc
 from app.models.exception_log import ExceptionLog
@@ -73,7 +74,7 @@ class ExceptionService:
         exception_log_data = {
             "traceback_id": log_record.get("traceback_id", now_utc().strftime("%Y%m%d%H%M%S%f")),
             "exception_type": "ValidationError",
-            "error_code": "VALIDATION_FAILED",
+            "error_code": ErrorCode.Validation.VALIDATION_FAILED,
             "exception_message": f"验证失败: {len(errors)} 个错误",
             "status_code": 422,
             "method": request_context.get("method") if request_context else None,
@@ -117,12 +118,15 @@ class ExceptionService:
 
     @staticmethod
     def _determine_severity(exception: Exception, status_code: Optional[int]) -> str:
-        """根据异常类型和状态码推断严重程度。"""
+        """根据异常类型和状态码推断严重程度。
+
+        严重度由高到低：critical(5xx) > medium(4xx) > low(其余，如无状态码的内部异常)。
+        """
         if status_code and status_code >= 500:
             return "critical"
         if status_code and status_code >= 400:
             return "medium"
-        return "high"
+        return "low"
 
     @staticmethod
     def _determine_priority(exception: Exception, status_code: Optional[int]) -> str:

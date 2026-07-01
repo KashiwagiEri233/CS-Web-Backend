@@ -1,6 +1,6 @@
 """用户路由端到端测试（不依赖数据库）。
 
-通过覆盖鉴权依赖 + 替换 UserRepository 为假仓储，验证：
+通过覆盖鉴权依赖 + 替换 UserService 为假实现，验证：
 - GET /users 返回统一分页结构 {items,total,skip,limit} 并尊重 skip/limit；
 - 未鉴权访问被拒（不返回 200）。
 """
@@ -30,19 +30,19 @@ def _fake_user(i: int):
     )
 
 
-class _FakeRepo:
+class _FakeUserService:
+    """假 UserService：不接触数据库，按 skip/limit 切片返回。"""
+
     def __init__(self, db):
         pass
 
-    async def get_all(self, skip: int = 0, limit: int = 100):
-        return [_fake_user(i) for i in range(skip, min(skip + limit, _TOTAL))]
-
-    async def count(self):
-        return _TOTAL
+    async def list_users(self, skip: int = 0, limit: int = 100):
+        users = [_fake_user(i) for i in range(skip, min(skip + limit, _TOTAL))]
+        return users, _TOTAL
 
 
 def _client_authed(monkeypatch):
-    monkeypatch.setattr(users_module, "UserRepository", _FakeRepo)
+    monkeypatch.setattr(users_module, "UserService", _FakeUserService)
     app = FastAPI()
     app.include_router(users_router, prefix="/users")
 

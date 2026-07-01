@@ -7,12 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import (
     InvalidCredentialsException,
     UserNotActiveException,
-    UserAlreadyExistsException,
 )
 from app.database import get_db
 from app.dependencies import get_current_active_user, get_current_superuser
 from app.models.user import User
-from app.repositories.user_repo import UserRepository
 from app.schemas.auth import (
     TokenPair,
     RefreshRequest,
@@ -101,31 +99,11 @@ async def register(
 ) -> Any:
     """
     用户注册（需要超级用户权限）
-    使用 Pydantic body 接收，UserCreate 已包含密码强度/用户名/邮箱验证
+    使用 Pydantic body 接收，UserCreate 已包含密码强度/用户名/邮箱验证。
+    查重 + 哈希 + 落库统一走 AuthService.create_user。
     """
-    user_repo = UserRepository(db)
-
-    existing_user = await user_repo.get_by_username(user_data.username)
-    if existing_user:
-        raise UserAlreadyExistsException(username=user_data.username)
-
-    existing_email = await user_repo.get_by_email(user_data.email)
-    if existing_email:
-        raise UserAlreadyExistsException(email=user_data.email)
-
-    from app.core.security import get_password_hash
-
-    user_dict = {
-        "username": user_data.username,
-        "email": user_data.email,
-        "hashed_password": get_password_hash(user_data.password),
-        "full_name": user_data.full_name,
-        "is_active": user_data.is_active,
-        "is_superuser": False,
-    }
-
-    created_user = await user_repo.create(user_dict)
-    return created_user
+    auth_service = AuthService(db)
+    return await auth_service.create_user(user_data, is_superuser=False)
 
 
 @router.get("/me", response_model=UserResponse)

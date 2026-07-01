@@ -137,6 +137,23 @@ def _safe_json_response(
         )
 
 
+def _serialize_validation_errors(errors: list) -> list:
+    """把 Pydantic 校验错误列表转成 JSON 可序列化形式。
+
+    Pydantic v2 在 field_validator 抛 ValueError 时，会在 error["ctx"]["error"]
+    里塞入原始异常对象，导致整个 errors 列表不可 JSON 序列化（loguru 序列化、
+    JSONResponse、DB JSON 列都会崩）。这里把 ctx 里的非基本类型统一转成字符串。
+    """
+    safe = []
+    for error in errors:
+        item = dict(error)
+        ctx = item.get("ctx")
+        if isinstance(ctx, dict):
+            item["ctx"] = {k: (str(v) if isinstance(v, BaseException) else v) for k, v in ctx.items()}
+        safe.append(item)
+    return safe
+
+
 def create_validation_error_response(
     exc: Union[RequestValidationError, ValidationError],
     request: Request,
@@ -357,9 +374,10 @@ async def http_exception_handler(request: Request, exc: Union[HTTPException, Sta
 
 async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     """验证异常处理器"""
+    safe_errors = _serialize_validation_errors(exc.errors())
     logger.warning(
         "请求验证失败",
-        errors=exc.errors(),
+        errors=safe_errors,
         method=request.method,
         url=str(request.url),
     )
@@ -367,7 +385,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     await _record_exception_to_db(
         request,
         lambda svc, request_context: svc.record_validation_error(
-            errors=exc.errors(), request_context=request_context
+            errors=safe_errors, request_context=request_context
         ),
         log_label="验证错误",
     )
@@ -388,9 +406,10 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 async def pydantic_validation_exception_handler(request: Request, exc: ValidationError) -> JSONResponse:
     """Pydantic验证异常处理器（不写 DB：纯 schema 校验失败无需入库）"""
+    safe_errors = _serialize_validation_errors(exc.errors())
     logger.warning(
         "Pydantic验证失败",
-        errors=exc.errors(),
+        errors=safe_errors,
         method=request.method,
         url=str(request.url),
     )

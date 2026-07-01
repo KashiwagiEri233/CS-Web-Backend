@@ -118,6 +118,7 @@ class RBACInitializer:
             {"name": "exception:read", "resource": "exception", "action": "read", "description": "查看异常日志"},
             {"name": "exception:delete", "resource": "exception", "action": "delete", "description": "删除异常日志"},
             {"name": "exception:analyze", "resource": "exception", "action": "analyze", "description": "分析异常"},
+            {"name": "exception:resolve", "resource": "exception", "action": "resolve", "description": "标记异常已解决"},
             
             # API访问权限
             {"name": "api:access", "resource": "api", "action": "access", "description": "访问API"},

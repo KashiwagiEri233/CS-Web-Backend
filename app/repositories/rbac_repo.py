@@ -1,6 +1,6 @@
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -72,17 +72,40 @@ class RBACRepository:
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
     
-    async def get_all_roles(self) -> List[Role]:
-        """获取所有角色"""
+    async def get_all_roles(self, skip: int = 0, limit: Optional[int] = None) -> List[Role]:
+        """获取角色列表（含各自权限），可分页。limit=None 表示不分页。"""
         stmt = select(Role).options(selectinload(Role.permissions))
+        if limit is not None:
+            stmt = stmt.offset(skip).limit(limit)
         result = await self.db.execute(stmt)
-        return result.scalars().all()
-    
-    async def get_all_permissions(self) -> List[Permission]:
-        """获取所有权限"""
+        return list(result.scalars().all())
+
+    async def count_roles(self) -> int:
+        """角色总数（用于分页 total）。"""
+        result = await self.db.execute(select(func.count()).select_from(Role))
+        return int(result.scalar_one())
+
+    async def get_all_permissions(self, skip: int = 0, limit: Optional[int] = None) -> List[Permission]:
+        """获取权限列表，可分页。limit=None 表示不分页。"""
         stmt = select(Permission)
+        if limit is not None:
+            stmt = stmt.offset(skip).limit(limit)
         result = await self.db.execute(stmt)
-        return result.scalars().all()
+        return list(result.scalars().all())
+
+    async def count_permissions(self) -> int:
+        """权限总数（用于分页 total）。"""
+        result = await self.db.execute(select(func.count()).select_from(Permission))
+        return int(result.scalar_one())
+
+    async def get_user_ids_by_role(self, role_id: int) -> List[int]:
+        """查询拥有指定角色的全部用户 id（用于权限缓存批量失效）。"""
+        from app.models.user import user_roles
+
+        result = await self.db.execute(
+            select(user_roles.c.user_id).where(user_roles.c.role_id == role_id)
+        )
+        return [row[0] for row in result.all()]
     
     async def create_role(self, role_data: dict) -> Role:
         """创建角色"""

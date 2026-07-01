@@ -2,16 +2,30 @@
 
 用 AsyncMock 替换 RBACRepository，验证 update_role / update_permission /
 get_user_roles / check_permission 的行为契约。
+缓存被替换为每测独立的 no-op stub，避免全局内存缓存跨测试污染。
 """
 
 from unittest.mock import AsyncMock, MagicMock
 
+import app.services.rbac_service as rbac_svc_module
 from app.services.rbac_service import RBACService
 
 
+def _stub_cache() -> MagicMock:
+    """返回 no-op 缓存：get 恒未命中，set/delete 静默成功。"""
+    cache = MagicMock()
+    cache.get = AsyncMock(return_value=None)
+    cache.set = AsyncMock(return_value=None)
+    cache.delete = AsyncMock(return_value=None)
+    return cache
+
+
 def _make_service(monkeypatch) -> RBACService:
-    """构造一个 repo 被 AsyncMock 替换的 RBACService。"""
+    """构造一个 repo 被 AsyncMock 替换、缓存被 no-op 替换的 RBACService。"""
+    monkeypatch.setattr(rbac_svc_module, "get_cache", _stub_cache)
     svc = RBACService(db=MagicMock())
+    svc.db = MagicMock()
+    svc.db.commit = AsyncMock()  # service 内部会 await db.commit()
     svc.rbac_repo = AsyncMock()
     return svc
 
@@ -118,3 +132,201 @@ async def test_check_permission_aggregates_roles(monkeypatch):
     assert await svc.check_permission(1, "user", "read") is True
     assert await svc.check_permission(1, "user", "delete") is True
     assert await svc.check_permission(1, "user", "write") is False
+
+
+# ---- 角色/权限 CRUD 委托（路由层应通过这些方法访问数据） ----
+
+async def test_get_all_roles_delegates(monkeypatch):
+    svc = _make_service(monkeypatch)
+    svc.rbac_repo.get_all_roles.return_value = ["r1", "r2"]
+    assert await svc.get_all_roles() == ["r1", "r2"]
+    svc.rbac_repo.get_all_roles.assert_awaited_once()
+
+
+async def test_get_role_delegates_to_get_role_with_permissions(monkeypatch):
+    svc = _make_service(monkeypatch)
+    svc.rbac_repo.get_role_with_permissions.return_value = None
+    assert await svc.get_role(9) is None
+    svc.rbac_repo.get_role_with_permissions.assert_awaited_once_with(9)
+
+
+async def test_create_role_delegates(monkeypatch):
+    svc = _make_service(monkeypatch)
+    payload = {"name": "x", "description": None, "is_active": True}
+    svc.rbac_repo.create_role.return_value = "created"
+    assert await svc.create_role(payload) == "created"
+    svc.rbac_repo.create_role.assert_awaited_once_with(payload)
+
+
+async def test_delete_role_delegates(monkeypatch):
+    svc = _make_service(monkeypatch)
+    svc.rbac_repo.delete_role.return_value = True
+    assert await svc.delete_role(3) is True
+    svc.rbac_repo.delete_role.assert_awaited_once_with(3)
+
+
+async def test_get_all_permissions_delegates(monkeypatch):
+    svc = _make_service(monkeypatch)
+    svc.rbac_repo.get_all_permissions.return_value = ["p1"]
+    assert await svc.get_all_permissions() == ["p1"]
+
+
+async def test_get_permission_delegates_to_get_permission_by_id(monkeypatch):
+    svc = _make_service(monkeypatch)
+    svc.rbac_repo.get_permission_by_id.return_value = None
+    assert await svc.get_permission(5) is None
+    svc.rbac_repo.get_permission_by_id.assert_awaited_once_with(5)
+
+
+async def test_create_permission_delegates(monkeypatch):
+    svc = _make_service(monkeypatch)
+    payload = {"name": "p", "resource": "u", "action": "r", "description": None}
+    svc.rbac_repo.create_permission.return_value = "created"
+    assert await svc.create_permission(payload) == "created"
+    svc.rbac_repo.create_permission.assert_awaited_once_with(payload)
+
+
+async def test_delete_permission_delegates(monkeypatch):
+    svc = _make_service(monkeypatch)
+    svc.rbac_repo.delete_permission.return_value = False
+    assert await svc.delete_permission(7) is False
+
+
+async def test_get_role_by_name_delegates(monkeypatch):
+    svc = _make_service(monkeypatch)
+    svc.rbac_repo.get_role_by_name.return_value = None
+    assert await svc.get_role_by_name("admin") is None
+
+
+async def test_get_permission_by_name_delegates(monkeypatch):
+    svc = _make_service(monkeypatch)
+    svc.rbac_repo.get_permission_by_name.return_value = "exists"
+    assert await svc.get_permission_by_name("x") == "exists"
+
+
+async def test_user_exists_true(monkeypatch):
+    svc = _make_service(monkeypatch)
+    svc.rbac_repo.get_user_by_id.return_value = MagicMock()
+    assert await svc.user_exists(1) is True
+
+
+async def test_user_exists_false(monkeypatch):
+    svc = _make_service(monkeypatch)
+    svc.rbac_repo.get_user_by_id.return_value = None
+    assert await svc.user_exists(1) is False
+
+
+# ---- grant/revoke 改用按 id 比较（#14） ----
+
+async def test_grant_role_to_user_idempotent(monkeypatch):
+    svc = _make_service(monkeypatch)
+    user = MagicMock()
+    existing = MagicMock(id=2)
+    user.roles = [existing]
+    svc.rbac_repo.get_user_with_roles.return_value = user
+    svc.rbac_repo.get_role_by_id.return_value = existing  # 已存在同 id
+
+    assert await svc.grant_role_to_user(1, 2) is True
+    svc.db.commit.assert_not_called()  # 已有则不重复 append、不 commit
+
+
+async def test_revoke_role_to_user_by_id(monkeypatch):
+    svc = _make_service(monkeypatch)
+    user = MagicMock()
+    target = MagicMock(id=5)
+    user.roles = [target]
+    svc.rbac_repo.get_user_with_roles.return_value = user
+    svc.rbac_repo.get_role_by_id.return_value = target
+
+    assert await svc.revoke_role_from_user(1, 5) is True
+    assert target not in user.roles
+
+
+# ---- 权限缓存（#12） ----
+
+def _real_memory_cache():
+    """用项目自带的内存后端构造一个隔离缓存，验证命中/失效。"""
+    from app.core.cache.backends import InMemoryCacheBackend
+
+    backend = InMemoryCacheBackend()
+
+    cache = MagicMock()
+    cache.get = backend.get
+    cache.set = backend.set
+    cache.delete = backend.delete
+    return cache
+
+
+async def test_get_user_permissions_caches_result(monkeypatch):
+    """第二次调用应命中缓存，不再查库。"""
+    cache = _real_memory_cache()
+    monkeypatch.setattr(rbac_svc_module, "get_cache", lambda: cache)
+
+    svc = RBACService.__new__(RBACService)
+    svc.db = MagicMock()
+    svc.rbac_repo = AsyncMock()
+
+    user = MagicMock()
+    perm = MagicMock(resource="user", action="read")
+    role = MagicMock()
+    role.permissions = [perm]
+    user.roles = [role]
+    svc.rbac_repo.get_user_with_roles.return_value = user
+
+    first = await svc.get_user_permissions(1)
+    second = await svc.get_user_permissions(1)
+
+    assert first == {"user:read"}
+    assert second == {"user:read"}
+    # 命中缓存：底层只查了一次库
+    assert svc.rbac_repo.get_user_with_roles.await_count == 1
+
+
+async def test_grant_role_to_user_invalidates_cache(monkeypatch):
+    """授予角色后应清除该用户权限缓存。"""
+    cache = _real_memory_cache()
+    await cache.set(rbac_svc_module._user_perm_cache_key(1), ["old"], 60)
+    monkeypatch.setattr(rbac_svc_module, "get_cache", lambda: cache)
+
+    svc = RBACService.__new__(RBACService)
+    svc.db = MagicMock()
+    svc.db.commit = AsyncMock()
+    svc.rbac_repo = AsyncMock()
+
+    user = MagicMock()
+    user.roles = []
+    role = MagicMock(id=7)
+    svc.rbac_repo.get_user_with_roles.return_value = user
+    svc.rbac_repo.get_role_by_id.return_value = role
+
+    await svc.grant_role_to_user(1, 7)
+
+    # 缓存已被失效
+    assert await cache.get(rbac_svc_module._user_perm_cache_key(1)) is None
+
+
+async def test_grant_permission_to_role_invalidates_all_role_users(monkeypatch):
+    """角色授予权限应失效该角色下所有用户的权限缓存。"""
+    cache = _real_memory_cache()
+    # 用户 1 和 2 都在该角色下，预先写入缓存
+    await cache.set(rbac_svc_module._user_perm_cache_key(1), ["x"], 60)
+    await cache.set(rbac_svc_module._user_perm_cache_key(2), ["y"], 60)
+
+    monkeypatch.setattr(rbac_svc_module, "get_cache", lambda: cache)
+
+    svc = RBACService.__new__(RBACService)
+    svc.db = MagicMock()
+    svc.db.commit = AsyncMock()
+    svc.rbac_repo = AsyncMock()
+
+    role = MagicMock(id=3)
+    role.permissions = []
+    perm = MagicMock(id=4)
+    svc.rbac_repo.get_role_with_permissions.return_value = role
+    svc.rbac_repo.get_permission_by_id.return_value = perm
+    svc.rbac_repo.get_user_ids_by_role.return_value = [1, 2]
+
+    await svc.grant_permission_to_role(3, 4)
+
+    assert await cache.get(rbac_svc_module._user_perm_cache_key(1)) is None
+    assert await cache.get(rbac_svc_module._user_perm_cache_key(2)) is None
