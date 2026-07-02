@@ -10,16 +10,20 @@ import uuid
 from collections import defaultdict
 from typing import Dict, List
 
+# 内存限流最大跟踪 key 数。超过后清理已过期/空的 key，防止大量一次性 IP 导致 OOM。
+_DEFAULT_MAX_KEYS = 100000
+
 
 class InMemoryBackend:
-    """进程内滑动窗口限流。
+    """进程内滑动窗口限流（带容量清理）。
 
     用于：未配置 Redis 的单实例部署，或 Redis 故障时的降级兜底。
     局限：状态不跨进程/实例共享（多 worker 各自计数）。
     """
 
-    def __init__(self) -> None:
+    def __init__(self, max_keys: int = _DEFAULT_MAX_KEYS) -> None:
         self._hits: Dict[str, List[float]] = defaultdict(list)
+        self._max_keys = max_keys
 
     async def is_allowed(self, key: str, calls: int, period: int) -> bool:
         now = time.time()
@@ -33,7 +37,16 @@ class InMemoryBackend:
 
         kept.append(now)
         self._hits[key] = kept
+        # 周期性清理：超 key 上限时移除已过期的空 key，防止无界增长
+        if len(self._hits) > self._max_keys:
+            self._purge_expired_keys(cutoff)
         return True
+
+    def _purge_expired_keys(self, cutoff: float) -> None:
+        """移除窗口已全部过期的 key（清理后为空的 key）。"""
+        empty_keys = [k for k, hits in self._hits.items() if not any(ts > cutoff for ts in hits)]
+        for k in empty_keys:
+            self._hits.pop(k, None)
 
 
 # 滑动窗口日志算法，整段在 Redis 内原子执行，避免并发竞态：

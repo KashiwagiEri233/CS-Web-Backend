@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import List, Optional
 
-from sqlalchemy import DateTime as _DateTime, Integer, String, Text
+from sqlalchemy import DateTime as _DateTime, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.timezone import now_utc
@@ -13,6 +13,9 @@ DateTime = _DateTime(timezone=True)
 
 class Permission(Base):
     __tablename__ = "permissions"
+    __table_args__ = (
+        UniqueConstraint("resource", "action", name="uq_permission_resource_action"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)

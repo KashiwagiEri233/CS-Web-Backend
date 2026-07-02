@@ -20,7 +20,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.timezone import now_utc
+from app.core.timezone import now_utc, utc_to_local
 from app.database import Base
 
 DateTime = _DateTime(timezone=True)
@@ -114,9 +114,9 @@ class ExceptionLog(Base):
             "details": self.details,
             "traceback": self.traceback,
             "context": self.context,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "created_at": utc_to_local(self.created_at).isoformat() if self.created_at else None,
             "is_resolved": self.is_resolved,
-            "resolved_at": self.resolved_at.isoformat() if self.resolved_at else None,
+            "resolved_at": utc_to_local(self.resolved_at).isoformat() if self.resolved_at else None,
             "resolved_by": self.resolved_by,
             "resolution_notes": self.resolution_notes,
             "severity": self.severity,

@@ -156,6 +156,10 @@ class RBACService:
         """按名称查权限（用于查重）。"""
         return await self.rbac_repo.get_permission_by_name(name)
 
+    async def get_permission_by_resource_action(self, resource: str, action: str) -> Optional[Permission]:
+        """按 resource+action 查权限（用于查重，与唯一约束对齐）。"""
+        return await self.rbac_repo.get_permission_by_resource_and_action(resource, action)
+
     async def user_exists(self, user_id: int) -> bool:
         """判断用户是否存在（供路由层做存在性校验，避免穿透到 repo）。"""
         return await self.rbac_repo.get_user_by_id(user_id) is not None

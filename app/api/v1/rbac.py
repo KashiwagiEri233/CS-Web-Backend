@@ -158,6 +158,15 @@ async def create_permission(
             details={"name": permission_data.name},
         )
 
+    # 按 resource+action 查重（与 DB 唯一约束对齐，给出友好提示而非 IntegrityError）
+    if await rbac_service.get_permission_by_resource_action(
+        permission_data.resource, permission_data.action
+    ):
+        raise ConflictException(
+            message="该资源的操作权限已存在",
+            details={"resource": permission_data.resource, "action": permission_data.action},
+        )
+
     permission_dict = {
         "name": permission_data.name,
         "resource": permission_data.resource,

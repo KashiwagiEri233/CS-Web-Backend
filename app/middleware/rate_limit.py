@@ -4,6 +4,7 @@ from fastapi import Request, status
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from app.core.exceptions import ErrorCode
 from app.core.rate_limit import build_limiter
 
 
@@ -68,7 +69,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 content={
                     "success": False,
-                    "error_code": "RATE_LIMIT_EXCEEDED",
+                    "error_code": ErrorCode.RateLimit.RATE_LIMIT_EXCEEDED,
                     "message": self.error_detail,
                     "status_code": status.HTTP_429_TOO_MANY_REQUESTS,
                 },

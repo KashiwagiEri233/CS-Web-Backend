@@ -141,3 +141,51 @@ async def test_cached_decorator_memoizes(monkeypatch):
     assert calls["n"] == 1                  # 底层只执行一次
     assert await compute(2, y=4) == 6      # 参数不同 -> 重新计算
     assert calls["n"] == 2
+
+
+# --------------------------- 容量上限（#28） ---------------------
+
+async def test_memory_cache_evicts_when_full():
+    """超 max_entries 时应淘汰过期项，仍有余则淘汰最旧条目。"""
+    c = InMemoryCacheBackend(max_entries=3)
+    await c.set("k1", "v1", ttl=100)
+    await c.set("k2", "v2", ttl=100)
+    await c.set("k3", "v3", ttl=100)
+    # 写入第 4 个，应触发淘汰（k1 最旧）
+    await c.set("k4", "v4", ttl=100)
+    assert await c.get("k1") is None
+    assert await c.get("k4") == "v4"
+    # 容量不超限
+    assert len(c._store) <= 3
+
+
+async def test_memory_cache_evicts_expired_first():
+    """淘汰时优先清理已过期项，保留未过期的。"""
+    import time as _time
+
+    c = InMemoryCacheBackend(max_entries=3)
+    # k1 已过期
+    await c.set("k1", "v1", ttl=1)
+    _time.sleep(1.1)
+    # k2、k3 未过期
+    await c.set("k2", "v2", ttl=100)
+    await c.set("k3", "v3", ttl=100)
+    # 写入第 4 个：先清过期（k1），k2/k3 保留
+    await c.set("k4", "v4", ttl=100)
+    assert await c.get("k1") is None
+    assert await c.get("k2") == "v2"
+    assert await c.get("k3") == "v3"
+
+
+async def test_memory_cache_lru_on_get():
+    """get 命中后该 key 应视为"热"，不被优先淘汰。"""
+    c = InMemoryCacheBackend(max_entries=3)
+    await c.set("a", 1, ttl=100)
+    await c.set("b", 2, ttl=100)
+    await c.set("c", 3, ttl=100)
+    # 访问 a，使其移到末尾（变热）
+    await c.get("a")
+    # 写入 d，应淘汰最旧的 b（a 因被访问过更热）
+    await c.set("d", 4, ttl=100)
+    assert await c.get("a") == 1
+    assert await c.get("b") is None

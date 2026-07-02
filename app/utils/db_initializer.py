@@ -15,25 +15,22 @@ suppress_library_logging()
 from app.models.user import User
 from app.models.role import Role
 from app.models.permission import Permission
-from app.models.exception_log import ExceptionLog, ExceptionPattern, ExceptionAlert, ExceptionMetrics
+from app.models.exception_log import ExceptionLog
 
 logger = get_logger("db_initializer")
 
 
 class DatabaseInitializer:
     """数据库初始化器"""
-    
+
     def __init__(self):
         self.expected_tables = [
             "users",
-            "roles", 
+            "roles",
             "permissions",
             "role_permissions",
             "user_roles",
             "exception_logs",
-            "exception_patterns",
-            "exception_alerts",
-            "exception_metrics"
         ]
         self.logger = get_logger("db_initializer")
     
