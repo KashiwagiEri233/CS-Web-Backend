@@ -20,6 +20,9 @@ if not settings.REDIS_URL:
         "启动 arq worker 需要配置 REDIS_URL（broker）；请在环境中配置后再启动 worker。"
     )
 
+_BROKER_URL = settings.REDIS_URL
+assert _BROKER_URL is not None
+
 
 async def on_startup(ctx) -> None:
     logger.info("arq worker 启动", tasks=[fn.__name__ for fn in TASKS])
@@ -33,7 +36,7 @@ class WorkerSettings:
     """arq 读取此类来配置 worker。新增任务只需登记到 tasks.TASKS。"""
 
     functions = TASKS
-    redis_settings = RedisSettings.from_dsn(settings.REDIS_URL)
+    redis_settings = RedisSettings.from_dsn(_BROKER_URL)
     on_startup = on_startup
     on_shutdown = on_shutdown
     # 默认重试/超时可按需加：max_tries / job_timeout / keep_result 等。

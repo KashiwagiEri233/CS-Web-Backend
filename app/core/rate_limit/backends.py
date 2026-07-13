@@ -8,10 +8,16 @@
 import time
 import uuid
 from collections import defaultdict
-from typing import Dict, List
+from typing import Any, Awaitable, Dict, List, Optional, Protocol
 
 # 内存限流最大跟踪 key 数。超过后清理已过期/空的 key，防止大量一次性 IP 导致 OOM。
 _DEFAULT_MAX_KEYS = 100000
+
+
+class _AsyncRedisScript(Protocol):
+    """redis-py 异步 Lua 脚本的最小调用协议。"""
+
+    def __call__(self, *, keys: List[str], args: List[Any]) -> Awaitable[Any]: ...
 
 
 class InMemoryBackend:
@@ -44,7 +50,9 @@ class InMemoryBackend:
 
     def _purge_expired_keys(self, cutoff: float) -> None:
         """移除窗口已全部过期的 key（清理后为空的 key）。"""
-        empty_keys = [k for k, hits in self._hits.items() if not any(ts > cutoff for ts in hits)]
+        empty_keys = [
+            k for k, hits in self._hits.items() if not any(ts > cutoff for ts in hits)
+        ]
         for k in empty_keys:
             self._hits.pop(k, None)
 
@@ -79,7 +87,7 @@ class RedisBackend:
 
     def __init__(self, client) -> None:
         self._client = client
-        self._script = None  # 懒注册 Lua 脚本
+        self._script: Optional[_AsyncRedisScript] = None  # 懒注册 Lua 脚本
 
     async def is_allowed(self, key: str, calls: int, period: int) -> bool:
         if self._script is None:
@@ -87,5 +95,6 @@ class RedisBackend:
 
         now = time.time()
         member = f"{now}:{uuid.uuid4().hex}"
-        result = await self._script(keys=[key], args=[now, period, calls, member])
+        script = self._script
+        result = await script(keys=[key], args=[now, period, calls, member])
         return bool(int(result))

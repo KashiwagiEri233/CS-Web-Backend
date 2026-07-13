@@ -78,8 +78,9 @@ await enqueue(example_send_notification, user_id=1, message="hi")
 
 ## 测试
 
-`tests/core/test_queue.py`：覆盖 eager 降级（禁用 / 启用但无 broker）与"未登记任务被拒"。
-不依赖真实 Redis / arq broker。真实投递→消费链路需起 Redis + worker 手测。
+`tests/core/test_queue.py`：覆盖 eager 降级（禁用 / 启用但无 broker）与“未登记任务被拒”。
+`tests/integration/test_queue_worker.py` 使用真实 Redis 和 arq worker 覆盖投递、消费、首次失败
+重试及结果读取；CI 中 Redis 不可用会直接失败。
 
 ## 扩展指引
 

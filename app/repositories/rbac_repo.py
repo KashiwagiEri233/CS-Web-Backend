@@ -1,4 +1,4 @@
-from typing import Optional, List, Tuple
+from typing import Optional, List
 
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,7 +12,7 @@ from app.models.permission import Permission
 class RBACRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
-    
+
     async def get_user_by_id(self, user_id: int) -> Optional[User]:
         """通过ID获取未软删用户。"""
         stmt = select(User).where(User.id == user_id, User.deleted_at.is_(None))
@@ -32,47 +32,54 @@ class RBACRepository:
         )
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
-    
+
     async def get_role_by_id(self, role_id: int) -> Optional[Role]:
         """通过ID获取角色"""
         stmt = select(Role).where(Role.id == role_id)
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
-    
+
     async def get_role_by_name(self, role_name: str) -> Optional[Role]:
         """通过名称获取角色"""
         stmt = select(Role).where(Role.name == role_name)
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
-    
+
     async def get_role_with_permissions(self, role_id: int) -> Optional[Role]:
         """获取角色及其权限"""
-        stmt = select(Role).options(selectinload(Role.permissions)).where(Role.id == role_id)
+        stmt = (
+            select(Role)
+            .options(selectinload(Role.permissions))
+            .where(Role.id == role_id)
+        )
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
-    
+
     async def get_permission_by_id(self, permission_id: int) -> Optional[Permission]:
         """通过ID获取权限"""
         stmt = select(Permission).where(Permission.id == permission_id)
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
-    
+
     async def get_permission_by_name(self, name: str) -> Optional[Permission]:
         """通过名称获取权限"""
         stmt = select(Permission).where(Permission.name == name)
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def get_permission_by_resource_and_action(self, resource: str, action: str) -> Optional[Permission]:
+    async def get_permission_by_resource_and_action(
+        self, resource: str, action: str
+    ) -> Optional[Permission]:
         """通过资源和操作获取权限"""
         stmt = select(Permission).where(
-            Permission.resource == resource,
-            Permission.action == action
+            Permission.resource == resource, Permission.action == action
         )
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
-    
-    async def get_all_roles(self, skip: int = 0, limit: Optional[int] = None) -> List[Role]:
+
+    async def get_all_roles(
+        self, skip: int = 0, limit: Optional[int] = None
+    ) -> List[Role]:
         """获取角色列表（含各自权限），可分页。limit=None 表示不分页。"""
         stmt = select(Role).options(selectinload(Role.permissions))
         if limit is not None:
@@ -85,7 +92,9 @@ class RBACRepository:
         result = await self.db.execute(select(func.count()).select_from(Role))
         return int(result.scalar_one())
 
-    async def get_all_permissions(self, skip: int = 0, limit: Optional[int] = None) -> List[Permission]:
+    async def get_all_permissions(
+        self, skip: int = 0, limit: Optional[int] = None
+    ) -> List[Permission]:
         """获取权限列表，可分页。limit=None 表示不分页。"""
         stmt = select(Permission)
         if limit is not None:
@@ -125,7 +134,11 @@ class RBACRepository:
         await self.db.flush()
         await self.db.refresh(role)
         # 预加载权限关系，避免 MissingGreenlet
-        stmt = select(Role).options(selectinload(Role.permissions)).where(Role.id == role.id)
+        stmt = (
+            select(Role)
+            .options(selectinload(Role.permissions))
+            .where(Role.id == role.id)
+        )
         result = await self.db.execute(stmt)
         return result.scalar_one()
 
@@ -172,7 +185,9 @@ class RBACRepository:
         await self.db.flush()
         return True
 
-    async def update_permission(self, permission: Permission, update_data: dict) -> Permission:
+    async def update_permission(
+        self, permission: Permission, update_data: dict
+    ) -> Permission:
         """更新权限字段并 flush，返回预加载角色后的权限。"""
         for field in ("name", "resource", "action", "description"):
             value = update_data.get(field)

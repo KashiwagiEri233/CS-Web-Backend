@@ -8,6 +8,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 
 from app.core.loguru_logger import get_logger
+from app.core.request_context import get_client_meta
 from app.database import get_session
 
 logger = get_logger("exception_handler")
@@ -20,8 +21,7 @@ def build_request_context_dict(request: Request) -> dict:
         "user_id": getattr(request.state, "user_id", None),
         "method": request.method,
         "endpoint": f"{request.method} {request.url.path}",
-        "ip_address": request.client.host if request.client else None,
-        "user_agent": request.headers.get("user-agent"),
+        **get_client_meta(request),
     }
 
 

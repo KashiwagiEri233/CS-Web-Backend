@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 
 from fastapi import Request
@@ -9,7 +10,11 @@ from fastapi.exceptions import HTTPException
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.core.loguru_logger import get_logger
+from app.core.loguru_logger import (
+    get_logger,
+    reset_logging_context,
+    set_logging_context,
+)
 from app.core.timezone import now_utc
 
 from .base_exceptions import BaseAppException
@@ -23,6 +28,7 @@ from .error_codes import ErrorCode
 logger = get_logger("exception_handler")
 
 _CLIENT_DISCONNECT_NAMES = ("ClientDisconnect", "ClientDisconnected")
+_REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{8,128}$")
 
 
 class ExceptionHandlerMiddleware:
@@ -42,11 +48,28 @@ class ExceptionHandlerMiddleware:
             return
 
         request = Request(scope, receive)
-        request_id = str(uuid.uuid4())
+        supplied_request_id = request.headers.get("x-request-id", "")
+        request_id = (
+            supplied_request_id
+            if _REQUEST_ID_PATTERN.fullmatch(supplied_request_id)
+            else uuid.uuid4().hex
+        )
         request.state.request_id = request_id
+        context_token = set_logging_context(request_id=request_id)
+
+        async def send_with_request_id(message):
+            if message["type"] == "http.response.start":
+                headers = [
+                    header
+                    for header in message.get("headers", [])
+                    if header[0].lower() != b"x-request-id"
+                ]
+                headers.append((b"x-request-id", request_id.encode("ascii")))
+                message = {**message, "headers": headers}
+            await send(message)
 
         try:
-            await self.app(scope, receive, send)
+            await self.app(scope, receive, send_with_request_id)
         except Exception as exc:
             # 客户端在响应发送完成前断开：良性事件，不当成服务端 500。
             if type(exc).__name__ in _CLIENT_DISCONNECT_NAMES:
@@ -93,8 +116,10 @@ class ExceptionHandlerMiddleware:
                 )
 
             try:
-                await response_obj(scope, receive, send)
+                await response_obj(scope, receive, send_with_request_id)
             except Exception as send_exc:
                 if type(send_exc).__name__ in _CLIENT_DISCONNECT_NAMES:
                     return
                 raise
+        finally:
+            reset_logging_context(context_token)

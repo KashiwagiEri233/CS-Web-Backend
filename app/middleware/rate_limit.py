@@ -5,18 +5,9 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core.exceptions import ErrorCode
+from app.core.config import settings
 from app.core.rate_limit import build_limiter
-
-
-def get_client_ip(request: Request) -> str:
-    """获取客户端真实IP地址，考虑代理情况"""
-    if "x-forwarded-for" in request.headers:
-        return request.headers["x-forwarded-for"].split(",")[0].strip()
-
-    if "x-real-ip" in request.headers:
-        return request.headers["x-real-ip"]
-
-    return request.client.host if request.client else "unknown"
+from app.core.request_context import get_client_ip
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -35,6 +26,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     # 限流键命名空间，子类可覆盖以区分不同限流域（如认证端点）
     scope = "global"
+    DEFAULT_EXCLUDE_PATHS = frozenset({"/health", "/readyz"})
 
     def __init__(
         self,
@@ -42,23 +34,29 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         calls: int = 100,
         period: int = 60,
         limit_paths: Optional[List[str]] = None,
+        exclude_paths: Optional[List[str]] = None,
         error_detail: Optional[str] = None,
     ):
         super().__init__(app)
         self.calls = calls
         self.period = period
         self.limit_paths = limit_paths
+        self.exclude_paths = set(exclude_paths or self.DEFAULT_EXCLUDE_PATHS)
         self.error_detail = error_detail or (
             f"Rate limit exceeded. Maximum {calls} requests per {period} seconds."
         )
         self.limiter = build_limiter()
+        self.trusted_proxies = settings.trusted_proxy_networks
 
     async def dispatch(self, request: Request, call_next):
+        if request.url.path in self.exclude_paths:
+            return await call_next(request)
+
         # 如果指定了限制路径，则仅对匹配路径生效
         if self.limit_paths and request.url.path not in self.limit_paths:
             return await call_next(request)
 
-        client_ip = get_client_ip(request)
+        client_ip = get_client_ip(request, self.trusted_proxies)
         key = f"ratelimit:{self.scope}:{client_ip}"
 
         allowed = await self.limiter.is_allowed(key, self.calls, self.period)
@@ -85,9 +83,10 @@ class AuthRateLimitMiddleware(RateLimitMiddleware):
     scope = "auth"
 
     AUTH_PATHS = [
-        "/api/v1/auth/login",
-        "/api/v1/auth/login-json",
-        "/api/v1/auth/register",
+        f"{settings.API_V1_STR}/auth/login",
+        f"{settings.API_V1_STR}/auth/login-json",
+        f"{settings.API_V1_STR}/auth/register",
+        f"{settings.API_V1_STR}/auth/refresh",
     ]
 
     def __init__(self, app, calls: int = 5, period: int = 60):

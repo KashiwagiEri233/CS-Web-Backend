@@ -9,16 +9,20 @@
 - 这样跨多个 repo 的业务可以在同一事务内完成，避免半提交。
 """
 
-from typing import TYPE_CHECKING, Any, Generic, List, Optional, Type, TypeVar
+from typing import Any, Generic, List, Optional, Protocol, Type, TypeVar
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-if TYPE_CHECKING:
-    from app.database import Base
 
-# 不用 bound=Base：运行时 import database 会经 lifecycle → rbac_init → repo 形成环
-ModelT = TypeVar("ModelT")
+class _HasId(Protocol):
+    """所有 ORM 实体都满足的最小仓储协议。"""
+
+    id: Any
+
+
+# 不用 bound=Base：运行时 import database 会经 lifecycle → rbac_init → repo 形成环。
+ModelT = TypeVar("ModelT", bound=_HasId)
 
 
 class BaseRepository(Generic[ModelT]):

@@ -4,36 +4,20 @@
 1. grant_role_to_user 曾用 get_user_by_id（未预加载 roles）-> 访问 user.roles 触发异步懒加载 500；
 2. get_user_with_roles 未嵌套预加载 role.permissions -> 用户有角色后聚合权限 500。
 
-无法连接数据库时自动 skip，不影响 DB-free 套件。
+本地无法连接数据库时自动 skip；CI 严格模式下直接失败。
 """
 
 import uuid
 
-import pytest
 from sqlalchemy import text
 
 from app.database import get_session
+from app.models.user import User
 from app.services.rbac_service import RBACService
 from app.repositories.rbac_repo import RBACRepository
 
 
-async def _db_available() -> bool:
-    try:
-        async with get_session() as db:
-            await db.execute(text("SELECT 1"))
-        return True
-    except Exception:
-        return False
-
-
-async def test_grant_role_then_aggregate_permissions():
-    if not await _db_available():
-        pytest.skip("数据库不可用，跳过 RBAC 集成测试")
-
-    from tests._alembic_helpers import upgrade_schema_to_head
-
-    await upgrade_schema_to_head()
-
+async def test_grant_role_then_aggregate_permissions(integration_db_ready):
     sfx = uuid.uuid4().hex[:8]
     uname, rname, pname = f"itest_u_{sfx}", f"itest_r_{sfx}", f"itest:p_{sfx}"
 
@@ -42,14 +26,28 @@ async def test_grant_role_then_aggregate_permissions():
         svc = RBACService(db)
 
         # 准备：建用户 / 角色 / 权限
-        await db.execute(text(
-            "INSERT INTO users (username,email,hashed_password,is_active,is_superuser) "
-            "VALUES (:u,:e,'x',true,false)"), {"u": uname, "e": f"{uname}@t.com"})
-        role = await repo.create_role({"name": rname, "description": "i", "is_active": True})
+        user = User(
+            username=uname,
+            email=f"{uname}@t.com",
+            hashed_password="x",
+            is_active=True,
+            is_superuser=False,
+        )
+        db.add(user)
+        await db.flush()
+        role = await repo.create_role(
+            {"name": rname, "description": "i", "is_active": True}
+        )
         perm = await repo.create_permission(
-            {"name": pname, "resource": "itest", "action": f"p_{sfx}", "description": "i"})
+            {
+                "name": pname,
+                "resource": "itest",
+                "action": f"p_{sfx}",
+                "description": "i",
+            }
+        )
         await db.commit()
-        uid = (await db.execute(text("SELECT id FROM users WHERE username=:u"), {"u": uname})).scalar()
+        uid = user.id
 
         try:
             # 1) 赋角色不应 500（曾因懒加载 user.roles 崩）
@@ -65,9 +63,16 @@ async def test_grant_role_then_aggregate_permissions():
         finally:
             # 清理（先关联表后主表）
             async with get_session() as db2:
-                await db2.execute(text("DELETE FROM user_roles WHERE user_id=:i"), {"i": uid})
-                await db2.execute(text("DELETE FROM role_permissions WHERE role_id=:r"), {"r": role.id})
+                await db2.execute(
+                    text("DELETE FROM user_roles WHERE user_id=:i"), {"i": uid}
+                )
+                await db2.execute(
+                    text("DELETE FROM role_permissions WHERE role_id=:r"),
+                    {"r": role.id},
+                )
                 await db2.execute(text("DELETE FROM users WHERE id=:i"), {"i": uid})
                 await db2.execute(text("DELETE FROM roles WHERE id=:r"), {"r": role.id})
-                await db2.execute(text("DELETE FROM permissions WHERE id=:p"), {"p": perm.id})
+                await db2.execute(
+                    text("DELETE FROM permissions WHERE id=:p"), {"p": perm.id}
+                )
                 await db2.commit()

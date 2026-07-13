@@ -10,17 +10,23 @@
 """
 
 import time
+from ipaddress import ip_network
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from starlette.testclient import TestClient
 
 from app.core.rate_limit.backends import InMemoryBackend, RedisBackend
 from app.core.rate_limit.limiter import DegradableRateLimiter
-from app.middleware.rate_limit import RateLimitMiddleware, AuthRateLimitMiddleware
+from app.middleware.rate_limit import (
+    AuthRateLimitMiddleware,
+    RateLimitMiddleware,
+    get_client_ip,
+)
 from app.core.exceptions import setup_exception_handlers, ExceptionHandlerMiddleware
 
 
 # ----------------------------- 后端 -----------------------------
+
 
 async def test_inmemory_blocks_after_limit():
     backend = InMemoryBackend()
@@ -44,7 +50,7 @@ async def test_inmemory_window_expiry(monkeypatch):
     assert await backend.is_allowed("ip", 2, 10) is True
     assert await backend.is_allowed("ip", 2, 10) is False  # 满
     t["now"] += 11  # 窗口滑过
-    assert await backend.is_allowed("ip", 2, 10) is True   # 旧记录已过期
+    assert await backend.is_allowed("ip", 2, 10) is True  # 旧记录已过期
 
 
 class _FakeScript:
@@ -55,7 +61,12 @@ class _FakeScript:
 
     async def __call__(self, keys, args):
         key = keys[0]
-        now, window, limit, member = float(args[0]), float(args[1]), int(args[2]), args[3]
+        now, window, limit, member = (
+            float(args[0]),
+            float(args[1]),
+            int(args[2]),
+            args[3],
+        )
         bucket = [m for m in self._store.get(key, []) if m[0] > now - window]
         if len(bucket) >= limit:
             self._store[key] = bucket
@@ -80,6 +91,7 @@ async def test_redis_backend_allows_then_blocks():
 
 
 # --------------------------- 降级器 ----------------------------
+
 
 class _BoomRedis:
     """每次调用都抛连接错误，模拟 Redis 不可用。"""
@@ -128,14 +140,44 @@ async def test_limiter_half_open_recovery():
     lim = DegradableRateLimiter(
         flaky, InMemoryBackend(), fallback="memory", retry_interval=0
     )
-    await lim.is_allowed("k", 10, 60)      # 首次失败 -> 降级
+    await lim.is_allowed("k", 10, 60)  # 首次失败 -> 降级
     assert lim.using_redis is False
-    flaky.fail = False                      # Redis 恢复
-    await lim.is_allowed("k", 10, 60)      # retry_interval=0 立即半开重试 -> 成功
+    flaky.fail = False  # Redis 恢复
+    await lim.is_allowed("k", 10, 60)  # retry_interval=0 立即半开重试 -> 成功
     assert lim.using_redis is True
 
 
 # ----------------------- 中间件端到端 -------------------------
+
+
+def _request(peer: str, headers: list[tuple[bytes, bytes]]) -> Request:
+    return Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/",
+            "headers": headers,
+            "client": (peer, 1234),
+            "scheme": "http",
+            "server": ("test", 80),
+            "query_string": b"",
+            "root_path": "",
+        }
+    )
+
+
+def test_untrusted_peer_cannot_spoof_forwarded_ip():
+    request = _request("203.0.113.10", [(b"x-forwarded-for", b"1.2.3.4")])
+    assert get_client_ip(request, (ip_network("10.0.0.0/8"),)) == "203.0.113.10"
+
+
+def test_trusted_proxy_chain_selects_first_untrusted_hop_from_right():
+    request = _request(
+        "10.0.0.2",
+        [(b"x-forwarded-for", b"1.2.3.4, 198.51.100.8")],
+    )
+    assert get_client_ip(request, (ip_network("10.0.0.0/8"),)) == "198.51.100.8"
+
 
 def _build_app(**mw_kwargs):
     app = FastAPI()
@@ -185,3 +227,15 @@ def test_auth_middleware_only_limits_configured_paths():
     # 非受限路径：永不限流
     free_codes = [client.get("/free").status_code for _ in range(5)]
     assert all(c == 200 for c in free_codes)
+
+
+def test_health_probe_is_never_rate_limited():
+    app = FastAPI()
+    app.add_middleware(RateLimitMiddleware, calls=1, period=60)
+
+    @app.get("/health")
+    async def health():
+        return {"status": "healthy"}
+
+    client = TestClient(app)
+    assert [client.get("/health").status_code for _ in range(4)] == [200] * 4

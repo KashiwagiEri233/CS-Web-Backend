@@ -8,13 +8,12 @@
 
 from __future__ import annotations
 
-from typing import Optional, Tuple
-
-from sqlalchemy import func, select
+from typing import Tuple
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictException, NotFoundException
-from app.core.security import get_password_hash
+from app.core.security import async_get_password_hash
 from app.core.timezone import now_utc
 from app.models.user import User
 from app.repositories.refresh_token_repo import RefreshTokenRepository
@@ -31,17 +30,8 @@ class UserService:
 
     async def list_users(self, skip: int = 0, limit: int = 100) -> Tuple[list, int]:
         """分页获取未删除用户列表，返回 (users, total)。"""
-        stmt = (
-            select(User)
-            .where(User.deleted_at.is_(None))
-            .offset(skip)
-            .limit(limit)
-            .order_by(User.id)
-        )
-        result = await self.db.execute(stmt)
-        users = list(result.scalars().all())
-        count_stmt = select(func.count()).select_from(User).where(User.deleted_at.is_(None))
-        total = int((await self.db.execute(count_stmt)).scalar_one())
+        users = await self.user_repo.list_active(skip=skip, limit=limit)
+        total = await self.user_repo.count_active()
         return users, total
 
     async def get_user(self, user_id: int) -> User:
@@ -55,22 +45,30 @@ class UserService:
             )
         return user
 
-    async def update_user(self, user_id: int, update_data: dict) -> User:
+    async def update_user(
+        self, user_id: int, update_data: dict, commit: bool = True
+    ) -> User:
         """更新指定用户字段（含改密时同事务撤 refresh）。"""
         user = await self.get_user(user_id)
         email_conflicts = await self._email_conflicts(user_id, update_data)
-        password_changed = self._apply_update(user, update_data, email_conflicts)
-        await self.user_repo.update(user)
-        if password_changed:
-            await self.refresh_repo.revoke_all_for_user(user_id)
-        await self.db.commit()
-        await self.db.refresh(user)
+        password_changed = await self._apply_update(user, update_data, email_conflicts)
+        try:
+            await self.user_repo.update(user)
+            if password_changed:
+                await self.refresh_repo.revoke_all_for_user(user_id)
+            if commit:
+                await self.db.commit()
+        except IntegrityError as exc:
+            await self.db.rollback()
+            raise ConflictException(message="用户名或邮箱已存在") from exc
+        if commit:
+            await self.db.refresh(user)
         return user
 
     async def update_profile(self, user: User, update_data: dict) -> User:
         """当前用户自助更新（不可改 is_active；改密同事务撤 refresh）。"""
         email_conflicts = await self._email_conflicts(user.id, update_data)
-        password_changed = self._apply_update(
+        password_changed = await self._apply_update(
             user,
             update_data,
             email_conflicts=email_conflicts,
@@ -79,11 +77,17 @@ class UserService:
         await self.user_repo.update(user)
         if password_changed:
             await self.refresh_repo.revoke_all_for_user(user.id)
-        await self.db.commit()
+        try:
+            await self.db.commit()
+        except IntegrityError as exc:
+            await self.db.rollback()
+            raise ConflictException(message="邮箱已被其他用户使用") from exc
         await self.db.refresh(user)
         return user
 
-    async def delete_user(self, user_id: int, current_user_id: int) -> None:
+    async def delete_user(
+        self, user_id: int, current_user_id: int, commit: bool = True
+    ) -> None:
         """软删除用户。禁止自删；不存在抛 NotFoundException。
 
         同事务撤销全部 refresh，使会话立即失效。
@@ -99,13 +103,14 @@ class UserService:
         # 释放 username/email 唯一约束，便于同名重新注册。
         # username 列长 50：后缀约 21 字符，原名截断后拼接，避免 String(50) 溢出。
         stamp = int(now_utc().timestamp())
-        suffix = f"__del_{stamp}"
+        suffix = f"__del_{user.id}_{stamp}"
         max_base = max(1, 50 - len(suffix))
         user.username = f"{user.username[:max_base]}{suffix}"
         user.email = f"del_{stamp}_{user.id}@invalid.local"
         await self.user_repo.update(user)
         await self.refresh_repo.revoke_all_for_user(user_id)
-        await self.db.commit()
+        if commit:
+            await self.db.commit()
 
     # ------------------------------------------------------------------ 内部
 
@@ -114,10 +119,14 @@ class UserService:
         if email is None:
             return False
         existing = await self.user_repo.get_by_email(email)
-        return existing is not None and existing.id != self_id and existing.deleted_at is None
+        return (
+            existing is not None
+            and existing.id != self_id
+            and existing.deleted_at is None
+        )
 
     @staticmethod
-    def _apply_update(
+    async def _apply_update(
         user: User,
         update_data: dict,
         email_conflicts: bool,
@@ -136,7 +145,9 @@ class UserService:
         if "full_name" in update_data:
             user.full_name = update_data["full_name"]
         if update_data.get("password") is not None:
-            user.hashed_password = get_password_hash(update_data["password"])
+            user.hashed_password = await async_get_password_hash(
+                update_data["password"]
+            )
             user.password_changed_at = now_utc()
             password_changed = True
         if allow_active and update_data.get("is_active") is not None:

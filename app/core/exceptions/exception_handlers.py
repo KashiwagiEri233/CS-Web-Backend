@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from typing import Union
+from typing import Any, Union, cast
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import HTTPException, RequestValidationError
@@ -16,6 +16,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.loguru_logger import get_logger
+from app.core.config import settings
 from app.core.timezone import now_utc
 
 from .base_exceptions import (
@@ -57,7 +58,9 @@ __all__ = [
 ]
 
 
-async def app_exception_handler(request: Request, exc: BaseAppException) -> JSONResponse:
+async def app_exception_handler(
+    request: Request, exc: BaseAppException
+) -> JSONResponse:
     """应用程序异常处理器"""
     logger.warning(
         "应用程序异常",
@@ -70,14 +73,15 @@ async def app_exception_handler(request: Request, exc: BaseAppException) -> JSON
         exc_info=exc.cause is not None,
     )
 
-    await record_exception_to_db(
-        request,
-        lambda svc, request_context: svc.record_exception(
-            exception=exc, request_context=request_context
-        ),
-        log_label="应用程序异常",
-        traceback_id=exc.traceback_id,
-    )
+    if settings.PERSIST_CLIENT_ERRORS or exc.status_code >= 500:
+        await record_exception_to_db(
+            request,
+            lambda svc, request_context: svc.record_exception(
+                exception=exc, request_context=request_context
+            ),
+            log_label="应用程序异常",
+            traceback_id=exc.traceback_id,
+        )
 
     response = create_app_exception_response(exc, request)
     return safe_json_response(
@@ -104,16 +108,17 @@ async def http_exception_handler(
         status_code=exc.status_code,
         error_message=exc.detail,
         method=request.method,
-        url=str(request.url),
+        path=request.url.path,
     )
 
-    await record_exception_to_db(
-        request,
-        lambda svc, request_context: svc.record_exception(
-            exception=exc, request_context=request_context
-        ),
-        log_label="HTTP异常",
-    )
+    if settings.PERSIST_CLIENT_ERRORS or exc.status_code >= 500:
+        await record_exception_to_db(
+            request,
+            lambda svc, request_context: svc.record_exception(
+                exception=exc, request_context=request_context
+            ),
+            log_label="HTTP异常",
+        )
 
     response = create_http_exception_response(exc, request)
     return safe_json_response(
@@ -138,16 +143,17 @@ async def validation_exception_handler(
         "请求验证失败",
         errors=safe_errors,
         method=request.method,
-        url=str(request.url),
+        path=request.url.path,
     )
 
-    await record_exception_to_db(
-        request,
-        lambda svc, request_context: svc.record_validation_error(
-            errors=safe_errors, request_context=request_context
-        ),
-        log_label="验证错误",
-    )
+    if settings.PERSIST_CLIENT_ERRORS:
+        await record_exception_to_db(
+            request,
+            lambda svc, request_context: svc.record_validation_error(
+                errors=safe_errors, request_context=request_context
+            ),
+            log_label="验证错误",
+        )
 
     response = create_validation_error_response(exc, request)
     return safe_json_response(
@@ -172,7 +178,7 @@ async def pydantic_validation_exception_handler(
         "Pydantic验证失败",
         errors=safe_errors,
         method=request.method,
-        url=str(request.url),
+        path=request.url.path,
     )
 
     response = create_validation_error_response(exc, request)
@@ -247,15 +253,19 @@ def setup_exception_handlers(app: FastAPI) -> None:
         RateLimitException,
     )
     for exc_type in app_exception_types:
-        app.add_exception_handler(exc_type, app_exception_handler)  # type: ignore[arg-type]
+        app.add_exception_handler(exc_type, cast(Any, app_exception_handler))
 
-    app.add_exception_handler(HTTPException, http_exception_handler)  # type: ignore[arg-type]
-    app.add_exception_handler(StarletteHTTPException, http_exception_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(HTTPException, cast(Any, http_exception_handler))
+    app.add_exception_handler(StarletteHTTPException, cast(Any, http_exception_handler))
 
-    app.add_exception_handler(RequestValidationError, validation_exception_handler)  # type: ignore[arg-type]
-    app.add_exception_handler(ValidationError, pydantic_validation_exception_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(
+        RequestValidationError, cast(Any, validation_exception_handler)
+    )
+    app.add_exception_handler(
+        ValidationError, cast(Any, pydantic_validation_exception_handler)
+    )
 
-    app.add_exception_handler(SQLAlchemyError, database_exception_handler)  # type: ignore[arg-type]
-    app.add_exception_handler(IntegrityError, database_exception_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(SQLAlchemyError, cast(Any, database_exception_handler))
+    app.add_exception_handler(IntegrityError, cast(Any, database_exception_handler))
 
     app.add_exception_handler(Exception, general_exception_handler)

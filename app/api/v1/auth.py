@@ -7,6 +7,7 @@ from app.core.exceptions import (
     InvalidCredentialsException,
     UserNotActiveException,
 )
+from app.core.request_context import get_client_meta
 from app.dependencies import get_current_active_user
 from app.dependencies_services import get_audit_service, get_auth_service
 from app.middleware.rbac import require_permission
@@ -24,14 +25,9 @@ from app.services.auth_service import AuthService
 router = APIRouter()
 
 
-def _client_meta(request: Request) -> dict:
-    return {
-        "ip_address": request.client.host if request.client else None,
-        "user_agent": request.headers.get("user-agent"),
-    }
-
-
-async def _do_login(auth_service: AuthService, username: str, password: str) -> TokenPair:
+async def _do_login(
+    auth_service: AuthService, username: str, password: str
+) -> TokenPair:
     """登录公共逻辑：验证凭据 → 检查激活 → 签发 access + refresh 双 token。"""
     user = await auth_service.authenticate(username, password)
 
@@ -98,9 +94,11 @@ async def register(
     current_user: User = Depends(require_permission("user", "create")),
 ) -> Any:
     """用户注册（需要 user:create）。查重 + 哈希 + 落库走 AuthService.create_user。"""
-    created = await auth_service.create_user(user_data, is_superuser=False)
-    meta = _client_meta(request)
-    await audit.record(
+    created = await auth_service.create_user(
+        user_data, is_superuser=False, commit=False
+    )
+    meta = get_client_meta(request)
+    await audit.record_atomic(
         action="user.create",
         resource_type="user",
         resource_id=str(created.id),

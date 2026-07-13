@@ -36,7 +36,11 @@ def _read_queue_enabled() -> bool:
             val = dotenv_values(env_file).get("QUEUE_ENABLED")
         except Exception:  # noqa: BLE001 - 读取 .env 失败按未启用处理
             val = None
-    return str(val).strip().lower() in ("1", "true", "yes", "on") if val is not None else False
+    return (
+        str(val).strip().lower() in ("1", "true", "yes", "on")
+        if val is not None
+        else False
+    )
 
 
 _QUEUE_ENABLED = _read_queue_enabled()
@@ -100,11 +104,13 @@ async def enqueue(task, *args, **kwargs) -> Optional[str]:
         )
 
     if not _QUEUE_ENABLED:
-        return await _run_eager(task, *args, **kwargs)
+        await _run_eager(task, *args, **kwargs)
+        return None
 
     pool = await _get_pool()
     if pool is None:
-        return await _run_eager(task, *args, **kwargs)
+        await _run_eager(task, *args, **kwargs)
+        return None
 
     job = await pool.enqueue_job(task.__name__, *args, **kwargs)
     job_id = job.job_id if job else None

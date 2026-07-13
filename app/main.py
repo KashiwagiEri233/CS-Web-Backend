@@ -1,7 +1,7 @@
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import APIRouter, Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
@@ -13,10 +13,17 @@ from app.core.lifecycle import (
     run_startup,
 )
 from app.core.loguru_logger import get_logger, init_logging
-from app.middleware.monitoring import SecurityHeadersMiddleware, MetricsMiddleware, LoggingMiddleware
+from app.core.app_runtime import process_runtime_guard
+from app.middleware.monitoring import (
+    SecurityHeadersMiddleware,
+    MetricsMiddleware,
+    LoggingMiddleware,
+)
 from app.middleware.rate_limit import RateLimitMiddleware, AuthRateLimitMiddleware
 from app.core.exceptions import setup_exception_handlers, ExceptionHandlerMiddleware
 from app.core.observability import setup_telemetry
+from app.middleware.rbac import require_permission
+from app.models.user import User
 
 
 # 在产生任何应用日志前，于模块导入早期统一初始化日志。
@@ -70,83 +77,88 @@ async def lifespan(app: FastAPI):
     不进注册表，在此直接输出。
     """
     logger = get_logger("main")
+    process_runtime_guard.acquire(app)
 
-    # —— 应用级一次性展示（非任务，不进注册表）——
-    logger.info("\n" + _STARTUP_BANNER.format(name=settings.PROJECT_NAME, version=__version__))
-    logger.info("FastAPI RBAC Framework 启动中...")
-    if not settings.AUTH_ENABLED:
-        logger.warning(
-            "⚠️ 鉴权已全局关闭 (AUTH_ENABLED=False)——所有接口视为超级用户，仅限本地开发，切勿用于生产"
+    try:
+        # —— 应用级一次性展示（非任务，不进注册表）——
+        logger.info(
+            "\n"
+            + _STARTUP_BANNER.format(
+                name=settings.PROJECT_NAME,
+                version=__version__,
+            )
         )
+        logger.info("FastAPI RBAC Framework 启动中...")
+        if not settings.AUTH_ENABLED:
+            logger.warning(
+                "⚠️ 鉴权已全局关闭 (AUTH_ENABLED=False)——所有接口视为超级用户，"
+                "仅限本地开发，切勿用于生产"
+            )
 
-    # —— 启动任务：遍历注册表执行（critical 失败会 raise → 中止启动）——
-    await run_startup()
+        # —— 启动任务：遍历注册表执行（critical 失败会 raise → 中止启动）——
+        await run_startup()
 
-    logger.info(f"FastAPI RBAC Framework 已启动成功 - version: {__version__}")
+        logger.info(f"FastAPI RBAC Framework 已启动成功 - version: {__version__}")
 
-    yield
+        try:
+            yield
+        finally:
+            # —— 关闭任务：即使 lifespan 被取消/抛错，也必须释放后台任务与连接 ——
+            await run_shutdown()
+            logger.info(f"应用已安全关闭 - version: {__version__}")
+    finally:
+        process_runtime_guard.release(app)
 
-    # —— 关闭任务：遍历注册表执行（按 priority 降序，异常一律吞掉只记日志）——
-    await run_shutdown()
-    logger.info(f"应用已安全关闭 - version: {__version__}")
+
+root_router = APIRouter()
 
 
-# 创建FastAPI应用实例
-app = FastAPI(
-    title=settings.PROJECT_NAME,
-    description="企业级FastAPI框架，包含RBAC权限管理系统",
-    version=__version__,
-    openapi_url=f"{settings.API_V1_STR}/openapi.json",
-    lifespan=lifespan,
-    docs_url=f"{settings.API_V1_STR}/docs",
-    redoc_url=f"{settings.API_V1_STR}/redoc",
-)
+def create_app() -> FastAPI:
+    """构造独立 FastAPI 实例，同时保留模块级 ``app`` 部署入口。"""
+    application = FastAPI(
+        title=settings.PROJECT_NAME,
+        description="企业级FastAPI框架，包含RBAC权限管理系统",
+        version=__version__,
+        openapi_url=f"{settings.API_V1_STR}/openapi.json",
+        lifespan=lifespan,
+        docs_url=f"{settings.API_V1_STR}/docs",
+        redoc_url=f"{settings.API_V1_STR}/redoc",
+    )
+    setup_exception_handlers(application)
 
-# 设置全局异常处理器
-setup_exception_handlers(app)
+    # Starlette 后注册的中间件在更外层，故按内 → 外添加。
+    application.add_middleware(
+        AuthRateLimitMiddleware,
+        calls=settings.AUTH_RATE_LIMIT_CALLS,
+        period=settings.AUTH_RATE_LIMIT_PERIOD,
+    )
+    application.add_middleware(
+        RateLimitMiddleware,
+        calls=settings.RATE_LIMIT_CALLS,
+        period=settings.RATE_LIMIT_PERIOD,
+    )
+    application.add_middleware(MetricsMiddleware)
+    application.add_middleware(LoggingMiddleware)
+    application.add_middleware(SecurityHeadersMiddleware)
+    application.add_middleware(ExceptionHandlerMiddleware)
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.allowed_origins_list,
+        allow_credentials=True,
+        allow_methods=settings.allowed_methods_list,
+        allow_headers=settings.allowed_headers_list,
+    )
 
-# 配置中间件
-# 重要：Starlette 中 add_middleware 后注册的在更外层。
-# 期望的执行顺序（外 -> 内）：
-#   CORS -> 异常处理 -> 安全头 -> 日志 -> 指标 -> 限流 -> 认证限流 -> 路由
-# 因此注册顺序需自内向外。异常处理放在 CORS 之内、其余功能中间件之外，
-# 这样它能捕获任何功能中间件抛出的异常并映射为正确状态码，而错误响应仍会被 CORS 装饰。
-app.add_middleware(
-    AuthRateLimitMiddleware,
-    calls=settings.AUTH_RATE_LIMIT_CALLS,
-    period=settings.AUTH_RATE_LIMIT_PERIOD,
-)
-app.add_middleware(
-    RateLimitMiddleware,
-    calls=settings.RATE_LIMIT_CALLS,
-    period=settings.RATE_LIMIT_PERIOD,
-)
-app.add_middleware(MetricsMiddleware)
-app.add_middleware(LoggingMiddleware)
-app.add_middleware(SecurityHeadersMiddleware)
-# 异常处理中间件：包裹上述所有功能中间件（但在 CORS 之内）
-app.add_middleware(ExceptionHandlerMiddleware)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.allowed_origins_list,
-    allow_credentials=True,
-    allow_methods=settings.allowed_methods_list,
-    allow_headers=settings.allowed_headers_list,
-)
+    from app.database import engine
 
-# 可观测性（OpenTelemetry）：在中间件装配完成后接入。
-# OTEL_ENABLED=False 时为 no-op；自动埋点 FastAPI / SQLAlchemy / Redis。
-# 注：engine 导入放在装配处而非模块顶，避免与 lifecycle 注册解耦后无关的全局开销。
-from app.database import engine  # noqa: E402
-
-setup_telemetry(app, engine)
-
-# 注册API路由
-app.include_router(api_router, prefix=settings.API_V1_STR)
+    setup_telemetry(application, engine)
+    application.include_router(api_router, prefix=settings.API_V1_STR)
+    application.include_router(root_router)
+    return application
 
 
 # 根路径
-@app.get("/")
+@root_router.get("/")
 async def root():
     return {
         "message": "欢迎使用企业级FastAPI RBAC框架",
@@ -156,14 +168,14 @@ async def root():
 
 
 # 健康检查端点（liveness：进程是否存活，浅检查，供 k8s livenessProbe）
-@app.get("/health")
+@root_router.get("/health")
 async def health_check():
     return {"status": "healthy"}
 
 
 # 就绪探针（readiness：依赖是否就绪，供 k8s readinessProbe）
 # DB 不通时返回 503，避免把流量打到尚未就绪/依赖故障的实例。
-@app.get("/readyz")
+@root_router.get("/readyz")
 async def readiness_check():
     from fastapi.responses import JSONResponse
     from app.utils.status import check_application_status
@@ -171,28 +183,37 @@ async def readiness_check():
     status_info = await check_application_status()
     db_ok = status_info.get("database", {}).get("status") == "connected"
     if db_ok:
-        return {"status": "ready", **status_info}
-    return JSONResponse(status_code=503, content={"status": "not_ready", **status_info})
+        return {"status": "ready"}
+    return JSONResponse(status_code=503, content={"status": "not_ready"})
 
 
 # 指标端点（人读 JSON 版；OTel 启用后标准指标经 OTLP 导出至 collector）
-@app.get("/metrics/json")
-async def metrics_json():
+@root_router.get("/metrics/json")
+async def metrics_json(
+    request: Request,
+    current_user: User = Depends(require_permission("system", "monitor")),
+):
     """获取应用性能指标（手搓内存版，便于 curl 速览）。
 
     注：分布式监控请用 OpenTelemetry（OTEL_ENABLED=True，指标经 OTLP 导出，
     含延迟直方图/分位数）；本端点仅为单实例快速排查保留。
     """
-    instance = MetricsMiddleware._instance
+    instance = getattr(request.app.state, "metrics_middleware", None)
     if instance is None:
         return {"error": "Metrics not available"}
     return instance.get_metrics()
 
 
 # 状态端点
-@app.get("/status")
-async def status():
+@root_router.get("/status")
+async def status(
+    current_user: User = Depends(require_permission("system", "monitor")),
+):
     """获取应用详细状态"""
     from app.utils.status import check_application_status
 
     return await check_application_status()
+
+
+# ASGI 部署兼容入口：uvicorn 继续使用 ``app.main:app``。
+app = create_app()

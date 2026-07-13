@@ -22,7 +22,8 @@
 
 ## 安全
 
-- 改密：`password_changed_at` + JWT `pwd_at`；同事务 `revoke_all_for_user`。
+- 改密：`password_changed_at` + 微秒精度 JWT `pwd_at`；同事务 `revoke_all_for_user`。
+- 密码按 UTF-8 编码后最多 72 字节，避免 bcrypt 静默截断。
 - 软删：释放 username/email 唯一键（截断拼接后缀）。
 
 ## 测试

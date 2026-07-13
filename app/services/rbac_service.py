@@ -1,15 +1,15 @@
 from typing import List, Optional, Set
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 
 from app.core.cache import get_cache
-from app.core.config import settings
+from app.core.exceptions import ConflictException
 from app.core.loguru_logger import get_logger
-from app.models.user import User
 from app.models.role import Role
 from app.models.permission import Permission
 from app.repositories.rbac_repo import RBACRepository
+from app.services.rbac_assignments import RBACAssignmentMixin
 
 logger = get_logger("rbac")
 
@@ -30,11 +30,11 @@ async def _invalidate_user_perm_cache(user_id: int) -> None:
         logger.debug("权限缓存失效失败，忽略", user_id=user_id)
 
 
-class RBACService:
+class RBACService(RBACAssignmentMixin):
     def __init__(self, db: AsyncSession):
         self.db = db
         self.rbac_repo = RBACRepository(db)
-    
+
     async def get_user_permissions(self, user_id: int) -> Set[str]:
         """获取用户所有权限（带可降级缓存）。
 
@@ -56,6 +56,8 @@ class RBACService:
 
         permissions: Set[str] = set()
         for role in user.roles:
+            if not role.is_active:
+                continue
             for permission in role.permissions:
                 # 格式化权限字符串: "resource:action" (例如: "user:create")
                 permissions.add(f"{permission.resource}:{permission.action}")
@@ -66,7 +68,7 @@ class RBACService:
             logger.debug("权限缓存写入失败，忽略", user_id=user_id)
 
         return permissions
-    
+
     async def get_user_roles(self, user_id: int) -> List[Role]:
         """获取用户的角色列表（含角色自身的权限，便于上层展示）。"""
         user = await self.rbac_repo.get_user_with_roles(user_id)
@@ -87,30 +89,63 @@ class RBACService:
         required = f"{resource}:{action}"
         permissions: Set[str] = set()
         for role in user.roles:
+            if not role.is_active:
+                continue
             for permission in role.permissions:
                 permissions.add(f"{permission.resource}:{permission.action}")
         return required in permissions
 
-    async def update_role(self, role_id: int, update_data: dict) -> Optional[Role]:
+    async def update_role(
+        self, role_id: int, update_data: dict, commit: bool = True
+    ) -> Optional[Role]:
         """更新角色：角色不存在返回 None，否则返回更新后的角色。"""
         role = await self.rbac_repo.get_role_by_id(role_id)
         if not role:
             return None
-        updated = await self.rbac_repo.update_role(role, update_data)
-        await self.db.commit()
+        new_name = update_data.get("name")
+        if new_name:
+            existing = await self.rbac_repo.get_role_by_name(new_name)
+            if existing is not None and existing.id != role_id:
+                raise ConflictException(message="角色名称已存在")
+        try:
+            updated = await self.rbac_repo.update_role(role, update_data)
+            if commit:
+                await self.db.commit()
+        except IntegrityError as exc:
+            await self.db.rollback()
+            raise ConflictException(message="角色数据与现有记录冲突") from exc
         # 角色属性变更可能影响授权展示；失效持有该角色的用户权限缓存
         await self._invalidate_role_users_perm_cache(role_id)
         return updated
 
-    async def update_permission(self, permission_id: int, update_data: dict) -> Optional[Permission]:
+    async def update_permission(
+        self, permission_id: int, update_data: dict, commit: bool = True
+    ) -> Optional[Permission]:
         """更新权限：权限不存在返回 None，否则返回更新后的权限。"""
         permission = await self.rbac_repo.get_permission_by_id(permission_id)
         if not permission:
             return None
+        name = update_data.get("name", permission.name)
+        resource = update_data.get("resource", permission.resource)
+        action = update_data.get("action", permission.action)
+        by_name = await self.rbac_repo.get_permission_by_name(name)
+        by_key = await self.rbac_repo.get_permission_by_resource_and_action(
+            resource, action
+        )
+        if (by_name is not None and by_name.id != permission_id) or (
+            by_key is not None and by_key.id != permission_id
+        ):
+            raise ConflictException(message="权限名称或资源操作已存在")
+
         # 变更前取关联角色，用于缓存失效
         role_ids = await self.rbac_repo.get_role_ids_by_permission(permission_id)
-        updated = await self.rbac_repo.update_permission(permission, update_data)
-        await self.db.commit()
+        try:
+            updated = await self.rbac_repo.update_permission(permission, update_data)
+            if commit:
+                await self.db.commit()
+        except IntegrityError as exc:
+            await self.db.rollback()
+            raise ConflictException(message="权限数据与现有记录冲突") from exc
         for rid in role_ids:
             await self._invalidate_role_users_perm_cache(rid)
         return updated
@@ -118,7 +153,9 @@ class RBACService:
     # ------------------------------------------------------------------ 角色 / 权限 CRUD
     # 路由层统一通过这些方法访问数据，避免直接操作 repo。
 
-    async def get_all_roles(self, skip: int = 0, limit: Optional[int] = None) -> List[Role]:
+    async def get_all_roles(
+        self, skip: int = 0, limit: Optional[int] = None
+    ) -> List[Role]:
         """获取角色列表（含各自权限），可分页。"""
         return await self.rbac_repo.get_all_roles(skip=skip, limit=limit)
 
@@ -130,24 +167,32 @@ class RBACService:
         """获取指定角色（含权限）。"""
         return await self.rbac_repo.get_role_with_permissions(role_id)
 
-    async def create_role(self, role_data: dict) -> Role:
+    async def create_role(self, role_data: dict, commit: bool = True) -> Role:
         """创建角色。调用方应先做名称查重。"""
-        role = await self.rbac_repo.create_role(role_data)
-        await self.db.commit()
+        try:
+            role = await self.rbac_repo.create_role(role_data)
+            if commit:
+                await self.db.commit()
+        except IntegrityError as exc:
+            await self.db.rollback()
+            raise ConflictException(message="角色名称已存在") from exc
         return role
 
-    async def delete_role(self, role_id: int) -> bool:
+    async def delete_role(self, role_id: int, commit: bool = True) -> bool:
         """删除角色：角色不存在返回 False。"""
         # 删除前先收集受影响用户，便于提交后清缓存
         user_ids = await self.rbac_repo.get_user_ids_by_role(role_id)
         ok = await self.rbac_repo.delete_role(role_id)
         if ok:
-            await self.db.commit()
+            if commit:
+                await self.db.commit()
             for uid in user_ids:
                 await _invalidate_user_perm_cache(uid)
         return ok
 
-    async def get_all_permissions(self, skip: int = 0, limit: Optional[int] = None) -> List[Permission]:
+    async def get_all_permissions(
+        self, skip: int = 0, limit: Optional[int] = None
+    ) -> List[Permission]:
         """获取权限列表，可分页。"""
         return await self.rbac_repo.get_all_permissions(skip=skip, limit=limit)
 
@@ -159,18 +204,26 @@ class RBACService:
         """获取指定权限。"""
         return await self.rbac_repo.get_permission_by_id(permission_id)
 
-    async def create_permission(self, permission_data: dict) -> Permission:
+    async def create_permission(
+        self, permission_data: dict, commit: bool = True
+    ) -> Permission:
         """创建权限。调用方应先做名称查重。"""
-        permission = await self.rbac_repo.create_permission(permission_data)
-        await self.db.commit()
+        try:
+            permission = await self.rbac_repo.create_permission(permission_data)
+            if commit:
+                await self.db.commit()
+        except IntegrityError as exc:
+            await self.db.rollback()
+            raise ConflictException(message="权限名称或资源操作已存在") from exc
         return permission
 
-    async def delete_permission(self, permission_id: int) -> bool:
+    async def delete_permission(self, permission_id: int, commit: bool = True) -> bool:
         """删除权限：权限不存在返回 False。"""
         role_ids = await self.rbac_repo.get_role_ids_by_permission(permission_id)
         ok = await self.rbac_repo.delete_permission(permission_id)
         if ok:
-            await self.db.commit()
+            if commit:
+                await self.db.commit()
             for rid in role_ids:
                 await self._invalidate_role_users_perm_cache(rid)
         return ok
@@ -183,85 +236,18 @@ class RBACService:
         """按名称查权限（用于查重）。"""
         return await self.rbac_repo.get_permission_by_name(name)
 
-    async def get_permission_by_resource_action(self, resource: str, action: str) -> Optional[Permission]:
+    async def get_permission_by_resource_action(
+        self, resource: str, action: str
+    ) -> Optional[Permission]:
         """按 resource+action 查权限（用于查重，与唯一约束对齐）。"""
-        return await self.rbac_repo.get_permission_by_resource_and_action(resource, action)
-
-    async def user_exists(self, user_id: int) -> bool:
-        """判断用户是否存在（供路由层做存在性校验，避免穿透到 repo）。"""
-        return await self.rbac_repo.get_user_by_id(user_id) is not None
-    
-    async def grant_role_to_user(self, user_id: int, role_id: int) -> bool:
-        """为用户授予角色"""
-        # 必须用 get_user_with_roles 预加载 roles，否则下面访问 user.roles
-        # 会在异步上下文触发懒加载 -> MissingGreenlet -> 500
-        user = await self.rbac_repo.get_user_with_roles(user_id)
-        role = await self.rbac_repo.get_role_by_id(role_id)
-
-        if not user or not role:
-            return False
-
-        if not any(r.id == role.id for r in user.roles):
-            user.roles.append(role)
-            await self.db.commit()
-            await _invalidate_user_perm_cache(user_id)
-
-        return True
-
-    async def revoke_role_from_user(self, user_id: int, role_id: int) -> bool:
-        """从用户撤销角色"""
-        user = await self.rbac_repo.get_user_with_roles(user_id)
-
-        if not user:
-            return False
-
-        role = await self.rbac_repo.get_role_by_id(role_id)
-        if not role:
-            return False
-
-        # 按已加载集合遍历一次，定位到目标角色后移除（避免重复 __eq__）
-        target = next((r for r in user.roles if r.id == role.id), None)
-        if target is not None:
-            user.roles.remove(target)
-            await self.db.commit()
-            await _invalidate_user_perm_cache(user_id)
-
-        return True
-    
-    async def grant_permission_to_role(self, role_id: int, permission_id: int) -> bool:
-        """为角色授予权限"""
-        role = await self.rbac_repo.get_role_with_permissions(role_id)
-        permission = await self.rbac_repo.get_permission_by_id(permission_id)
-        
-        if not role or not permission:
-            return False
-        
-        if permission not in role.permissions:
-            role.permissions.append(permission)
-            await self.db.commit()
-            await self._invalidate_role_users_perm_cache(role_id)
-
-        return True
-    
-    async def revoke_permission_from_role(self, role_id: int, permission_id: int) -> bool:
-        """从角色撤销权限"""
-        role = await self.rbac_repo.get_role_with_permissions(role_id)
-        
-        if not role:
-            return False
-        
-        permission = await self.rbac_repo.get_permission_by_id(permission_id)
-        if not permission:
-            return False
-        
-        if permission in role.permissions:
-            role.permissions.remove(permission)
-            await self.db.commit()
-            await self._invalidate_role_users_perm_cache(role_id)
-
-        return True
+        return await self.rbac_repo.get_permission_by_resource_and_action(
+            resource, action
+        )
 
     # ------------------------------------------------------------------ 权限缓存失效
+
+    async def _invalidate_user_perm_cache(self, user_id: int) -> None:
+        await _invalidate_user_perm_cache(user_id)
 
     async def _invalidate_role_users_perm_cache(self, role_id: int) -> None:
         """失效指定角色下所有用户的权限缓存（role↔permission 变更时调用）。"""

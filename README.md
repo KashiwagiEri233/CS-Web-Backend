@@ -10,26 +10,47 @@
 # 按环境编号启动（通过 --env 指定配置文件）
 python run.py --env 1            # 开发环境（.env.development），热重载
 python run.py --env 2            # 测试环境（.env.test）
-python run.py --env 3            # 生产环境（.env）
-python run.py --env 3 --prod     # 生产环境 + 多 worker（4 workers）
+python run.py --prod             # 生产环境（.env）+ 4 workers
+python run.py --env 3 --prod     # 等价的显式写法
 python run.py --port 9000        # 自定义端口
 ```
 
+ASGI 部署入口保持为 `app.main:app`；测试或嵌入式使用可调用
+`app.main.create_app()` 构造独立的路由/中间件实例。数据库、Redis 和生命周期资源按
+“一进程一个应用”模型共享；不要在同一进程并发运行不同配置的应用。
+
 | --env | 配置文件 | 说明 |
 |-------|---------|------|
-| 1 | `.env.development` | 开发：DEBUG 日志 + 彩色控制台 + 自动建表 |
+| 1 | `.env.development` | 开发：DEBUG 日志 + 彩色控制台 + Alembic 自动迁移 |
 | 2 | `.env.test` | 测试：独立测试数据库 + DEBUG 日志 |
 | 3 | `.env` | 生产：INFO 日志 + JSON 序列化 + 文件轮转 + error 日志 |
 
 ## 环境配置
 
-1. 复制对应环境的模板文件为 `.env`，或直接通过 `--env` 参数指定：
+本私有仓库按项目约定跟踪三套环境配置；个人机器差异放在不跟踪的 `.env.local` 或
+`.env.*.local`。生产凭据也可以由部署平台的环境变量覆盖文件值。
+
+1. 使用 Python 3.12，并复制对应环境的模板文件为 `.env`，或直接通过 `--env` 参数指定：
 ```bash
 cp .env.development .env    # 开发
 cp .env.example .env        # 生产
 ```
 
-2. 修改配置文件中的 `SECRET_KEY` 和数据库连接信息（`DATABASE_PASSWORD` 必填，禁止写死默认密码）。
+安装依赖：
+
+```bash
+pip install --require-hashes -r requirements.lock  # 仅运行时
+pip install --require-hashes -r requirements-dev.lock  # 开发/CI/队列
+```
+
+修改顶层依赖后，用 Python 3.12 重新生成锁文件：
+
+```bash
+python -m piptools compile requirements.txt -o requirements.lock --strip-extras --generate-hashes
+python -m piptools compile requirements-dev.txt -o requirements-dev.lock --strip-extras --generate-hashes --allow-unsafe
+```
+
+2. 修改配置文件中的 `SECRET_KEY`（至少 32 个 UTF-8 字节）和数据库连接信息（`DATABASE_PASSWORD` 必填，禁止写死默认密码）。部署在反向代理后时还要精确配置 `TRUSTED_PROXY_CIDRS`。
 
 ## 日志系统
 
@@ -140,7 +161,10 @@ FastAPI-foundation-framework/
 ├── .env.test                # 测试环境模板
 ├── .env.example             # 生产环境模板
 ├── run.py                   # 启动入口（支持 --env 环境切换）
-├── requirements.txt         # 依赖列表
+├── requirements.txt         # 运行时顶层依赖
+├── requirements.lock        # 运行时传递依赖锁
+├── requirements-dev.txt     # 开发/测试/供应链工具顶层依赖
+├── requirements-dev.lock    # CI 完整依赖锁（含 hash）
 ├── pytest.ini               # 测试配置
 └── alembic.ini              # 迁移配置
 ```

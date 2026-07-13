@@ -41,21 +41,37 @@ class ExceptionService:
         # 构建异常日志数据
         exception_log_data = {
             "traceback_id": log_record.get("traceback_id", ""),
-            "exception_type": log_record.get("exception_type", type(exception).__name__),
+            "exception_type": log_record.get(
+                "exception_type", type(exception).__name__
+            ),
             "error_code": log_record.get("error_code"),
             "exception_message": log_record.get("exception_message", str(exception)),
             "status_code": log_record.get("status_code"),
             "method": request_context.get("method") if request_context else None,
             "endpoint": request_context.get("endpoint") if request_context else None,
-            "request_id": request_context.get("request_id") if request_context else None,
-            "user_id": str(request_context.get("user_id")) if request_context and request_context.get("user_id") else None,
-            "ip_address": request_context.get("ip_address") if request_context else None,
-            "user_agent": request_context.get("user_agent") if request_context else None,
+            "request_id": (
+                request_context.get("request_id") if request_context else None
+            ),
+            "user_id": (
+                str(request_context.get("user_id"))
+                if request_context and request_context.get("user_id")
+                else None
+            ),
+            "ip_address": (
+                request_context.get("ip_address") if request_context else None
+            ),
+            "user_agent": (
+                request_context.get("user_agent") if request_context else None
+            ),
             "traceback": log_record.get("traceback"),
             "details": log_record.get("details"),
             "context": log_record.get("context"),
-            "severity": self._determine_severity(exception, log_record.get("status_code")),
-            "priority": self._determine_priority(exception, log_record.get("status_code")),
+            "severity": self._determine_severity(
+                exception, log_record.get("status_code")
+            ),
+            "priority": self._determine_priority(
+                exception, log_record.get("status_code")
+            ),
         }
 
         log = await self.log_repo.create_exception_log(exception_log_data)
@@ -74,17 +90,29 @@ class ExceptionService:
         )
 
         exception_log_data = {
-            "traceback_id": log_record.get("traceback_id", now_utc().strftime("%Y%m%d%H%M%S%f")),
+            "traceback_id": log_record.get(
+                "traceback_id", now_utc().strftime("%Y%m%d%H%M%S%f")
+            ),
             "exception_type": "ValidationError",
             "error_code": ErrorCode.Validation.VALIDATION_FAILED,
             "exception_message": f"验证失败: {len(errors)} 个错误",
             "status_code": 422,
             "method": request_context.get("method") if request_context else None,
             "endpoint": request_context.get("endpoint") if request_context else None,
-            "request_id": request_context.get("request_id") if request_context else None,
-            "user_id": str(request_context.get("user_id")) if request_context and request_context.get("user_id") else None,
-            "ip_address": request_context.get("ip_address") if request_context else None,
-            "user_agent": request_context.get("user_agent") if request_context else None,
+            "request_id": (
+                request_context.get("request_id") if request_context else None
+            ),
+            "user_id": (
+                str(request_context.get("user_id"))
+                if request_context and request_context.get("user_id")
+                else None
+            ),
+            "ip_address": (
+                request_context.get("ip_address") if request_context else None
+            ),
+            "user_agent": (
+                request_context.get("user_agent") if request_context else None
+            ),
             "details": {"errors": errors},
             "severity": "low",
             "priority": "normal",
@@ -101,9 +129,7 @@ class ExceptionService:
         **filters,
     ) -> Tuple[List[ExceptionLog], int]:
         """查询异常日志列表。"""
-        return await self.log_repo.get_exception_logs(
-            skip=skip, limit=limit, **filters
-        )
+        return await self.log_repo.get_exception_logs(skip=skip, limit=limit, **filters)
 
     async def get_exception_log(self, log_id: int) -> Optional[ExceptionLog]:
         """获取单条异常日志。"""
@@ -124,6 +150,12 @@ class ExceptionService:
         if log is not None:
             await self.db.commit()
         return log
+
+    async def purge_before(self, cutoff: datetime) -> int:
+        """清理保留期以前的异常日志并提交事务。"""
+        deleted = await self.log_repo.delete_before(cutoff)
+        await self.db.commit()
+        return deleted
 
     # ------------------------------------------------------------------ 内部
 

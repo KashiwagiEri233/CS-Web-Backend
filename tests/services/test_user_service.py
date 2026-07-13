@@ -14,7 +14,8 @@ from app.services.user_service import UserService
 def _make_service(monkeypatch) -> UserService:
     """构造 user_repo 被 AsyncMock 替换的 UserService。"""
     monkeypatch.setattr(
-        "app.services.user_service.get_password_hash", lambda raw: f"hash:{raw}"
+        "app.services.user_service.async_get_password_hash",
+        AsyncMock(side_effect=lambda raw: f"hash:{raw}"),
     )
     svc = UserService.__new__(UserService)
     svc.db = MagicMock()
@@ -29,19 +30,18 @@ def _make_service(monkeypatch) -> UserService:
 
 # ---- list / get ----
 
+
 async def test_list_users_returns_users_and_total(monkeypatch):
     svc = _make_service(monkeypatch)
-    # list_users 现用直接 SQL（排除软删），mock execute 两次：列表 + count
-    list_result = MagicMock()
-    list_result.scalars.return_value.all.return_value = ["u1", "u2"]
-    count_result = MagicMock()
-    count_result.scalar_one.return_value = 2
-    svc.db.execute = AsyncMock(side_effect=[list_result, count_result])
+    svc.user_repo.list_active.return_value = ["u1", "u2"]
+    svc.user_repo.count_active.return_value = 2
 
     users, total = await svc.list_users(skip=0, limit=10)
 
     assert users == ["u1", "u2"]
     assert total == 2
+    svc.user_repo.list_active.assert_awaited_once_with(skip=0, limit=10)
+    svc.user_repo.count_active.assert_awaited_once_with()
 
 
 async def test_get_user_raises_when_missing(monkeypatch):
@@ -62,6 +62,7 @@ async def test_get_user_returns_user(monkeypatch):
 
 # ---- update_user ----
 
+
 async def test_update_user_applies_fields_and_hashes_password(monkeypatch):
     svc = _make_service(monkeypatch)
     user = MagicMock(
@@ -71,9 +72,15 @@ async def test_update_user_applies_fields_and_hashes_password(monkeypatch):
     svc.user_repo.get_by_email.return_value = None
     svc.user_repo.update.return_value = user
 
-    result = await svc.update_user(3, {
-        "email": "new@t.com", "full_name": "nn", "password": "secret", "is_active": False
-    })
+    result = await svc.update_user(
+        3,
+        {
+            "email": "new@t.com",
+            "full_name": "nn",
+            "password": "secret",
+            "is_active": False,
+        },
+    )
 
     assert result is user
     assert user.email == "new@t.com"
@@ -87,7 +94,14 @@ async def test_update_user_applies_fields_and_hashes_password(monkeypatch):
 
 async def test_update_user_blocks_conflicting_email(monkeypatch):
     svc = _make_service(monkeypatch)
-    user = MagicMock(id=3, deleted_at=None, email="old@t.com", full_name=None, hashed_password="h", is_active=True)
+    user = MagicMock(
+        id=3,
+        deleted_at=None,
+        email="old@t.com",
+        full_name=None,
+        hashed_password="h",
+        is_active=True,
+    )
     svc.user_repo.get_by_id.return_value = user
     # 他人占用邮箱（未软删）
     other = MagicMock(id=99, deleted_at=None)
@@ -100,7 +114,14 @@ async def test_update_user_blocks_conflicting_email(monkeypatch):
 async def test_update_user_allows_same_email(monkeypatch):
     """更新为本人当前邮箱不应判冲突。"""
     svc = _make_service(monkeypatch)
-    user = MagicMock(id=3, deleted_at=None, email="same@t.com", full_name=None, hashed_password="h", is_active=True)
+    user = MagicMock(
+        id=3,
+        deleted_at=None,
+        email="same@t.com",
+        full_name=None,
+        hashed_password="h",
+        is_active=True,
+    )
     svc.user_repo.get_by_id.return_value = user
     svc.user_repo.get_by_email.return_value = user  # 查到的是自己
 
@@ -110,9 +131,17 @@ async def test_update_user_allows_same_email(monkeypatch):
 
 # ---- update_profile（自助：不可改 is_active） ----
 
+
 async def test_update_profile_ignores_is_active(monkeypatch):
     svc = _make_service(monkeypatch)
-    user = MagicMock(id=3, deleted_at=None, email="e@t.com", full_name=None, hashed_password="h", is_active=True)
+    user = MagicMock(
+        id=3,
+        deleted_at=None,
+        email="e@t.com",
+        full_name=None,
+        hashed_password="h",
+        is_active=True,
+    )
     svc.user_repo.get_by_email.return_value = None
     svc.user_repo.update.return_value = user
 
@@ -125,7 +154,14 @@ async def test_update_profile_ignores_is_active(monkeypatch):
 
 async def test_update_profile_allows_password_change(monkeypatch):
     svc = _make_service(monkeypatch)
-    user = MagicMock(id=3, deleted_at=None, email="e@t.com", full_name=None, hashed_password="h", is_active=True)
+    user = MagicMock(
+        id=3,
+        deleted_at=None,
+        email="e@t.com",
+        full_name=None,
+        hashed_password="h",
+        is_active=True,
+    )
     svc.user_repo.get_by_email.return_value = None
     svc.user_repo.update.return_value = user
 
@@ -135,6 +171,7 @@ async def test_update_profile_allows_password_change(monkeypatch):
 
 
 # ---- delete_user ----
+
 
 async def test_delete_user_prevents_self_delete(monkeypatch):
     svc = _make_service(monkeypatch)

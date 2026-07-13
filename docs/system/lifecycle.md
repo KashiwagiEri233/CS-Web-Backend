@@ -14,6 +14,11 @@
 - 本模块**不负责**：具体初始化逻辑（那些留在各自能力模块，如 DB 初始化在 `database.py`、
   RBAC seed 在 `services/rbac_init.py`）。
 
+**运行时边界**：数据库 engine/session factory、Redis、OTel provider 和本注册表目前仍是
+进程级资源，因此只支持“一进程一个活动应用”。`app/core/app_runtime.py` 会在 lifespan
+进入时取得进程所有权；若同一进程并发启动第二个应用，会立即拒绝，避免两套生命周期
+互相关闭资源。`create_app()` 创建的路由和中间件实例仍可独立用于不进入 lifespan 的测试。
+
 ## 接口
 
 | 符号 | 签名 | 用途 |
@@ -31,8 +36,10 @@
 | 任务名 | 类型 | priority | critical | 位置 | 说明 |
 |---|---|---|---|---|---|
 | `database` | startup | 10 | **True** | `app/database.py` | 建库 + schema(Alembic upgrade/版本校验) + 连通性探测；失败拒绝启动 |
-| `rbac_seed` | startup | 20 | False | `app/services/rbac_init.py` | 权限/角色/默认管理员（幂等）；失败仅告警 |
+| `rbac_seed` | startup | 20 | True | `app/services/rbac_init.py` | 权限/角色/默认管理员；集群锁串行，失败拒绝启动 |
 | `redis_probe` | startup | 30 | False | `app/core/redis_client.py` | 探测 Redis 连通性；未配置/故障都降级 |
+| `refresh_token_gc` | startup/shutdown | 40/30 | False | `app/services/token_gc.py` | 清理过期/撤销 refresh token；集群锁避免重复执行 |
+| `exception_log_retention` | startup/shutdown | 45/25 | False | `app/services/exception_retention.py` | 按保留期清理异常日志；集群锁避免多 worker 重复执行 |
 | `log_status` | startup | 90 | False | `app/main.py` | 输出访问地址 / 文档路径 |
 | `telemetry` | shutdown | 10 | — | `app/core/observability.py` | flush 并释放 OTel providers |
 | `redis` | shutdown | 20 | — | `app/core/redis_client.py` | 释放 Redis 连接 |
@@ -52,6 +59,7 @@
 | 10 | 基础设施（DB / schema） | `database` |
 | 20 | 依赖基础设施的业务 seed | `rbac_seed` |
 | 30 | 增强项探测 | `redis_probe` |
+| 40–49 | 后台维护任务 | `refresh_token_gc`、`exception_log_retention` |
 | 90 | 展示 / 收尾 | `log_status` |
 
 新增任务按依赖关系选段：被依赖的 priority 小，依赖别人的 priority 大。同段内顺序不重要
@@ -68,9 +76,10 @@
 
 ## 降级与不变量
 
-- **critical 任务失败 → 拒绝启动**（raise 中止，后续任务不执行）。仅核心依赖（DB）标 critical。
-- **非 critical 任务失败 → 仅告警继续**。增强项（Redis 探测、OTel、RBAC seed）一律非 critical，
-  对齐项目「Redis 可降级」「seed 失败不阻断」语义。
+- **critical 任务失败 → 拒绝启动**（raise 中止，后续任务不执行）。数据库和 RBAC seed
+  这类正确性基础设施标 critical。
+- **非 critical 任务失败 → 仅告警继续**。Redis 探测、OTel 等增强项可降级；
+  RBAC seed 属于鉴权基础设施，因此是 critical，失败会拒绝启动。
 - **关闭阶段绝不抛错**：任何关闭任务异常都吞掉只记 warning，避免掩盖启动/业务异常或干扰退出码。
 - **重名保护**：startup / shutdown 各自命名空间内重名注册立即抛 `ValueError`（防误用）。
 - **执行顺序以 priority 为准**，不依赖 import 顺序（import 顺序只决定登记先后）。
@@ -80,6 +89,8 @@
 `tests/core/test_lifecycle.py`：覆盖 priority 升/降序、critical 传播、非 critical 降级、
 关闭吞错、重名报错、装饰器返回原函数。通过 monkeypatch 临时接管全局注册表，隔离项目
 模块已登记的真实任务（避免 run_startup 误触发建库等副作用）。
+
+`tests/core/test_app_runtime.py`：覆盖活动应用互斥和非所有者不可释放进程资源。
 
 ## 扩展指引
 

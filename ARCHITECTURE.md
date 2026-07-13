@@ -18,11 +18,11 @@
 
 | 层 | 选型 |
 |---|---|
-| Web 框架 | FastAPI 0.110 |
+| Web 框架 | FastAPI 0.139 |
 | ORM | SQLAlchemy 2.0 async + asyncpg |
-| 迁移 | Alembic（仅生产） |
+| 迁移 | Alembic（开发、测试、生产的 schema 唯一来源） |
 | 配置 | pydantic-settings v2 |
-| 认证 | python-jose(JWT) + passlib |
+| 认证 | PyJWT + bcrypt |
 | 日志 | loguru（经 `get_logger` 封装） |
 | 缓存/限流 | redis（可选，可降级到内存） |
 | 测试 | pytest + httpx，`asyncio_mode=auto` |
@@ -180,17 +180,21 @@ lifespan 启动段
   └─ run_startup() —— 按 priority 升序执行已注册任务：
        ├─ priority=10  database      [critical] 建库 + schema(alembic upgrade/校验) + 连通性探测
        │                                    └─ advisory lock 串行化 schema 操作（多 worker 安全）
-       ├─ priority=20  rbac_seed     [降级]   权限/角色/默认管理员（幂等；失败仅告警）
+       ├─ priority=20  rbac_seed     [critical] 权限/角色/默认管理员（幂等；失败拒绝启动）
        ├─ priority=30  redis_probe   [降级]   探测 Redis 连通性（未配置/故障都降级）
+       ├─ priority=40  refresh_token_gc [降级] 过期/撤销 refresh token 周期清理
+       ├─ priority=45  exception_log_retention [降级] 异常日志保留期清理
        └─ priority=90  log_status    [降级]   输出访问地址 / 文档路径
 lifespan yield（应用运行）
 lifespan 关闭段
   └─ run_shutdown() —— 按 priority 降序执行（后启动的先关，异常一律吞掉）：
-       ├─ priority=20  redis         释放 Redis 连接
-       └─ priority=10  telemetry     flush 并释放 OTel providers
+       ├─ priority=30  refresh_token_gc       停止 token 清理任务
+       ├─ priority=25  exception_log_retention 停止异常日志清理任务
+       ├─ priority=20  redis                  释放 Redis 连接
+       └─ priority=10  telemetry              flush 并释放 OTel providers
 ```
 
-**失败语义**：`critical=True` 任务失败 → raise 中止启动（仅 DB）；`critical=False` 失败 →
+**失败语义**：`critical=True` 任务失败 → raise 中止启动（DB、RBAC seed）；`critical=False` 失败 →
 仅告警继续（Redis/OTel/RBAC seed）。关闭阶段任何异常都吞掉只记日志，绝不向外抛。
 
 详见 `docs/system/lifecycle.md`。

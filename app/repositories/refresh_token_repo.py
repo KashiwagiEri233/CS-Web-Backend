@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timezone import now_utc
@@ -34,9 +34,13 @@ class RefreshTokenRepository:
         await self.db.flush()
         return rt
 
-    async def get_by_hash(self, token_hash: str) -> Optional[RefreshToken]:
-        """通过 token 哈希获取记录。"""
+    async def get_by_hash(
+        self, token_hash: str, *, for_update: bool = False
+    ) -> Optional[RefreshToken]:
+        """通过 token 哈希获取记录；轮换时可加行锁串行化并发请求。"""
         stmt = select(RefreshToken).where(RefreshToken.token_hash == token_hash)
+        if for_update:
+            stmt = stmt.with_for_update()
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -73,24 +77,17 @@ class RefreshTokenRepository:
         return result.rowcount or 0
 
     async def purge_expired(self, *, batch_size: int = 1000) -> int:
-        """物理删除已过期或已撤销超过保留期的 refresh 行。返回删除行数。
+        """分批物理删除已过期 refresh 行，返回删除行数。
 
-        策略：expires_at < now 或 revoked_at 非空且 revoked_at < now - 1 天。
+        已撤销但尚未自然过期的记录必须保留，用于 rotation 复用检测。
         """
-        from datetime import timedelta
-
-        from sqlalchemy import and_, delete, or_
-
-        cutoff = _now() - timedelta(days=1)
         now = _now()
-        stmt = delete(RefreshToken).where(
-            or_(
-                RefreshToken.expires_at < now,
-                and_(
-                    RefreshToken.revoked_at.is_not(None),
-                    RefreshToken.revoked_at < cutoff,
-                ),
-            )
+        ids = (
+            select(RefreshToken.id)
+            .where(RefreshToken.expires_at < now)
+            .order_by(RefreshToken.id)
+            .limit(batch_size)
         )
+        stmt = delete(RefreshToken).where(RefreshToken.id.in_(ids))
         result = await self.db.execute(stmt)
         return result.rowcount or 0

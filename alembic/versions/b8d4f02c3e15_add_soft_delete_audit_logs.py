@@ -5,6 +5,7 @@ Revises: a7c3e91f2b04
 Create Date: 2026-07-13 18:00:00.000000
 
 """
+
 from typing import Sequence, Union
 
 from alembic import op
@@ -39,10 +40,17 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(op.f("ix_audit_logs_id"), "audit_logs", ["id"], unique=False)
-    op.create_index(op.f("ix_audit_logs_actor_id"), "audit_logs", ["actor_id"], unique=False)
-    op.create_index(op.f("ix_audit_logs_action"), "audit_logs", ["action"], unique=False)
     op.create_index(
-        op.f("ix_audit_logs_resource_type"), "audit_logs", ["resource_type"], unique=False
+        op.f("ix_audit_logs_actor_id"), "audit_logs", ["actor_id"], unique=False
+    )
+    op.create_index(
+        op.f("ix_audit_logs_action"), "audit_logs", ["action"], unique=False
+    )
+    op.create_index(
+        op.f("ix_audit_logs_resource_type"),
+        "audit_logs",
+        ["resource_type"],
+        unique=False,
     )
     op.create_index(
         op.f("ix_audit_logs_resource_id"), "audit_logs", ["resource_id"], unique=False

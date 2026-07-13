@@ -1,7 +1,12 @@
 """启动 / 关闭任务注册表（lifecycle registry）。
 
 公开 API：
-    from app.core.lifecycle import register_startup, register_shutdown, run_startup, run_shutdown
+    from app.core.lifecycle import (
+        register_shutdown,
+        register_startup,
+        run_shutdown,
+        run_startup,
+    )
 
     @register_startup("my_task", priority=50, critical=False)
     async def my_task() -> None:
@@ -40,6 +45,7 @@ def _import_registrants() -> None:
     from app import database  # noqa: F401  DB 初始化任务
     from app.core import observability, redis_client  # noqa: F401  OTel/Redis 任务
     from app.services import rbac_init  # noqa: F401  RBAC seed 任务
+    from app.services import exception_retention  # noqa: F401  异常日志保留期
     from app.services import token_gc  # noqa: F401  refresh token GC
 
 

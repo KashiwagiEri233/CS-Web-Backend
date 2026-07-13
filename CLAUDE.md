@@ -9,7 +9,7 @@
 - 数据库 PostgreSQL（asyncpg）；**专属库 `domefff`，勿与其它项目共用一个库**。
 
 ## 技术栈
-FastAPI 0.110 · SQLAlchemy 2.0 async + asyncpg · Alembic · pydantic-settings v2 · python-jose/passlib(JWT) · loguru · redis(可选) · pytest/httpx。
+FastAPI 0.139 · SQLAlchemy 2.0 async + asyncpg · Alembic · pydantic-settings v2 · PyJWT/bcrypt · loguru · redis(可选) · pytest/httpx。
 
 ## 目录
 ```
@@ -33,8 +33,8 @@ app/
 ```bash
 python run.py --env 1   # 开发（.env.development），热重载
 python run.py --env 2   # 测试（.env.test）
-python run.py --env 3   # 生产（.env）
-python run.py --env 3 --prod   # 生产 + 多 worker
+python run.py --prod   # 生产（.env）+ 多 worker
+python run.py --env 3 --prod   # 等价的显式写法
 ```
 
 ## 配置（定义在 `app/core/config.py` 的 `Settings`，新增字段须同步 `.env.example`）
@@ -43,7 +43,7 @@ python run.py --env 3 --prod   # 生产 + 多 worker
 - Schema **仅 Alembic**（`create_all` / `DB_AUTO_CREATE` 已废弃）。`DB_AUTO_MIGRATE`（启动自动 upgrade head；False 则只校验版本）、`DB_AUTO_CREATE_DATABASE`（缺库时自动 CREATE DATABASE）。
 - 连接池 `DB_POOL_SIZE`/`DB_MAX_OVERFLOW`/`DB_POOL_TIMEOUT`/`DB_POOL_RECYCLE`/`DB_POOL_PRE_PING`（均有默认值，引擎在 `database.py` 由这些字段构建；生产保持 `pool_pre_ping=True`）。
 - `REDIS_URL`（空=纯内存）、`RATE_LIMIT_FALLBACK` / `CACHE_FALLBACK`。
-- `ADMIN_PASSWORD`（空=首启随机生成、日志只提示一次；配置则不写日志）。
+- `ADMIN_PASSWORD`（首次创建管理员时必须配置；密码永不写日志）。
 - `LOG_PROFILE=dev|prod`（dev=DEBUG+彩色控制台；prod=INFO+JSON+文件轮转）。
 - `AUTH_ENABLED`（False=全局放行为超级用户，仅本地开发；DEBUG=False 时置 False 会拒绝启动）。
 - `OTEL_ENABLED`（可观测性，默认 False=no-op）、`OTEL_EXPORTER_OTLP_ENDPOINT`（OTLP collector；空+启用=降级控制台）、`OTEL_TRACES_SAMPLER_RATIO`。启用后自动埋点 FastAPI/SQLAlchemy/Redis，traces+metrics 经 OTLP 导出。
@@ -73,7 +73,8 @@ python run.py --env 3 --prod   # 生产 + 多 worker
 - 禁止前端渲染：Jinja2 / StaticFiles / HTMLResponse。
 - 禁止 sqlite 作生产库（仅 PostgreSQL）。
 - 禁止直接 `print` 或直接配置 loguru handler（用 `get_logger`）。
-- 禁止提交 `*.db`、`logs/`、`.env`。
+- 禁止提交 `*.db`、`logs/`。本私有仓库按项目约定跟踪 `.env`、`.env.development`、
+  `.env.test`；本地覆盖使用不跟踪的 `.env.local` / `.env.*.local`。
 
 ## 测试
 - `python -m pytest`；目录镜像 `app/` 结构（见 `tests/README.md`）。

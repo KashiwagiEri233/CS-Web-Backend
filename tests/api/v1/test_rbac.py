@@ -71,6 +71,9 @@ class _FakeAuditService:
     async def record(self, **kwargs):
         return None
 
+    async def record_atomic(self, **kwargs):
+        return await self.record(**kwargs)
+
 
 def _client(*, authed=True, superuser=True):
     app = FastAPI()

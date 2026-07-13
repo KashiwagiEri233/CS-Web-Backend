@@ -3,11 +3,13 @@
 验证 #2 修复：用户创建逻辑统一入口——查重、哈希、full_name 写入、is_superuser 控制。
 """
 
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.core.exceptions import UserAlreadyExistsException
+from app.core.exceptions import InvalidCredentialsException, UserAlreadyExistsException
+from app.core.security import hash_refresh_token
 from app.services.auth_service import AuthService
 
 
@@ -15,10 +17,11 @@ def _make_auth_service(monkeypatch) -> AuthService:
     """构造 user_repo 被 AsyncMock 替换的 AuthService。
 
     绕开 __init__（避免实例化 RefreshTokenRepository 等真实依赖）。
-    create_user 内部局部 import get_password_hash，故 patch 其真实来源。
+    bcrypt 已在线程池包装；测试以 AsyncMock 替代耗时哈希。
     """
     monkeypatch.setattr(
-        "app.core.security.get_password_hash", lambda raw: f"hash:{raw}"
+        "app.services.auth_service.async_get_password_hash",
+        AsyncMock(side_effect=lambda raw: f"hash:{raw}"),
     )
     svc = AuthService.__new__(AuthService)
     svc.db = MagicMock()
@@ -30,8 +33,14 @@ def _make_auth_service(monkeypatch) -> AuthService:
 class _UserData:
     """模拟 schemas.auth.UserCreate 的最小形态。"""
 
-    def __init__(self, username="u", email="e@t.com", password="secret",
-                 full_name=None, is_active=True):
+    def __init__(
+        self,
+        username="u",
+        email="e@t.com",
+        password="secret",
+        full_name=None,
+        is_active=True,
+    ):
         self.username = username
         self.email = email
         self.password = password
@@ -103,3 +112,46 @@ async def test_create_user_respects_is_superuser_flag(monkeypatch):
 
     passed = svc.user_repo.create.await_args.args[0]
     assert passed["is_superuser"] is True
+
+
+async def test_refresh_loads_token_with_row_lock():
+    svc = AuthService.__new__(AuthService)
+    svc.db = MagicMock()
+    svc.db.commit = AsyncMock()
+    svc.refresh_repo = AsyncMock()
+    svc.user_repo = AsyncMock()
+    revoked = MagicMock(revoked_at=object(), family_id="family")
+    svc.refresh_repo.get_by_hash.return_value = revoked
+
+    with pytest.raises(InvalidCredentialsException):
+        await svc.refresh_access_token("refresh-token")
+
+    svc.refresh_repo.get_by_hash.assert_awaited_once_with(
+        hash_refresh_token("refresh-token"), for_update=True
+    )
+    svc.refresh_repo.revoke_family.assert_awaited_once_with("family")
+
+
+async def test_authenticate_missing_user_still_verifies_dummy_hash(monkeypatch):
+    svc = _make_auth_service(monkeypatch)
+    svc.user_repo.get_by_username.return_value = None
+    verify = AsyncMock(return_value=False)
+    monkeypatch.setattr("app.services.auth_service.async_verify_password", verify)
+
+    assert await svc.authenticate("missing", "Password1!") is None
+    verify.assert_awaited_once()
+    assert verify.call_args.args[0] == "Password1!"
+
+
+def test_password_change_claim_keeps_microsecond_precision():
+    user = MagicMock(
+        username="alice",
+        id=7,
+        password_changed_at=datetime(
+            2026, 7, 14, 12, 0, 0, 123456, tzinfo=timezone.utc
+        ),
+    )
+
+    claims = AuthService._access_token_claims(user)
+
+    assert claims["pwd_at"] == 1784030400123456

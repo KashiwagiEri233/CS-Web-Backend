@@ -4,14 +4,13 @@
 依赖 DB 的部分：record_exception 落库 + 查询（无 DB 时 skip）。
 """
 
-import pytest
-
 from app.core.exceptions import (
-    BaseAppException,
     BusinessException,
     NotFoundException,
 )
 from app.core.exceptions.exception_logging import ExceptionLogger
+from app.core.exceptions.error_builders import _serialize_validation_errors
+from tests.conftest import integration_db_unavailable
 
 
 # ------------------------------------------------------------------ ExceptionLogger
@@ -63,6 +62,21 @@ def test_log_validation_error():
     assert len(record["errors"]) == 1
 
 
+def test_validation_error_serialization_removes_raw_input():
+    errors = [
+        {
+            "type": "value_error",
+            "loc": ("body", "password"),
+            "input": "PlaintextPassword1!",
+            "ctx": {"error": ValueError("invalid")},
+        }
+    ]
+    safe = _serialize_validation_errors(errors)
+
+    assert "input" not in safe[0]
+    assert isinstance(safe[0]["ctx"]["error"], str)
+
+
 def test_log_exception_traceback_id_from_base_app_exception():
     """BaseAppException 自带 traceback_id 时应优先使用。"""
     logger = ExceptionLogger()
@@ -106,7 +120,7 @@ async def _db_available() -> bool:
 async def test_record_exception_to_db():
     """record_exception 应成功写入 DB 并返回 ExceptionLog。"""
     if not await _db_available():
-        pytest.skip("数据库不可用")
+        integration_db_unavailable("数据库不可用，无法验证异常日志落库")
 
     from app.database import get_session
     from app.services.exception_service import ExceptionService
@@ -139,5 +153,7 @@ async def test_record_exception_to_db():
         assert log.is_resolved is False
 
         # 清理
-        await db.execute(text("DELETE FROM exception_logs WHERE id = :i"), {"i": log.id})
+        await db.execute(
+            text("DELETE FROM exception_logs WHERE id = :i"), {"i": log.id}
+        )
         await db.commit()

@@ -7,24 +7,26 @@ from __future__ import annotations
 
 import hashlib
 import secrets
+import asyncio
 from datetime import datetime, timedelta
-from typing import List, Optional, Union
+from typing import List, Optional
 
 import bcrypt
-from jose import JWTError, jwt
+import jwt
+from jwt.exceptions import InvalidTokenError
 
 from app.core.config import settings
 from app.core.timezone import now_utc
-
-# bcrypt 最多处理 72 字节密码，超出部分截断（与 bcrypt 算法规范一致）
-_BCRYPT_MAX_BYTES = 72
+from app.core.validators import MAX_PASSWORD_BYTES
 
 
-def _truncate_for_bcrypt(password: str) -> bytes:
-    """截断超长密码到 bcrypt 的 72 字节上限。"""
+def _password_bytes(password: str) -> bytes:
+    """编码 bcrypt 密码，并拒绝会发生静默截断的输入。"""
     raw = password.encode("utf-8")
-    if len(raw) > _BCRYPT_MAX_BYTES:
-        return raw[:_BCRYPT_MAX_BYTES]
+    if len(raw) > MAX_PASSWORD_BYTES:
+        raise ValueError(
+            f"password exceeds bcrypt limit of {MAX_PASSWORD_BYTES} UTF-8 bytes"
+        )
     return raw
 
 
@@ -47,7 +49,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     """验证密码（bcrypt）。"""
     try:
         return bcrypt.checkpw(
-            _truncate_for_bcrypt(plain_password),
+            _password_bytes(plain_password),
             hashed_password.encode("utf-8"),
         )
     except (ValueError, TypeError):
@@ -57,9 +59,19 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 def get_password_hash(password: str) -> str:
     """生成密码哈希（bcrypt）。"""
     return bcrypt.hashpw(
-        _truncate_for_bcrypt(password),
+        _password_bytes(password),
         bcrypt.gensalt(),
     ).decode("utf-8")
+
+
+async def async_verify_password(plain_password: str, hashed_password: str) -> bool:
+    """在线程池执行 bcrypt 校验，避免阻塞 FastAPI 事件循环。"""
+    return await asyncio.to_thread(verify_password, plain_password, hashed_password)
+
+
+async def async_get_password_hash(password: str) -> str:
+    """在线程池执行 bcrypt 哈希，避免阻塞 FastAPI 事件循环。"""
+    return await asyncio.to_thread(get_password_hash, password)
 
 
 def _signing_key() -> str:
@@ -90,27 +102,61 @@ def create_access_token(
     返回 (token, jti, expire)。
     """
     to_encode = data.copy()
+    issued_at = now_utc()
     if expires_delta:
         expire = now_utc() + expires_delta
     else:
-        expire = now_utc() + timedelta(
-            minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
-        )
+        expire = now_utc() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
 
     token_jti = jti or generate_token_jti()
-    to_encode.update({"exp": expire, "jti": token_jti})
-    encoded_jwt = jwt.encode(
-        to_encode, _signing_key(), algorithm=settings.ALGORITHM
+    to_encode.update(
+        {
+            "exp": expire,
+            "iat": issued_at,
+            "jti": token_jti,
+            "iss": settings.JWT_ISSUER,
+            "aud": settings.JWT_AUDIENCE,
+            "token_type": "access",
+        }
     )
+    encoded_jwt = jwt.encode(to_encode, _signing_key(), algorithm=settings.ALGORITHM)
     return encoded_jwt, token_jti, expire
 
 
 def verify_token(token: str) -> Optional[dict]:
-    """验证令牌：依次尝试当前密钥与历史密钥（支持轮换窗口）。"""
+    """验证 access token 的签名、签发方、受众和类型。
+
+    ``JWT_ACCEPT_LEGACY_TOKENS`` 仅用于短期迁移：只接受完全不含新增声明的旧 token，
+    不会把 issuer/audience 错误的新 token 降级成 legacy 放行。
+    """
     algorithms = [settings.ALGORITHM]
     for key in _verification_keys():
         try:
-            return jwt.decode(token, key, algorithms=algorithms)
-        except JWTError:
+            payload = jwt.decode(
+                token,
+                key,
+                algorithms=algorithms,
+                issuer=settings.JWT_ISSUER,
+                audience=settings.JWT_AUDIENCE,
+            )
+            if payload.get("token_type") != "access":
+                continue
+            return payload
+        except InvalidTokenError:
             continue
+
+    if settings.JWT_ACCEPT_LEGACY_TOKENS:
+        for key in _verification_keys():
+            try:
+                payload = jwt.decode(
+                    token,
+                    key,
+                    algorithms=algorithms,
+                    options={"verify_iss": False, "verify_aud": False},
+                )
+            except InvalidTokenError:
+                continue
+            if any(claim in payload for claim in ("iss", "aud", "token_type")):
+                continue
+            return payload
     return None

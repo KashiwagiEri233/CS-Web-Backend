@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Request
 
 from app.core.exceptions import ConflictException, NotFoundException
+from app.core.request_context import get_client_meta
 from app.dependencies_services import get_audit_service, get_rbac_service
 from app.middleware.rbac import require_permission
 from app.models.user import User
@@ -16,13 +17,6 @@ from app.services.audit_service import AuditService
 from app.services.rbac_service import RBACService
 
 router = APIRouter()
-
-
-def _client_meta(request: Request) -> dict:
-    return {
-        "ip_address": request.client.host if request.client else None,
-        "user_agent": request.headers.get("user-agent"),
-    }
 
 
 @router.get("/permissions", response_model=PaginatedResponse[Permission])
@@ -72,16 +66,17 @@ async def create_permission(
             "resource": permission_data.resource,
             "action": permission_data.action,
             "description": permission_data.description,
-        }
+        },
+        commit=False,
     )
-    await audit.record(
+    await audit.record_atomic(
         action="permission.create",
         resource_type="permission",
         resource_id=str(permission.id),
         actor_id=current_user.id,
         actor_username=current_user.username,
         detail={"name": permission.name},
-        **_client_meta(request),
+        **get_client_meta(request),
     )
     return permission
 
@@ -114,7 +109,9 @@ async def update_permission(
 ) -> Any:
     """更新权限（需要 permission:update）。"""
     updated = await rbac_service.update_permission(
-        permission_id, permission_data.model_dump(exclude_unset=True)
+        permission_id,
+        permission_data.model_dump(exclude_unset=True),
+        commit=False,
     )
     if updated is None:
         raise NotFoundException(
@@ -122,14 +119,14 @@ async def update_permission(
             resource_type="permission",
             resource_id=permission_id,
         )
-    await audit.record(
+    await audit.record_atomic(
         action="permission.update",
         resource_type="permission",
         resource_id=str(permission_id),
         actor_id=current_user.id,
         actor_username=current_user.username,
         detail={"fields": list(permission_data.model_dump(exclude_unset=True).keys())},
-        **_client_meta(request),
+        **get_client_meta(request),
     )
     return updated
 
@@ -143,19 +140,19 @@ async def delete_permission(
     current_user: User = Depends(require_permission("permission", "delete")),
 ) -> Any:
     """删除权限（需要 permission:delete）。"""
-    success = await rbac_service.delete_permission(permission_id)
+    success = await rbac_service.delete_permission(permission_id, commit=False)
     if not success:
         raise NotFoundException(
             message="权限不存在",
             resource_type="permission",
             resource_id=permission_id,
         )
-    await audit.record(
+    await audit.record_atomic(
         action="permission.delete",
         resource_type="permission",
         resource_id=str(permission_id),
         actor_id=current_user.id,
         actor_username=current_user.username,
-        **_client_meta(request),
+        **get_client_meta(request),
     )
     return {"message": "权限已删除"}

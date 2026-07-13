@@ -25,11 +25,13 @@ class ErrorCode:
     # ---------------- 通用业务 ----------------
     class Business:
         """通用业务错误。"""
+
         BUSINESS_ERROR = "BUSINESS_ERROR"
 
     # ---------------- 认证（Authentication，HTTP 401） ----------------
     class Auth:
         """认证类错误码：身份验证失败、凭据无效、账户未激活等。"""
+
         AUTHENTICATION_FAILED = "AUTHENTICATION_FAILED"
         INVALID_CREDENTIALS = "INVALID_CREDENTIALS"
         USER_NOT_ACTIVE = "USER_NOT_ACTIVE"
@@ -37,22 +39,26 @@ class ErrorCode:
     # ---------------- 授权（Authorization，HTTP 403） ----------------
     class Authorization:
         """授权类错误码：权限不足、访问被拒。"""
+
         AUTHORIZATION_FAILED = "AUTHORIZATION_FAILED"
         PERMISSION_DENIED = "PERMISSION_DENIED"
 
     # ---------------- 数据校验（Validation，HTTP 422） ----------------
     class Validation:
         """数据校验失败。"""
+
         VALIDATION_FAILED = "VALIDATION_FAILED"
 
     # ---------------- 资源查找（HTTP 404） ----------------
     class NotFound:
         """资源未找到。"""
+
         RESOURCE_NOT_FOUND = "RESOURCE_NOT_FOUND"
 
     # ---------------- 资源冲突（HTTP 409） ----------------
     class Conflict:
         """资源冲突。"""
+
         RESOURCE_CONFLICT = "RESOURCE_CONFLICT"
         # 业务子类：用户已存在（未来随 UserAlreadyExistsException 迁到业务模块）
         USER_ALREADY_EXISTS = "USER_ALREADY_EXISTS"
@@ -60,20 +66,24 @@ class ErrorCode:
     # ---------------- 数据库（HTTP 500） ----------------
     class Database:
         """数据库相关错误。"""
+
         DATABASE_ERROR = "DATABASE_ERROR"
         DATABASE_INTEGRITY_ERROR = "DATABASE_INTEGRITY_ERROR"
 
     # ---------------- 外部服务（HTTP 502） ----------------
     class ExternalService:
         """外部服务调用失败。"""
+
         EXTERNAL_SERVICE_ERROR = "EXTERNAL_SERVICE_ERROR"
 
     # ---------------- 限流（HTTP 429） ----------------
     class RateLimit:
         """请求频率超限。"""
+
         RATE_LIMIT_EXCEEDED = "RATE_LIMIT_EXCEEDED"
 
     # ---------------- 兜底/系统级 ----------------
     class System:
         """系统级兜底错误码。"""
+
         INTERNAL_SERVER_ERROR = "INTERNAL_SERVER_ERROR"

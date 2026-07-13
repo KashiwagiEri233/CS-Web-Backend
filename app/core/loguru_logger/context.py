@@ -18,7 +18,12 @@ def set_logging_context(**kwargs):
     """
     current = _logging_context.get().copy()
     current.update(kwargs)
-    _logging_context.set(current)
+    return _logging_context.set(current)
+
+
+def reset_logging_context(token) -> None:
+    """恢复调用 ``set_logging_context`` 前的上下文。"""
+    _logging_context.reset(token)
 
 
 def clear_logging_context():
@@ -37,7 +42,7 @@ class LoggingContextManager:
     def __init__(self, **kwargs):
         """初始化上下文管理器"""
         self.context = kwargs
-        self.original_context = None
+        self.original_context: Dict[str, Any] = {}
 
     def __enter__(self):
         """进入上下文"""

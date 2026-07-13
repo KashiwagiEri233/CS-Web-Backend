@@ -7,11 +7,36 @@ from typing import Any, Dict, List
 # 系统默认权限定义
 DEFAULT_PERMISSIONS: List[Dict[str, str]] = [
     # 用户管理权限
-    {"name": "user:create", "resource": "user", "action": "create", "description": "创建用户"},
-    {"name": "user:read", "resource": "user", "action": "read", "description": "查看用户"},
-    {"name": "user:update", "resource": "user", "action": "update", "description": "更新用户"},
-    {"name": "user:delete", "resource": "user", "action": "delete", "description": "删除用户"},
-    {"name": "user:list", "resource": "user", "action": "list", "description": "列出用户"},
+    {
+        "name": "user:create",
+        "resource": "user",
+        "action": "create",
+        "description": "创建用户",
+    },
+    {
+        "name": "user:read",
+        "resource": "user",
+        "action": "read",
+        "description": "查看用户",
+    },
+    {
+        "name": "user:update",
+        "resource": "user",
+        "action": "update",
+        "description": "更新用户",
+    },
+    {
+        "name": "user:delete",
+        "resource": "user",
+        "action": "delete",
+        "description": "删除用户",
+    },
+    {
+        "name": "user:list",
+        "resource": "user",
+        "action": "list",
+        "description": "列出用户",
+    },
     {
         "name": "user:manage_roles",
         "resource": "user",
@@ -19,11 +44,36 @@ DEFAULT_PERMISSIONS: List[Dict[str, str]] = [
         "description": "管理用户角色",
     },
     # 角色管理权限
-    {"name": "role:create", "resource": "role", "action": "create", "description": "创建角色"},
-    {"name": "role:read", "resource": "role", "action": "read", "description": "查看角色"},
-    {"name": "role:update", "resource": "role", "action": "update", "description": "更新角色"},
-    {"name": "role:delete", "resource": "role", "action": "delete", "description": "删除角色"},
-    {"name": "role:list", "resource": "role", "action": "list", "description": "列出角色"},
+    {
+        "name": "role:create",
+        "resource": "role",
+        "action": "create",
+        "description": "创建角色",
+    },
+    {
+        "name": "role:read",
+        "resource": "role",
+        "action": "read",
+        "description": "查看角色",
+    },
+    {
+        "name": "role:update",
+        "resource": "role",
+        "action": "update",
+        "description": "更新角色",
+    },
+    {
+        "name": "role:delete",
+        "resource": "role",
+        "action": "delete",
+        "description": "删除角色",
+    },
+    {
+        "name": "role:list",
+        "resource": "role",
+        "action": "list",
+        "description": "列出角色",
+    },
     {
         "name": "role:manage_permissions",
         "resource": "role",
@@ -62,9 +112,18 @@ DEFAULT_PERMISSIONS: List[Dict[str, str]] = [
         "description": "列出权限",
     },
     # 系统管理权限
-    {"name": "system:config", "resource": "system", "action": "config", "description": "系统配置"},
-    {"name": "system:monitor", "resource": "system", "action": "monitor", "description": "系统监控"},
-    {"name": "system:logs", "resource": "system", "action": "logs", "description": "查看系统日志"},
+    {
+        "name": "system:monitor",
+        "resource": "system",
+        "action": "monitor",
+        "description": "系统监控",
+    },
+    {
+        "name": "system:logs",
+        "resource": "system",
+        "action": "logs",
+        "description": "查看系统日志",
+    },
     # 异常管理权限
     {
         "name": "exception:read",
@@ -73,26 +132,11 @@ DEFAULT_PERMISSIONS: List[Dict[str, str]] = [
         "description": "查看异常日志",
     },
     {
-        "name": "exception:delete",
-        "resource": "exception",
-        "action": "delete",
-        "description": "删除异常日志",
-    },
-    {
-        "name": "exception:analyze",
-        "resource": "exception",
-        "action": "analyze",
-        "description": "分析异常",
-    },
-    {
         "name": "exception:resolve",
         "resource": "exception",
         "action": "resolve",
         "description": "标记异常已解决",
     },
-    # API 访问权限
-    {"name": "api:access", "resource": "api", "action": "access", "description": "访问API"},
-    {"name": "api:docs", "resource": "api", "action": "docs", "description": "查看API文档"},
 ]
 
 
@@ -124,8 +168,6 @@ def build_default_roles(all_permission_keys: List[str]) -> List[Dict[str, Any]]:
                 "role:list",
                 "permission:read",
                 "permission:list",
-                "api:access",
-                "api:docs",
             ],
         },
         {
@@ -140,19 +182,16 @@ def build_default_roles(all_permission_keys: List[str]) -> List[Dict[str, Any]]:
                 "permission:list",
                 "system:monitor",
                 "exception:read",
-                "exception:analyze",
-                "api:access",
-                "api:docs",
             ],
         },
         {
             "name": "user",
-            "description": "普通用户，基本权限",
-            "permissions": ["api:access"],
+            "description": "普通用户；仅可使用所有已认证用户共有的接口",
+            "permissions": [],
         },
         {
             "name": "guest",
-            "description": "访客，最低权限",
-            "permissions": ["api:access"],
+            "description": "访客标签角色；默认不授予业务权限",
+            "permissions": [],
         },
     ]

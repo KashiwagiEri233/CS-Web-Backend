@@ -14,6 +14,7 @@ from .context import (
     clear_logging_context,
     generate_request_id,
     get_logging_context,
+    reset_logging_context,
     set_logging_context,
 )
 from .init import init_logging
@@ -29,6 +30,7 @@ __all__ = [
     "set_logging_context",
     "clear_logging_context",
     "get_logging_context",
+    "reset_logging_context",
     "bind_context",
     "generate_request_id",
     "resolve_log_config",

@@ -1,6 +1,7 @@
 from datetime import timedelta
 from typing import Optional
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -10,10 +11,11 @@ from app.core.exceptions import (
     UserNotActiveException,
 )
 from app.core.security import (
+    async_get_password_hash,
+    async_verify_password,
     create_access_token,
     generate_refresh_token,
     hash_refresh_token,
-    verify_password,
     verify_token,
 )
 from app.core.security_blacklist import get_blacklist
@@ -22,6 +24,11 @@ from app.models.user import User
 from app.repositories.refresh_token_repo import RefreshTokenRepository
 from app.repositories.user_repo import UserRepository
 from app.schemas.auth import TokenPair
+
+
+# 与 bcrypt 的正常工作因子一致；即使用户名不存在也执行一次验证，降低用户枚举的时序差异。
+_DUMMY_PASSWORD_HASH = "$2b$12$4wW.7xG3E9HU7z3dlkl37u4CVbHfGfgjXVLYP2A0WcBAe3ZQojbPS"
+_MICROSECONDS_PER_SECOND = 1_000_000
 
 
 class AuthService:
@@ -36,8 +43,9 @@ class AuthService:
         """验证用户凭据"""
         user = await self.user_repo.get_by_username(username)
         if not user:
+            await async_verify_password(password, _DUMMY_PASSWORD_HASH)
             return None
-        if not verify_password(password, user.hashed_password):
+        if not await async_verify_password(password, user.hashed_password):
             return None
         return user
 
@@ -51,8 +59,8 @@ class AuthService:
         if payload is None:
             return None
 
-        username: str = payload.get("sub")
-        if username is None:
+        username = payload.get("sub")
+        if not isinstance(username, str):
             return None
 
         user = await self.user_repo.get_by_username(username)
@@ -65,7 +73,9 @@ class AuthService:
         # 改密后吊销旧 access：token 内 pwd_at 落后于用户当前 password_changed_at
         if user.password_changed_at is not None:
             token_pwd_at = payload.get("pwd_at")
-            user_pwd_at = int(user.password_changed_at.timestamp())
+            user_pwd_at = int(
+                user.password_changed_at.timestamp() * _MICROSECONDS_PER_SECOND
+            )
             if token_pwd_at is None or int(token_pwd_at) < user_pwd_at:
                 return None
 
@@ -77,7 +87,9 @@ class AuthService:
         """通过ID获取用户"""
         return await self.user_repo.get_by_id(user_id)
 
-    async def create_user(self, user_data, is_superuser: bool = False) -> User:
+    async def create_user(
+        self, user_data, is_superuser: bool = False, commit: bool = True
+    ) -> User:
         """创建新用户（统一入口：查重 + 哈希密码 + 落库）。
 
         - user_data: 含 username/email/password 以及可选 full_name/is_active 的对象
@@ -92,12 +104,10 @@ class AuthService:
         if await self.user_repo.get_by_email(user_data.email):
             raise UserAlreadyExistsException(email=user_data.email)
 
-        from app.core.security import get_password_hash
-
         user_dict = {
             "username": user_data.username,
             "email": user_data.email,
-            "hashed_password": get_password_hash(user_data.password),
+            "hashed_password": await async_get_password_hash(user_data.password),
             # 未传则按模型默认（is_active 默认 True）
             "is_active": getattr(user_data, "is_active", True),
             "is_superuser": is_superuser,
@@ -107,8 +117,13 @@ class AuthService:
         if full_name is not None:
             user_dict["full_name"] = full_name
 
-        user = await self.user_repo.create(user_dict)
-        await self.db.commit()
+        try:
+            user = await self.user_repo.create(user_dict)
+            if commit:
+                await self.db.commit()
+        except IntegrityError as exc:
+            await self.db.rollback()
+            raise UserAlreadyExistsException(username=user_data.username) from exc
         return user
 
     # ------------------------------------------------------------------ token 套件
@@ -144,11 +159,15 @@ class AuthService:
         检测到已撤销的 token 再次被使用 → 视为泄漏 → 整个 family 立即失效。
         """
         token_hash = hash_refresh_token(refresh_token_plain)
-        rt = await self.refresh_repo.get_by_hash(token_hash)
+        # 对当前 token 加行锁，确保同一 refresh token 的并发轮换只有一个成功；
+        # 后到请求会在锁释放后看到 revoked_at，并触发 family 复用处置。
+        rt = await self.refresh_repo.get_by_hash(token_hash, for_update=True)
 
         if rt is None:
             # token 不存在：可能是伪造，也可能是已被清理。统一报错，不做额外处置。
-            raise InvalidCredentialsException(details={"reason": "invalid refresh token"})
+            raise InvalidCredentialsException(
+                details={"reason": "invalid refresh token"}
+            )
 
         if rt.revoked_at is not None:
             # 复用！family 内的已撤销 token 又出现，整条 family 立即吊销
@@ -166,7 +185,11 @@ class AuthService:
 
         user = await self.user_repo.get_by_id(rt.user_id)
         # 软删 / 停用用户不得再签发 token
-        if user is None or not user.is_active or getattr(user, "deleted_at", None) is not None:
+        if (
+            user is None
+            or not user.is_active
+            or getattr(user, "deleted_at", None) is not None
+        ):
             raise UserNotActiveException(user_id=rt.user_id)
 
         # 轮换：撤销当前 token，签发新 token（同 family）
@@ -251,16 +274,17 @@ class AuthService:
     def _access_token_claims(user: User) -> dict:
         """构造 access token 声明。
 
-        写入 ``pwd_at``（password_changed_at 的 UTC 时间戳秒）：
+        写入 ``pwd_at``（password_changed_at 的 UTC 微秒时间戳）：
         校验时与用户当前 password_changed_at 对比，改密前签发的 token 立即失效。
         """
         claims: dict = {"sub": user.username, "id": user.id}
-        if getattr(user, "password_changed_at", None) is not None:
-            claims["pwd_at"] = int(user.password_changed_at.timestamp())
+        password_changed_at = getattr(user, "password_changed_at", None)
+        if password_changed_at is not None:
+            claims["pwd_at"] = int(
+                password_changed_at.timestamp() * _MICROSECONDS_PER_SECOND
+            )
         return claims
 
     @staticmethod
     def _refresh_expire_at():
-        return now_utc() + timedelta(
-            days=settings.REFRESH_TOKEN_EXPIRE_DAYS
-        )
+        return now_utc() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)

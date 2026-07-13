@@ -30,7 +30,7 @@ class _FakeAuthService:
     def __init__(self, db=None):
         self.created = []
 
-    async def create_user(self, user_data, is_superuser=False):
+    async def create_user(self, user_data, is_superuser=False, commit=True):
         self.created.append((user_data, is_superuser))
         return _fake_user(is_superuser=is_superuser)
 
@@ -42,14 +42,18 @@ class _FakeAuditService:
     async def record(self, **kwargs):
         return None
 
+    async def record_atomic(self, **kwargs):
+        return await self.record(**kwargs)
+
 
 def test_register_delegates_to_auth_service():
     captured = {}
 
     class _Capturing(_FakeAuthService):
-        async def create_user(self, user_data, is_superuser=False):
+        async def create_user(self, user_data, is_superuser=False, commit=True):
             captured["called"] = True
             captured["is_superuser"] = is_superuser
+            captured["commit"] = commit
             captured["username"] = user_data.username
             return _fake_user()
 
@@ -73,6 +77,7 @@ def test_register_delegates_to_auth_service():
     assert resp.status_code in (200, 201)
     assert captured.get("called") is True
     assert captured.get("is_superuser") is False
+    assert captured.get("commit") is False
     assert captured.get("username") == "bob"
 
 

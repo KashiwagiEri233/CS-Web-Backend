@@ -33,7 +33,9 @@ class UserAlreadyExistsException(ConflictException):
             message_parts.append(f"邮箱 '{email}'")
             error_details["email"] = email
 
-        message = f"{' 和 '.join(message_parts)} 已存在" if message_parts else "用户已存在"
+        message = (
+            f"{' 和 '.join(message_parts)} 已存在" if message_parts else "用户已存在"
+        )
 
         super().__init__(
             message=message,

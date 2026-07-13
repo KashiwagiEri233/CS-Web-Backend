@@ -101,7 +101,11 @@ class LoguruAdapter:
             return
 
         level_name = logging.getLevelName(level)
-        log_method = getattr(self._logger, level_name.lower(), self._logger.info)
+        log_fields = _logging_context.get().copy()
+        log_fields.update(
+            {k: v for k, v in kwargs.items() if k not in {"name", "exc_info"}}
+        )
+        bound_logger = self._logger.bind(**log_fields)
 
         if kwargs:
             formatted_params = []
@@ -123,9 +127,9 @@ class LoguruAdapter:
         #    当 msg 含 JSON 时触发 KeyError。
         # 2) loguru 用 opt(exception=...) 传递异常，而非 stdlib 的 exc_info=。
         if exc_info:
-            self._logger.opt(exception=exc_info).log(level_name, msg)
+            bound_logger.opt(exception=exc_info).log(level_name, msg)
         else:
-            log_method(msg)
+            bound_logger.log(level_name, msg)
 
     def debug(self, msg: str, *args, **kwargs):
         """记录 DEBUG 级别日志"""
@@ -206,8 +210,13 @@ def get_logger(name: Optional[str] = None) -> LoguruAdapter:
     if name is None:
         import inspect
 
-        frame = inspect.currentframe().f_back
-        name = frame.f_globals.get("__name__", "unknown")
+        current_frame = inspect.currentframe()
+        caller_frame = current_frame.f_back if current_frame is not None else None
+        name = (
+            caller_frame.f_globals.get("__name__", "unknown")
+            if caller_frame is not None
+            else "unknown"
+        )
 
     if name not in _adapter_cache:
         _adapter_cache[name] = LoguruAdapter(name)

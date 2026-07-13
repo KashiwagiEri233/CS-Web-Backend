@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Dict, Optional, Union
+from typing import Any, Dict, List, Sequence, Union
 
 from fastapi import Request
 from fastapi.exceptions import HTTPException, RequestValidationError
@@ -12,11 +12,17 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.loguru_logger import get_logger
+from app.core.request_context import get_client_meta
 from app.core.timezone import now_utc
 
 from .base_exceptions import BaseAppException
 from .error_codes import ErrorCode
-from .response_models import ErrorContext, ErrorDetail, ErrorResponse, ValidationErrorResponse
+from .response_models import (
+    ErrorContext,
+    ErrorDetail,
+    ErrorResponse,
+    ValidationErrorResponse,
+)
 
 logger = get_logger("exception_handler")
 
@@ -35,33 +41,35 @@ def create_error_context(request: Request) -> ErrorContext:
     """从请求创建错误上下文"""
     request_id = getattr(request.state, "request_id", str(uuid.uuid4()))
     user_id = getattr(request.state, "user_id", None)
-    client_ip = request.client.host if request.client else None
-    user_agent = request.headers.get("user-agent")
+    client_meta = get_client_meta(request)
 
     return ErrorContext(
         request_id=request_id,
         user_id=user_id,
-        ip_address=client_ip,
-        user_agent=user_agent,
+        ip_address=client_meta["ip_address"],
+        user_agent=client_meta["user_agent"],
         endpoint=f"{request.method} {request.url.path}",
         method=request.method,
         timestamp=now_utc(),
     )
 
 
-def _serialize_validation_errors(errors: list) -> list:
-    """把 Pydantic 校验错误列表转成 JSON 可序列化形式。
+def _serialize_validation_errors(errors: Sequence[Any]) -> List[Dict[str, Any]]:
+    """把 Pydantic 校验错误转成可安全记录的 JSON 结构。
 
     Pydantic v2 在 field_validator 抛 ValueError 时，会在 error["ctx"]["error"]
-    里塞入原始异常对象，导致整个 errors 列表不可 JSON 序列化。
+    里塞入原始异常对象；error["input"] 还可能包含密码、token 等原始输入。
+    日志和异常表都不应保存这些值。
     """
-    safe = []
+    safe: List[Dict[str, Any]] = []
     for error in errors:
         item = dict(error)
+        item.pop("input", None)
         ctx = item.get("ctx")
         if isinstance(ctx, dict):
             item["ctx"] = {
-                k: (str(v) if isinstance(v, BaseException) else v) for k, v in ctx.items()
+                k: (str(v) if isinstance(v, BaseException) else v)
+                for k, v in ctx.items()
             }
         safe.append(item)
     return safe
@@ -79,7 +87,9 @@ def create_validation_error_response(
     validation_errors = []
     for error in errors:
         field_path = (
-            ".".join(str(loc) for loc in error.get("loc", [])) if "loc" in error else None
+            ".".join(str(loc) for loc in error.get("loc", []))
+            if "loc" in error
+            else None
         )
         validation_errors.append(
             ErrorDetail(
@@ -99,7 +109,9 @@ def create_validation_error_response(
     )
 
 
-def create_app_exception_response(exc: BaseAppException, request: Request) -> ErrorResponse:
+def create_app_exception_response(
+    exc: BaseAppException, request: Request
+) -> ErrorResponse:
     """创建应用程序异常响应"""
     context = create_error_context(request)
     exc.timestamp = now_utc()
@@ -165,20 +177,22 @@ def create_server_error_response(exc: Exception, request: Request) -> ErrorRespo
     )
 
 
-def create_database_error_response(exc: SQLAlchemyError, request: Request) -> ErrorResponse:
+def create_database_error_response(
+    exc: SQLAlchemyError, request: Request
+) -> ErrorResponse:
     """创建数据库错误响应"""
     context = create_error_context(request)
     traceback_id = str(uuid.uuid4())
 
     error_code = ErrorCode.Database.DATABASE_ERROR
     message = "数据库操作失败"
-    details = {}
+    details: Dict[str, Any] = {}
 
     if isinstance(exc, IntegrityError):
         error_code = ErrorCode.Database.DATABASE_INTEGRITY_ERROR
         message = "数据库完整性错误"
-        if exc.orig:
-            details["original_error"] = str(exc.orig)
+        # 原始数据库错误可能包含表名、约束、SQL 片段或字段值，只写服务端日志，
+        # 绝不通过 API details 返回。
 
     try:
         logger.error(

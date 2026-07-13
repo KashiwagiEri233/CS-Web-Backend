@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timezone
+from datetime import timezone, tzinfo
 
 from loguru import logger as loguru_logger
 
@@ -29,7 +29,7 @@ def _apply_timezone_patcher(timezone_name: str) -> None:
         return
 
     try:
-        tz = ZoneInfo(timezone_name)
+        tz: tzinfo = ZoneInfo(timezone_name)
     except Exception:
         tz = timezone.utc
 

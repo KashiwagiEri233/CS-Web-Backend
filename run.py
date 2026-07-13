@@ -5,8 +5,7 @@ FastAPI RBAC Framework 启动脚本
     python run.py                    # 默认开发环境（.env.development），热重载
     python run.py --env 1            # 开发环境（.env.development）
     python run.py --env 2            # 测试环境（.env.test）
-    python run.py --env 3            # 生产环境（.env）
-    python run.py --env 3 --prod     # 生产环境 + 多 worker
+    python run.py --prod             # 生产环境（.env）+ 多 worker
     python run.py --port 9000        # 自定义端口
 """
 
@@ -18,8 +17,8 @@ import uvicorn
 # 环境配置文件映射
 ENV_FILES = {
     1: ".env.development",  # 开发环境
-    2: ".env.test",         # 测试环境
-    3: ".env",              # 生产环境
+    2: ".env.test",  # 测试环境
+    3: ".env",  # 生产环境
 }
 
 
@@ -31,7 +30,7 @@ def main():
         "--env",
         type=int,
         choices=[1, 2, 3],
-        default=1,  # 默认开发环境：不带 --env 即加载 .env.development
+        default=None,
         help="环境配置: 1=开发(.env.development，默认) 2=测试(.env.test) 3=生产(.env)",
     )
     parser.add_argument(
@@ -44,6 +43,17 @@ def main():
     )
     args = parser.parse_args()
 
+    if args.workers < 1:
+        parser.error("--workers 必须大于等于 1")
+    if args.prod:
+        if args.env not in (None, 3):
+            parser.error("--prod 只能与 --env 3 一起使用")
+        args.env = 3
+    elif args.env == 3:
+        parser.error("--env 3 必须同时指定 --prod，避免生产配置启用热重载")
+    else:
+        args.env = args.env or 1
+
     # 根据环境参数设置 ENV_FILE，config.py 的 Settings 会读取该变量
     if args.env is not None:
         env_file = ENV_FILES[args.env]
@@ -51,6 +61,7 @@ def main():
         env_names = {1: "开发", 2: "测试", 3: "生产"}
         # loguru 尚未配置，用 stdout 直接输出启动提示
         import sys
+
         sys.stdout.write(f"[启动] 使用 {env_names[args.env]} 环境配置: {env_file}\n")
         sys.stdout.flush()
 
@@ -75,6 +86,9 @@ def main():
         workers=args.workers if args.prod else 1,
         log_config=None,  # 禁用 uvicorn 默认 log_config，由 setup_uvicorn_logging 接管
         access_log=False,
+        # 客户端地址只由应用内 TRUSTED_PROXY_CIDRS 解析，避免 Uvicorn 默认
+        # 信任转发头而绕过可信代理边界。
+        proxy_headers=False,
     )
 
 

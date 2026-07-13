@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+from typing import Any, AsyncGenerator, Dict
 
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
 
@@ -19,16 +20,21 @@ class Base(DeclarativeBase):
 # 创建异步数据库引擎
 # 连接池参数由 Settings 驱动（见 config.py DB_POOL_*）：生产下 pool_pre_ping 防陈旧连接，
 # pool_recycle 主动回收长连接，pool_size/max_overflow 控制并发上限。
-engine = create_async_engine(
-    settings.DATABASE_URL,
-    echo=False,
-    future=True,
-    pool_size=settings.DB_POOL_SIZE,
-    max_overflow=settings.DB_MAX_OVERFLOW,
-    pool_timeout=settings.DB_POOL_TIMEOUT,
-    pool_recycle=settings.DB_POOL_RECYCLE,
-    pool_pre_ping=settings.DB_POOL_PRE_PING,
-)
+_engine_options: Dict[str, Any] = {
+    "echo": False,
+    "future": True,
+    "pool_size": settings.DB_POOL_SIZE,
+    "max_overflow": settings.DB_MAX_OVERFLOW,
+    "pool_timeout": settings.DB_POOL_TIMEOUT,
+    "pool_recycle": settings.DB_POOL_RECYCLE,
+    "pool_pre_ping": settings.DB_POOL_PRE_PING,
+}
+if settings.TESTING:
+    # pytest-asyncio 默认可能为每个测试创建事件循环；asyncpg 连接绑定创建它的
+    # loop，跨测试复用池连接会触发 “Future attached to a different loop”。
+    _engine_options = {"echo": False, "future": True, "poolclass": NullPool}
+
+engine = create_async_engine(settings.database_url, **_engine_options)
 
 # 创建异步会话工厂
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
@@ -44,7 +50,7 @@ async def ensure_database_exists() -> bool:
     import asyncpg
     from sqlalchemy.engine import make_url
 
-    url = make_url(settings.DATABASE_URL)
+    url = make_url(settings.database_url)
     db_name = url.database
     if not db_name:
         return False
@@ -232,18 +238,27 @@ async def _init_schema_under_lock() -> None:
     同一时刻只有一个进程执行 schema 操作；其余阻塞等待，待其完成后迁移 no-op（幂等）。
     锁连接连到维护库（一定存在）——因为目标库此刻可能还没建。
 
-    注：RBAC seed 等幂等的业务初始化**不在锁内**（查重再插，本就幂等），由独立的
-    lifecycle 任务负责（priority=20），与 schema 初始化（priority=10）解耦。
+    注：RBAC seed 由自身独立的 advisory lock 串行化，避免多 worker 查重后同时插入；
+    与 schema 初始化（priority=10）保持解耦。
     """
+    # 仅做版本校验时没有写 schema 的竞态，无需连接维护库或持 advisory lock。
+    # 这也允许生产环境使用只能连接目标库的最小权限账号。
+    if not settings.DB_AUTO_CREATE_DATABASE and not settings.DB_AUTO_MIGRATE:
+        await _init_schema()
+        return
+
     import asyncpg
 
-    url = make_url(settings.DATABASE_URL)
+    url = make_url(settings.database_url)
+    lock_database = (
+        settings.DB_MAINTENANCE_DB if settings.DB_AUTO_CREATE_DATABASE else url.database
+    )
     lock_conn = await asyncpg.connect(
         host=url.host or "localhost",
         port=url.port or 5432,
         user=url.username,
         password=url.password,
-        database=settings.DB_MAINTENANCE_DB,
+        database=lock_database,
     )
     try:
         # advisory lock 是集群级（跨库跨 session），维护库上持锁即可保护目标库的初始化

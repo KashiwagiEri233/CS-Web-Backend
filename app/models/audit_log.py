@@ -24,7 +24,9 @@ class AuditLog(Base):
     actor_username: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     action: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     resource_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
-    resource_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+    resource_id: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True, index=True
+    )
     detail: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
     ip_address: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
     user_agent: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

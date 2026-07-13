@@ -5,7 +5,6 @@
 
 import traceback
 import uuid
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -47,7 +46,8 @@ class ExceptionLogger:
                 {
                     "error_code": exception.error_code,
                     "status_code": exception.status_code,
-                    "traceback_id": exception.traceback_id or log_record["traceback_id"],
+                    "traceback_id": exception.traceback_id
+                    or log_record["traceback_id"],
                     "details": exception.details,
                     "context": exception.context,
                 }
@@ -91,7 +91,7 @@ class ExceptionLogger:
         request_context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """记录验证错误，返回日志记录字典。"""
-        log_record = {
+        log_record: Dict[str, Any] = {
             "timestamp": now_utc().isoformat(),
             "error_type": "validation_error",
             "errors": errors,

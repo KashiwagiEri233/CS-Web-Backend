@@ -1,5 +1,8 @@
 from datetime import datetime
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from app.models.user import User
 
 from sqlalchemy import (
     DateTime as _DateTime,
@@ -33,14 +36,14 @@ class RefreshToken(Base):
         Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     # sha256(refresh_token 明文)，长度固定 64（十六进制）。唯一索引防止重复。
-    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    token_hash: Mapped[str] = mapped_column(
+        String(64), unique=True, index=True, nullable=False
+    )
     # 同一次登录派生的刷新链标识；同一 family 内的旧 token 再次被用 = 窃取/重放
     family_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=now_utc
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
 
     user: Mapped["User"] = relationship("User", backref="refresh_tokens")
 

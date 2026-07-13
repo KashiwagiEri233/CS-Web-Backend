@@ -57,7 +57,9 @@ class InMemoryCacheBackend:
             return
         now = time.time()
         # 第一轮：淘汰所有已过期项
-        expired = [k for k, (_, exp) in self._store.items() if exp is not None and exp <= now]
+        expired = [
+            k for k, (_, exp) in self._store.items() if exp is not None and exp <= now
+        ]
         for k in expired:
             self._store.pop(k, None)
         # 第二轮：若仍超限，淘汰最旧条目（OrderedDict 首元素）

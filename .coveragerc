@@ -1,0 +1,17 @@
+[run]
+branch = True
+source = app
+omit =
+    app/api/v1/test_exceptions.py
+
+[report]
+fail_under = 70
+show_missing = True
+skip_covered = True
+exclude_lines =
+    pragma: no cover
+    if TYPE_CHECKING:
+    raise NotImplementedError
+
+[xml]
+output = build/coverage.xml

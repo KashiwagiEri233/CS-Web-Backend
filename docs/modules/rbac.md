@@ -43,6 +43,8 @@ schema：`app/schemas/rbac.py`。
 ## 缓存
 
 用户权限缓存键 `rbac:user_perms:{user_id}`，TTL 60s；grant/revoke 与角色/权限 CRUD 会失效。
+缓存只用于权限展示/查询；实际授权依赖每次直接查询数据库，避免多实例缓存失效延迟扩大权限窗口。
+停用角色不会授予角色身份或任何权限。
 
 ## 测试
 

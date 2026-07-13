@@ -165,7 +165,8 @@ api (路由)  →  service (业务)  →  repository (数据)  →  model (ORM)
 
 - **提交格式**：`<type>(<scope>): <subject>`，type：`feat / fix / refactor / chore / docs / test`。
 - **不主动 commit / push**，除非用户明确要求。
-- **禁止提交**：`*.db`、`logs/`、`.env*`（除 `.env.example`）。
+- **禁止提交**：`*.db`、`logs/`。本私有仓库允许跟踪环境配置文件；个人覆盖写入
+  `.env.local` / `.env.*.local`，不要提交。
 - **侵入性操作**（删文件、改公共接口、改数据库结构）**先说明范围再做**。
 
 ---
@@ -187,7 +188,7 @@ api (路由)  →  service (业务)  →  repository (数据)  →  model (ORM)
 - 禁止前端渲染：Jinja2 / StaticFiles / HTMLResponse。
 - 禁止 sqlite 作生产库（仅 PostgreSQL）。
 - 禁止直接 `print` 或直接配置 loguru handler。
-- 禁止提交 `*.db`、`logs/`、`.env`。
+- 禁止提交 `*.db`、`logs/`；环境文件遵循本私有仓库的跟踪策略。
 - 禁止 `AUTH_ENABLED=False` 用于生产（`DEBUG=False` 时会拒绝启动）。
 
 ---

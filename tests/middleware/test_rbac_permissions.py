@@ -17,10 +17,11 @@ class _FakeUser:
 
 
 def _patch_permissions(monkeypatch, perms):
-    async def fake_get_user_permissions(self, user_id):
-        return set(perms)
+    async def fake_check_permission(self, user_id, resource, action):
+        return f"{resource}:{action}" in set(perms)
+
     monkeypatch.setattr(
-        rbac_module.RBACService, "get_user_permissions", fake_get_user_permissions
+        rbac_module.RBACService, "check_permission", fake_check_permission
     )
 
 

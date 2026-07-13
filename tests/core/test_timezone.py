@@ -9,8 +9,6 @@
 
 from datetime import datetime, timezone
 
-import pytest
-
 from app.core.timezone import now_utc, now_local, utc_to_local, local_to_utc
 
 

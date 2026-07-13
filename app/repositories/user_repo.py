@@ -1,6 +1,6 @@
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from app.models.user import User
@@ -12,6 +12,23 @@ class UserRepository(BaseRepository[User]):
     此处仅保留用户特有查询。"""
 
     model = User
+
+    async def list_active(self, skip: int = 0, limit: int = 100) -> list[User]:
+        """分页获取未软删用户。"""
+        stmt = (
+            select(User)
+            .where(User.deleted_at.is_(None))
+            .order_by(User.id)
+            .offset(skip)
+            .limit(limit)
+        )
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
+
+    async def count_active(self) -> int:
+        """统计未软删用户数。"""
+        stmt = select(func.count()).select_from(User).where(User.deleted_at.is_(None))
+        return int((await self.db.execute(stmt)).scalar_one())
 
     async def get_by_username(self, username: str) -> Optional[User]:
         """通过用户名获取未删除用户。"""

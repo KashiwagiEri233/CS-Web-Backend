@@ -44,6 +44,7 @@ async def test_update_role_delegates_to_repo(monkeypatch):
     svc = _make_service(monkeypatch)
     role = MagicMock(id=1)
     svc.rbac_repo.get_role_by_id.return_value = role
+    svc.rbac_repo.get_role_by_name.return_value = None
     updated = MagicMock(id=1)
     svc.rbac_repo.update_role.return_value = updated
 
@@ -51,7 +52,9 @@ async def test_update_role_delegates_to_repo(monkeypatch):
 
     assert result is updated
     # 仅传入非 None 字段
-    svc.rbac_repo.update_role.assert_awaited_once_with(role, {"name": "admin", "is_active": False})
+    svc.rbac_repo.update_role.assert_awaited_once_with(
+        role, {"name": "admin", "is_active": False}
+    )
 
 
 async def test_update_permission_returns_none_when_missing(monkeypatch):
@@ -68,6 +71,8 @@ async def test_update_permission_delegates_to_repo(monkeypatch):
     svc = _make_service(monkeypatch)
     perm = MagicMock(id=2)
     svc.rbac_repo.get_permission_by_id.return_value = perm
+    svc.rbac_repo.get_permission_by_name.return_value = None
+    svc.rbac_repo.get_permission_by_resource_and_action.return_value = None
     updated = MagicMock(id=2)
     svc.rbac_repo.update_permission.return_value = updated
 
@@ -134,7 +139,20 @@ async def test_check_permission_aggregates_roles(monkeypatch):
     assert await svc.check_permission(1, "user", "write") is False
 
 
+async def test_inactive_role_does_not_grant_permissions(monkeypatch):
+    svc = _make_service(monkeypatch)
+    user = MagicMock(is_superuser=False)
+    permission = MagicMock(resource="user", action="delete")
+    role = MagicMock(is_active=False, permissions=[permission])
+    user.roles = [role]
+    svc.rbac_repo.get_user_with_roles.return_value = user
+
+    assert await svc.check_permission(1, "user", "delete") is False
+    assert await svc.get_user_permissions(1) == set()
+
+
 # ---- 角色/权限 CRUD 委托（路由层应通过这些方法访问数据） ----
+
 
 async def test_get_all_roles_delegates(monkeypatch):
     svc = _make_service(monkeypatch)
@@ -218,6 +236,7 @@ async def test_user_exists_false(monkeypatch):
 
 # ---- grant/revoke 改用按 id 比较（#14） ----
 
+
 async def test_grant_role_to_user_idempotent(monkeypatch):
     svc = _make_service(monkeypatch)
     user = MagicMock()
@@ -243,6 +262,7 @@ async def test_revoke_role_to_user_by_id(monkeypatch):
 
 
 # ---- 权限缓存（#12） ----
+
 
 def _real_memory_cache():
     """用项目自带的内存后端构造一个隔离缓存，验证命中/失效。"""

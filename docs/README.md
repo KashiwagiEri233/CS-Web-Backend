@@ -11,6 +11,7 @@ docs/
 │   ├── exception_handling.md   # 异常体系（自定义异常 + 全局处理器 + 中间件）
 │   ├── observability.md        # 可观测性（OpenTelemetry traces/metrics）
 │   ├── lifecycle.md            # 启动/关闭任务注册表（lifecycle registry）
+│   ├── rate_limit.md           # 请求限流与可信代理
 │   └── queue.md                # 异步任务队列（arq，可选/可删除模块）
 └── modules/               # 业务模块级：与具体业务实体绑定
     ├── auth.md            # 认证（登录/注册/刷新/登出）
@@ -85,11 +86,11 @@ docs/
 | [observability.md](system/observability.md) | `app/core/observability.py`、运维端点 | ✅ |
 | [lifecycle.md](system/lifecycle.md) | `app/core/lifecycle/`（启动/关闭任务注册表） | ✅ |
 | [queue.md](system/queue.md) | `app/core/queue/`（可选模块，arq） | ✅ |
-| _rate_limit.md_ | `app/core/rate_limit/`、`app/middleware/rate_limit.py` | ⬜ 待补 |
-| _cache.md_ | `app/core/cache/` | ⬜ 待补 |
-| _security_auth.md_ | `app/core/security.py`、`app/middleware/rbac.py` | ⬜ 待补 |
-| _logging.md_ | `app/core/loguru_logger/` | ⬜ 待补 |
-| _database.md_ | `app/database.py` | ⬜ 待补 |
+| [rate_limit.md](system/rate_limit.md) | `app/core/rate_limit/`、`app/middleware/rate_limit.py` | ✅ |
+| [cache.md](system/cache.md) | `app/core/cache/` | ✅ |
+| [security_auth.md](system/security_auth.md) | `app/core/security.py`、`app/middleware/rbac.py` | ✅ |
+| [logging.md](system/logging.md) | `app/core/loguru_logger/` | ✅ |
+| [database.md](system/database.md) | `app/database.py` | ✅ |
 
 ### 业务模块级（`docs/modules/`）
 | 文档 | 覆盖代码 | 状态 |
@@ -98,8 +99,6 @@ docs/
 | [users.md](modules/users.md) | `app/api/v1/users.py`、`app/services/user_service.py` | ✅ |
 | [rbac.md](modules/rbac.md) | `app/api/v1/rbac/`、`app/services/rbac_service.py` | ✅ |
 | [audit.md](modules/audit.md) | `app/api/v1/audit.py`、`app/services/audit_service.py` | ✅ |
-
-> ⬜ 待补项是已存在的系统能力但文档未写——欢迎按模板补齐，不要让索引与实际能力脱节。
 
 ## 提交前检查清单
 - [ ] 新增 API 端点 → 对应 `docs/modules/<x>.md` 的接口表已更新

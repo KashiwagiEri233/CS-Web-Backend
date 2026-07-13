@@ -2,8 +2,13 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 
+from app.core.request_context import get_client_meta
 from app.dependencies import get_current_active_user
-from app.dependencies_services import get_audit_service, get_auth_service, get_user_service
+from app.dependencies_services import (
+    get_audit_service,
+    get_auth_service,
+    get_user_service,
+)
 from app.middleware.rbac import require_permission
 from app.models.user import User
 from app.schemas.pagination import PaginatedResponse, PaginationParams
@@ -13,13 +18,6 @@ from app.services.auth_service import AuthService
 from app.services.user_service import UserService
 
 router = APIRouter()
-
-
-def _client_meta(request: Request) -> dict:
-    return {
-        "ip_address": request.client.host if request.client else None,
-        "user_agent": request.headers.get("user-agent"),
-    }
 
 
 @router.get("/", response_model=PaginatedResponse[UserResponse])
@@ -64,9 +62,11 @@ async def create_user(
     current_user: User = Depends(require_permission("user", "create")),
 ) -> Any:
     """创建用户（需要 user:create）。"""
-    created = await auth_service.create_user(user_data, is_superuser=False)
-    meta = _client_meta(request)
-    await audit.record(
+    created = await auth_service.create_user(
+        user_data, is_superuser=False, commit=False
+    )
+    meta = get_client_meta(request)
+    await audit.record_atomic(
         action="user.create",
         resource_type="user",
         resource_id=str(created.id),
@@ -76,32 +76,6 @@ async def create_user(
         **meta,
     )
     return created
-
-
-@router.put("/{user_id}", response_model=UserResponse)
-async def update_user(
-    user_id: int,
-    user_data: UserUpdate,
-    request: Request,
-    user_service: UserService = Depends(get_user_service),
-    audit: AuditService = Depends(get_audit_service),
-    current_user: User = Depends(require_permission("user", "update")),
-) -> Any:
-    """更新用户（改密与撤 refresh 同事务）。"""
-    updated = await user_service.update_user(
-        user_id, user_data.model_dump(exclude_unset=True)
-    )
-    meta = _client_meta(request)
-    await audit.record(
-        action="user.update",
-        resource_type="user",
-        resource_id=str(user_id),
-        actor_id=current_user.id,
-        actor_username=current_user.username,
-        detail={"fields": list(user_data.model_dump(exclude_unset=True).keys())},
-        **meta,
-    )
-    return updated
 
 
 @router.put("/me", response_model=UserResponse)
@@ -116,6 +90,32 @@ async def update_user_me(
     )
 
 
+@router.put("/{user_id}", response_model=UserResponse)
+async def update_user(
+    user_id: int,
+    user_data: UserUpdate,
+    request: Request,
+    user_service: UserService = Depends(get_user_service),
+    audit: AuditService = Depends(get_audit_service),
+    current_user: User = Depends(require_permission("user", "update")),
+) -> Any:
+    """更新用户（改密与撤 refresh 同事务）。"""
+    updated = await user_service.update_user(
+        user_id, user_data.model_dump(exclude_unset=True), commit=False
+    )
+    meta = get_client_meta(request)
+    await audit.record_atomic(
+        action="user.update",
+        resource_type="user",
+        resource_id=str(user_id),
+        actor_id=current_user.id,
+        actor_username=current_user.username,
+        detail={"fields": list(user_data.model_dump(exclude_unset=True).keys())},
+        **meta,
+    )
+    return updated
+
+
 @router.delete("/{user_id}")
 async def delete_user(
     user_id: int,
@@ -125,9 +125,9 @@ async def delete_user(
     current_user: User = Depends(require_permission("user", "delete")),
 ) -> Any:
     """软删除用户（需要 user:delete）。"""
-    await user_service.delete_user(user_id, current_user.id)
-    meta = _client_meta(request)
-    await audit.record(
+    await user_service.delete_user(user_id, current_user.id, commit=False)
+    meta = get_client_meta(request)
+    await audit.record_atomic(
         action="user.delete",
         resource_type="user",
         resource_id=str(user_id),

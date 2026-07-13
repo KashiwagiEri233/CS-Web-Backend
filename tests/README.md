@@ -21,6 +21,19 @@ tests/
 - **单元测试不依赖外部服务**：用 monkeypatch / fake 隔离 Redis、数据库；需要会话时用 `app.database.get_session`。
 - 需要真实数据库的集成测试，建议放在 `tests/integration/`（按需新建），并用独立测试库（见 `.env.test`）。
 
+## 数据库隔离
+
+Pytest 在导入应用前强制加载 `.env.test`，并拒绝连接数据库名不含 `test` 的地址。
+CI 可通过 `TEST_DATABASE_URL` 覆盖测试库；设置 `REQUIRE_INTEGRATION_DB=1` 后，
+数据库不可用会让测试失败，不再静默跳过。测试模式使用 SQLAlchemy `NullPool`，
+避免 pytest 的多个事件循环复用 asyncpg 连接。
+
+Redis/arq 集成同理使用 `TEST_REDIS_URL`；CI 设置 `REQUIRE_INTEGRATION_REDIS=1`，
+因此缓存、限流、黑名单、故障恢复以及 worker 重试链路缺少真实 Redis 时会失败。
+
+默认测试命令同时统计分支覆盖率并要求总覆盖率不低于 70%；报告写入
+`build/coverage.xml`。
+
 ## 运行
 
 ```bash

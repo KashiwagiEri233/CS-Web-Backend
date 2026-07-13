@@ -31,7 +31,9 @@ from app.services.rbac_service import RBACService
 class PermissionChecker:
     """权限校验依赖：校验当前用户是否具备所需权限。"""
 
-    def __init__(self, required_permissions: Union[str, List[str]], require_all: bool = True):
+    def __init__(
+        self, required_permissions: Union[str, List[str]], require_all: bool = True
+    ):
         if isinstance(required_permissions, str):
             required_permissions = [required_permissions]
         self.required_permissions = required_permissions
@@ -46,16 +48,25 @@ class PermissionChecker:
         if current_user.is_superuser:
             return current_user
 
+        # 授权判定直接查库，避免多 worker 内存缓存或 Redis 失效失败造成撤权延迟。
+        # get_user_permissions 的缓存只保留给展示/查询接口使用。
         rbac_service = RBACService(db)
-        user_permissions = await rbac_service.get_user_permissions(current_user.id)
+        checks = []
+        for permission in self.required_permissions:
+            resource, separator, action = permission.partition(":")
+            checks.append(
+                separator == ":"
+                and await rbac_service.check_permission(
+                    current_user.id, resource, action
+                )
+            )
 
-        if self.require_all:
-            ok = all(p in user_permissions for p in self.required_permissions)
-        else:
-            ok = any(p in user_permissions for p in self.required_permissions)
+        ok = all(checks) if self.require_all else any(checks)
 
         if not ok:
-            raise PermissionDeniedException(required_permissions=self.required_permissions)
+            raise PermissionDeniedException(
+                required_permissions=self.required_permissions
+            )
         return current_user
 
 
@@ -75,9 +86,11 @@ class RoleChecker:
 
         rbac_repo = RBACRepository(db)
         user = await rbac_repo.get_user_with_roles(current_user.id)
-        roles = user.roles if user else []
+        roles = [role for role in user.roles if role.is_active] if user else []
         if self.role_name not in {r.name for r in roles}:
-            raise PermissionDeniedException(required_permissions=[f"role:{self.role_name}"])
+            raise PermissionDeniedException(
+                required_permissions=[f"role:{self.role_name}"]
+            )
         return current_user
 
 
@@ -93,7 +106,9 @@ class SuperuserChecker:
         return current_user
 
 
-def require_permission(resource: str, action: str, require_all: bool = True) -> PermissionChecker:
+def require_permission(
+    resource: str, action: str, require_all: bool = True
+) -> PermissionChecker:
     """构造权限校验依赖：require_permission("user", "read") -> Depends 可用对象。"""
     return PermissionChecker(f"{resource}:{action}", require_all)
 

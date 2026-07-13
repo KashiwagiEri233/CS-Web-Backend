@@ -63,3 +63,14 @@ def test_normal_request_passes_through():
     resp = _client().get("/ok")
     assert resp.status_code == 200
     assert resp.json() == {"ok": True}
+
+
+def test_request_id_is_returned_and_valid_incoming_value_is_preserved():
+    resp = _client().get("/ok", headers={"X-Request-ID": "client-request-123"})
+    assert resp.headers["x-request-id"] == "client-request-123"
+
+
+def test_invalid_request_id_is_replaced():
+    resp = _client().get("/ok", headers={"X-Request-ID": "bad id"})
+    assert resp.headers["x-request-id"] != "bad id"
+    assert len(resp.headers["x-request-id"]) == 32

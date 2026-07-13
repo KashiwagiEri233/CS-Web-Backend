@@ -26,6 +26,7 @@ def _fresh_registries(monkeypatch):
 
 # --------------------------- 注册与排序 ---------------------------
 
+
 async def test_startup_executes_in_priority_ascending_order(monkeypatch):
     _fresh_registries(monkeypatch)
     order = []
@@ -68,6 +69,7 @@ async def test_shutdown_executes_in_priority_descending_order(monkeypatch):
 
 
 # --------------------------- critical 失败传播 ---------------------------
+
 
 async def test_critical_failure_aborts_startup_and_skips_remaining(monkeypatch):
     _fresh_registries(monkeypatch)
@@ -131,6 +133,7 @@ async def test_shutdown_swallows_all_exceptions(monkeypatch):
 
 # --------------------------- 重名保护 ---------------------------
 
+
 def test_duplicate_startup_name_raises(monkeypatch):
     _fresh_registries(monkeypatch)
 
@@ -139,6 +142,7 @@ def test_duplicate_startup_name_raises(monkeypatch):
         pass
 
     with pytest.raises(ValueError, match="已注册"):
+
         @lc.register_startup("dup", priority=20, critical=False)
         async def _second():  # pragma: no cover - 装饰器内即抛
             pass
@@ -152,12 +156,14 @@ def test_duplicate_shutdown_name_raises(monkeypatch):
         pass
 
     with pytest.raises(ValueError, match="已注册"):
+
         @lc.register_shutdown("dup", priority=20)
         async def _second():  # pragma: no cover - 装饰器内即抛
             pass
 
 
 # --------------------------- 装饰器返回原函数 ---------------------------
+
 
 def test_decorator_returns_original_function(monkeypatch):
     """装饰器不应吞掉被装饰函数（注册表只登记引用，原函数仍可直接调用）。"""

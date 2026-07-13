@@ -24,12 +24,15 @@ schema 见 `app/schemas/auth.py`。
 
 ## 配置
 
-`SECRET_KEY`、`JWT_PREVIOUS_SECRET_KEYS`、`ALGORITHM`、`ACCESS_TOKEN_EXPIRE_MINUTES`、`REFRESH_TOKEN_EXPIRE_DAYS`、`TOKEN_BLACKLIST_FALLBACK`、认证限流字段。
+`SECRET_KEY`、`JWT_PREVIOUS_SECRET_KEYS`、`JWT_ISSUER`、`JWT_AUDIENCE`、`JWT_ACCEPT_LEGACY_TOKENS`、`ALGORITHM`、`ACCESS_TOKEN_EXPIRE_MINUTES`、`REFRESH_TOKEN_EXPIRE_DAYS`、`TOKEN_BLACKLIST_FALLBACK`、`REQUIRE_REDIS_FOR_SECURITY`、认证限流字段。
 
 ## 安全要点
 
 - JWT 校验支持历史密钥轮换窗口。
-- access 含 `pwd_at`，与 `password_changed_at` 对比。
+- access 含微秒精度 `pwd_at`，与 `password_changed_at` 对比，避免同一秒改密时旧令牌继续有效。
+- refresh 轮换会锁定当前令牌行；同一 refresh 的并发请求只有一个能正常换新，后续请求触发整条 family 撤销。
+- 已撤销 refresh 保留到自然过期，保证重放检测；清理任务只删除过期记录。
+- 密码按 UTF-8 编码后最多 72 字节，与 bcrypt 的输入边界一致。
 - 软删用户不可登录/刷新。
 
 ## 测试

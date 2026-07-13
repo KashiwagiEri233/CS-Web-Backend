@@ -1,11 +1,11 @@
-from typing import Optional, Any
+from typing import Optional
 
 from pydantic import BaseModel, field_validator, EmailStr, ConfigDict
 
 from app.core.validators import (
+    MAX_EMAIL_LENGTH,
     validate_password_strength,
     validate_username,
-    validate_email,
 )
 
 
@@ -14,16 +14,23 @@ class UserBase(BaseModel):
     email: EmailStr
     full_name: Optional[str] = None
     is_active: bool = True
-    
-    @field_validator('username')
+
+    @field_validator("username")
     @classmethod
     def validate_username_field(cls, v: str) -> str:
         is_valid, error_msg = validate_username(v)
         if not is_valid:
             raise ValueError(error_msg)
         return v
-    
-    @field_validator('full_name')
+
+    @field_validator("email")
+    @classmethod
+    def validate_email_length(cls, v: EmailStr) -> EmailStr:
+        if len(str(v)) > MAX_EMAIL_LENGTH:
+            raise ValueError(f"邮箱长度不能超过{MAX_EMAIL_LENGTH}个字符")
+        return v
+
+    @field_validator("full_name")
     @classmethod
     def validate_full_name(cls, v: Optional[str]) -> Optional[str]:
         if v is not None and len(v) > 100:
@@ -34,8 +41,8 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     password: str
     model_config = ConfigDict(str_strip_whitespace=True)
-    
-    @field_validator('password')
+
+    @field_validator("password")
     @classmethod
     def validate_password_field(cls, v: str) -> str:
         is_valid, error_msg = validate_password_strength(v)
@@ -50,8 +57,15 @@ class UserUpdate(BaseModel):
     password: Optional[str] = None
     is_active: Optional[bool] = None
     model_config = ConfigDict(str_strip_whitespace=True)
-    
-    @field_validator('password')
+
+    @field_validator("email")
+    @classmethod
+    def validate_email_length(cls, v: Optional[EmailStr]) -> Optional[EmailStr]:
+        if v is not None and len(str(v)) > MAX_EMAIL_LENGTH:
+            raise ValueError(f"邮箱长度不能超过{MAX_EMAIL_LENGTH}个字符")
+        return v
+
+    @field_validator("password")
     @classmethod
     def validate_password_field(cls, v: Optional[str]) -> Optional[str]:
         if v is not None:
@@ -59,8 +73,8 @@ class UserUpdate(BaseModel):
             if not is_valid:
                 raise ValueError(error_msg)
         return v
-    
-    @field_validator('full_name')
+
+    @field_validator("full_name")
     @classmethod
     def validate_full_name(cls, v: Optional[str]) -> Optional[str]:
         if v is not None and len(v) > 100:

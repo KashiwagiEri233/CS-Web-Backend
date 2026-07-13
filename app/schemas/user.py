@@ -9,6 +9,8 @@ from pydantic import ConfigDict
 
 from app.schemas.auth import UserBase, UserCreate, UserUpdate
 
+__all__ = ["UserBase", "UserCreate", "UserUpdate", "UserResponse", "UserInDB"]
+
 
 class UserResponse(UserBase):
     id: int

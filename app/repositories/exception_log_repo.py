@@ -111,7 +111,7 @@ class ExceptionLogRepository:
             query = query.order_by(asc(sort_column))
 
         total_result = await self.db.execute(count_query)
-        total = total_result.scalar()
+        total = int(total_result.scalar() or 0)
 
         result = await self.db.execute(query.offset(skip).limit(limit))
         exception_logs = result.scalars().all()
@@ -162,6 +162,14 @@ class ExceptionLogRepository:
         )
         await self.db.flush()
         return result.rowcount > 0
+
+    async def delete_before(self, cutoff: datetime) -> int:
+        """删除保留期以前的异常日志（flush，未 commit）。"""
+        result = await self.db.execute(
+            delete(ExceptionLog).where(ExceptionLog.created_at < cutoff)
+        )
+        await self.db.flush()
+        return int(result.rowcount or 0)
 
     async def get_exception_statistics(
         self, time_window_hours: int = 24

@@ -3,14 +3,13 @@
 覆盖：
 - 未配置 Redis：纯内存路径，add/contains/TTL 过期。
 - fallback="open"：故障时不视为黑名单。
+- fallback="closed"：故障时拒绝 token。
 - fallback="memory"：故障时回退内存。
 - 半开恢复：冷却期满后切回 Redis（用 mock 模拟）。
 """
 
 import asyncio
 import time
-
-import pytest
 
 from app.core.security_blacklist import TokenBlacklist, _MemoryBlacklist
 
@@ -93,10 +92,17 @@ async def test_blacklist_fallback_open_lets_through():
     assert not await bl.contains("jti-open")
 
 
+async def test_blacklist_fallback_closed_denies_when_redis_is_missing():
+    bl = TokenBlacklist(None, _MemoryBlacklist(), fallback="closed")
+    assert await bl.contains("any-jti")
+
+
 async def test_blacklist_half_open_recovery():
     """Redis 故障冷却期满后恢复。"""
     redis = _FlakyRedis(fail=True)
-    bl = TokenBlacklist(redis, _MemoryBlacklist(), fallback="memory", retry_interval=0.1)
+    bl = TokenBlacklist(
+        redis, _MemoryBlacklist(), fallback="memory", retry_interval=0.1
+    )
     # 触发降级
     await bl.add("jti-1", 60)
     assert not bl.using_redis

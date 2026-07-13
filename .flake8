@@ -1,0 +1,13 @@
+[flake8]
+max-line-length = 88
+extend-ignore = E203,W503
+exclude =
+    .git,
+    .venv,
+    __pycache__,
+    build,
+    dist
+per-file-ignores =
+    app/database.py:E402
+    app/core/lifecycle/__init__.py:E402,F401
+    scripts/init_database.py:E402

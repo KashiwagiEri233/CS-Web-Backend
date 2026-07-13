@@ -5,6 +5,7 @@
 - 配置了 Redis：跨实例一致；任意一次调用失败进入冷却期，期间按 fallback 兜底。
 - fallback="memory"（默认）：故障时回退内存（单进程保护）。
 - fallback="open"：Redis 故障时放行（牺牲保护换可用性，不推荐）。
+- fallback="closed"：Redis 故障时拒绝所有 access token（高安全部署）。
 
 黑名单语义：key = access token 的 jti，value 占位。TTL = 该 access token 的剩余有效期，
 token 自然过期后条目自动清理，避免无限增长。
@@ -73,9 +74,7 @@ class TokenBlacklist:
             self._memory.add(jti, ttl_seconds)
             return
         try:
-            await self._redis.setex(
-                f"{_REDIS_KEY_PREFIX}{jti}", ttl_seconds, "1"
-            )
+            await self._redis.setex(f"{_REDIS_KEY_PREFIX}{jti}", ttl_seconds, "1")
             self._mark_healthy()
             # Redis 与内存双写：Redis 故障降级期间内存里仍能命中本进程的登出
             self._memory.add(jti, ttl_seconds)
@@ -86,7 +85,7 @@ class TokenBlacklist:
     async def contains(self, jti: str) -> bool:
         """jti 是否在黑名单中。失败按 fallback 兜底。"""
         if self._redis is None:
-            return self._memory.contains(jti)
+            return self._fallback_contains(jti)
         if not self._healthy and time.monotonic() < self._next_retry:
             return self._fallback_contains(jti)
         try:
@@ -116,6 +115,8 @@ class TokenBlacklist:
         self._next_retry = time.monotonic() + self._retry_interval
 
     def _fallback_contains(self, jti: str) -> bool:
+        if self._fallback == "closed":
+            return True
         if self._fallback == "open":
             return False  # 放行：Redis 故障时不视为黑名单
         return self._memory.contains(jti)

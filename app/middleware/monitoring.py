@@ -7,6 +7,7 @@ from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core.loguru_logger import get_logger
+from app.core.request_context import get_client_ip
 
 
 class LoggingMiddleware(BaseHTTPMiddleware):
@@ -24,8 +25,8 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             self.logger.info(
                 "Request started",
                 method=request.method,
-                url=str(request.url),
-                client_ip=request.client.host if request.client else "unknown",
+                path=request.url.path,
+                client_ip=get_client_ip(request),
                 user_agent=request.headers.get("user-agent", ""),
             )
 
@@ -37,9 +38,10 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             self.logger.info(
                 "Request completed",
                 method=request.method,
-                url=str(request.url),
+                path=request.url.path,
                 status_code=response.status_code,
                 process_time_ms=process_time * 1000,
+                user_id=getattr(request.state, "user_id", None),
             )
 
             return response
@@ -47,7 +49,8 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             self.logger.error(
                 "Request failed",
                 method=request.method,
-                url=str(request.url),
+                path=request.url.path,
+                user_id=getattr(request.state, "user_id", None),
                 error=str(exc),
                 exc_info=True,
             )
@@ -108,6 +111,7 @@ class MetricsMiddleware(BaseHTTPMiddleware):
         return self._lock
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        request.app.state.metrics_middleware = self
         start_time = time.time()
         method = request.method
         path = request.url.path
@@ -139,9 +143,7 @@ class MetricsMiddleware(BaseHTTPMiddleware):
     def get_metrics(self) -> dict:
         """获取性能指标快照。"""
         total = self._total_requests
-        avg_response_time = (
-            self._total_response_time / total if total > 0 else 0.0
-        )
+        avg_response_time = self._total_response_time / total if total > 0 else 0.0
         error_rate = self._total_errors / total if total > 0 else 0.0
         uptime = time.time() - self._start_time
 

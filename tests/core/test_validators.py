@@ -15,6 +15,10 @@ class TestValidatePassword:
         ok, err = validate_password_strength("Abcd123!")
         assert ok and err is None
 
+    def test_rejects_multibyte_password_over_bcrypt_byte_limit(self):
+        ok, err = validate_password_strength("密" * 23 + "Aa1!")
+        assert ok is False and err
+
     @pytest.mark.parametrize(
         "pwd,reason",
         [

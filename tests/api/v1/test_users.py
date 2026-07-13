@@ -5,7 +5,6 @@ import types
 from fastapi import FastAPI
 from starlette.testclient import TestClient
 
-import app.api.v1.users as users_module
 from app.api.v1.users import router as users_router
 from app.core.exceptions import setup_exception_handlers
 from app.database import get_db
@@ -66,6 +65,9 @@ class _FakeAuditService:
     async def record(self, **kwargs):
         return None
 
+    async def record_atomic(self, **kwargs):
+        return await self.record(**kwargs)
+
 
 def _client_authed(monkeypatch):
     app = FastAPI()
@@ -125,13 +127,15 @@ def test_update_user_password_calls_service(monkeypatch):
     called = {"data": None}
 
     class _Capturing(_FakeUserService):
-        async def update_user(self, user_id, update_data):
+        async def update_user(self, user_id, update_data, commit=True):
             called["data"] = (user_id, update_data)
+            called["commit"] = commit
             return _fake_user(user_id)
 
     app = FastAPI()
     app.include_router(users_router, prefix="/users")
     app.dependency_overrides[get_db] = lambda: (_ for _ in (None,))
+
     # fix async generator
     async def _fake_db():
         yield None
@@ -150,14 +154,16 @@ def test_update_user_password_calls_service(monkeypatch):
     assert resp.status_code == 200
     assert called["data"][0] == 5
     assert "password" in called["data"][1]
+    assert called["commit"] is False
 
 
 def test_update_user_without_password(monkeypatch):
     called = {"data": None}
 
     class _Capturing(_FakeUserService):
-        async def update_user(self, user_id, update_data):
+        async def update_user(self, user_id, update_data, commit=True):
             called["data"] = update_data
+            called["commit"] = commit
             return _fake_user(user_id)
 
     app = FastAPI()
@@ -179,3 +185,12 @@ def test_update_user_without_password(monkeypatch):
     )
     assert resp.status_code == 200
     assert called["data"] == {"email": "new@t.com"}
+    assert called["commit"] is False
+
+
+def test_update_me_matches_static_route(monkeypatch):
+    """静态 /me 必须优先于 /{user_id}，避免把 me 当整数解析。"""
+    resp = _client_authed(monkeypatch).put(
+        "/users/me", json={"full_name": "Updated Name"}
+    )
+    assert resp.status_code == 200

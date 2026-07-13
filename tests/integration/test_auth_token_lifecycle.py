@@ -6,7 +6,7 @@
 3. revoke_all_user_tokens 撤销全部；
 4. access token 黑名单（登出后失效）。
 
-无法连接数据库时自动 skip。
+本地无法连接数据库时自动 skip；CI 严格模式下直接失败。
 """
 
 import uuid
@@ -17,70 +17,37 @@ from sqlalchemy import text
 from app.core.exceptions import InvalidCredentialsException
 from app.core.security import (
     create_access_token,
-    hash_refresh_token,
     verify_token,
 )
 from app.core.security_blacklist import get_blacklist
 from app.database import get_session
+from app.models.user import User
 from app.services.auth_service import AuthService
-from tests._alembic_helpers import upgrade_schema_to_head
-
-
-async def _db_available() -> bool:
-    """探测数据库可用性。前一个测试的连接清理可能导致连接池瞬时不可用，重试一次。"""
-    for attempt in range(2):
-        try:
-            async with get_session() as db:
-                await db.execute(text("SELECT 1"))
-            return True
-        except Exception:
-            if attempt == 0:
-                import asyncio
-
-                await asyncio.sleep(0.1)
-                continue
-            return False
-
-
-async def _ensure_schema():
-    """确保测试所需的表存在：仅走 Alembic（禁止 create_all）。"""
-    await upgrade_schema_to_head()
-
-
-@pytest.fixture
-async def db_ready():
-    """确保数据库可用且 schema 已是 alembic head。无 DB 时 skip。"""
-    if not await _db_available():
-        pytest.skip("数据库不可用，跳过 refresh token 集成测试")
-    await _ensure_schema()
-    yield
 
 
 async def _create_test_user(db, username: str) -> int:
-    await db.execute(
-        text(
-            "INSERT INTO users (username,email,hashed_password,is_active,is_superuser) "
-            "VALUES (:u,:e,'x',true,false)"
-        ),
-        {"u": username, "e": f"{username}@t.com"},
+    user = User(
+        username=username,
+        email=f"{username}@t.com",
+        hashed_password="x",
+        is_active=True,
+        is_superuser=False,
     )
+    db.add(user)
     await db.commit()
-    uid = (
-        await db.execute(
-            text("SELECT id FROM users WHERE username=:u"), {"u": username}
-        )
-    ).scalar()
-    return uid
+    return user.id
 
 
 async def _cleanup(username: str, user_id: int) -> None:
     async with get_session() as db:
-        await db.execute(text("DELETE FROM refresh_tokens WHERE user_id=:i"), {"i": user_id})
+        await db.execute(
+            text("DELETE FROM refresh_tokens WHERE user_id=:i"), {"i": user_id}
+        )
         await db.execute(text("DELETE FROM users WHERE id=:i"), {"i": user_id})
         await db.commit()
 
 
-async def test_issue_then_refresh_rotation(db_ready):
+async def test_issue_then_refresh_rotation(integration_db_ready):
     sfx = uuid.uuid4().hex[:8]
     uname = f"rtlife_u_{sfx}"
 
@@ -90,15 +57,11 @@ async def test_issue_then_refresh_rotation(db_ready):
 
         try:
             # 需要 user 对象，svc 内部按 id 查；这里直接构造
-            from app.models.user import User
-
             user = await svc.user_repo.get_by_id(uid)
             pair = await svc.issue_token_pair(user)
             assert pair.access_token and pair.refresh_token
 
             old_refresh = pair.refresh_token
-            old_hash = hash_refresh_token(old_refresh)
-
             # 用 refresh 换新
             pair2 = await svc.refresh_access_token(old_refresh)
             assert pair2.refresh_token != old_refresh
@@ -115,7 +78,7 @@ async def test_issue_then_refresh_rotation(db_ready):
             await _cleanup(uname, uid)
 
 
-async def test_revoke_all_user_tokens(db_ready):
+async def test_revoke_all_user_tokens(integration_db_ready):
     sfx = uuid.uuid4().hex[:8]
     uname = f"rtrev_u_{sfx}"
 
@@ -124,8 +87,6 @@ async def test_revoke_all_user_tokens(db_ready):
         uid = await _create_test_user(db, uname)
 
         try:
-            from app.models.user import User
-
             user = await svc.user_repo.get_by_id(uid)
             # 签发多次（不同 family）
             p1 = await svc.issue_token_pair(user)

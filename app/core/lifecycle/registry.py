@@ -90,9 +90,7 @@ def register_shutdown(
         raise ValueError(f"关闭任务 {name!r} 已注册，禁止重复登记")
 
     def decorator(func: Callable[[], Awaitable[None]]) -> Callable[[], Awaitable[None]]:
-        _SHUTDOWN_TASKS.append(
-            ShutdownTask(name=name, func=func, priority=priority)
-        )
+        _SHUTDOWN_TASKS.append(ShutdownTask(name=name, func=func, priority=priority))
         _SHUTDOWN_NAMES.add(name)
         return func
 

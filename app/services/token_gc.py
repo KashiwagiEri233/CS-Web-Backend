@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 from typing import Optional
 
+from sqlalchemy import text
+
 from app.core.config import settings
 from app.core.lifecycle import register_shutdown, register_startup
 from app.core.loguru_logger import get_logger
@@ -13,6 +15,7 @@ logger = get_logger("token_gc")
 
 _gc_task: Optional[asyncio.Task] = None
 _stop = asyncio.Event()
+_TOKEN_GC_LOCK_KEY = 873924003
 
 
 async def _purge_once() -> int:
@@ -21,6 +24,12 @@ async def _purge_once() -> int:
     from app.repositories.refresh_token_repo import RefreshTokenRepository
 
     async with get_session() as db:
+        lock_acquired = await db.scalar(
+            text("SELECT pg_try_advisory_xact_lock(:lock_key)"),
+            {"lock_key": _TOKEN_GC_LOCK_KEY},
+        )
+        if not lock_acquired:
+            return 0
         n = await RefreshTokenRepository(db).purge_expired()
         await db.commit()
         return n

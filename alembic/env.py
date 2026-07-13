@@ -10,7 +10,7 @@ from alembic import context
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.database import Base  # noqa: E402
-from app.models import *  # noqa: F401,E402  导入所有模型，注册到 metadata
+from app import models  # noqa: E402,F401  导入所有模型，注册到 metadata
 
 config = context.config
 
@@ -61,6 +61,10 @@ def run_migrations_online() -> None:
         # 而不是无限等待——否则启动期迁移卡在某个锁上会表现成"日志静默、应用起不来"，
         # 难以排查。失败会明确抛错，由上层 _run_alembic_upgrade 记录。
         connection.exec_driver_sql("SET lock_timeout = '10s'")
+        # SQLAlchemy 2.x 的 SET 会隐式开启事务；若不先提交，下面 Alembic 的
+        # begin_transaction 会复用该外层事务，而连接关闭时整批 DDL 被回滚，
+        # 表面日志显示迁移成功但数据库没有任何表。
+        connection.commit()
         context.configure(
             connection=connection,
             target_metadata=target_metadata,

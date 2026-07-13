@@ -42,6 +42,17 @@ def setup_telemetry(app, engine) -> None:
         logger.info("可观测性(OTel): 已禁用 (OTEL_ENABLED=False)")
         return
 
+    # 应用工厂可能构造多个 FastAPI 实例。全局 provider / DB / Redis 只装配一次，
+    # 后续实例只补 FastAPI app 级埋点，避免重复 provider 和重复 instrument 警告。
+    if _tracer_provider is not None and _meter_provider is not None:
+        try:
+            from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
+            FastAPIInstrumentor.instrument_app(app)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("可观测性(OTel): FastAPI 埋点失败", error=str(exc))
+        return
+
     try:
         from opentelemetry import metrics, trace
         from opentelemetry.sdk.metrics import MeterProvider
@@ -112,18 +123,24 @@ def _build_exporters():
     try:
         if protocol.startswith("http"):
             from opentelemetry.exporter.otlp.proto.http.metric_exporter import (
-                OTLPMetricExporter,
+                OTLPMetricExporter as HttpMetricExporter,
             )
             from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
-                OTLPSpanExporter,
+                OTLPSpanExporter as HttpSpanExporter,
             )
+
+            span_exporter_factory: Any = HttpSpanExporter
+            metric_exporter_factory: Any = HttpMetricExporter
         else:
             from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import (
-                OTLPMetricExporter,
+                OTLPMetricExporter as GrpcMetricExporter,
             )
             from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
-                OTLPSpanExporter,
+                OTLPSpanExporter as GrpcSpanExporter,
             )
+
+            span_exporter_factory = GrpcSpanExporter
+            metric_exporter_factory = GrpcMetricExporter
     except ImportError as exc:
         logger.error(
             "可观测性(OTel): OTLP exporter 依赖缺失，已跳过装配",
@@ -133,8 +150,8 @@ def _build_exporters():
         return None, None, ""
 
     return (
-        OTLPSpanExporter(endpoint=endpoint),
-        OTLPMetricExporter(endpoint=endpoint),
+        span_exporter_factory(endpoint=endpoint),
+        metric_exporter_factory(endpoint=endpoint),
         f"otlp/{protocol} -> {endpoint}",
     )
 
@@ -172,7 +189,9 @@ def shutdown_telemetry() -> None:
             try:
                 provider.shutdown()
             except Exception as exc:  # noqa: BLE001
-                logger.warning(f"可观测性(OTel): {label} provider 关闭异常", error=str(exc))
+                logger.warning(
+                    f"可观测性(OTel): {label} provider 关闭异常", error=str(exc)
+                )
     _tracer_provider = None
     _meter_provider = None
 

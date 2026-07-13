@@ -1,6 +1,6 @@
 from typing import Optional
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +10,7 @@ from app.core.exceptions import (
     PermissionDeniedException,
     UserNotActiveException,
 )
+from app.core.loguru_logger import set_logging_context
 from app.database import get_db
 from app.models.user import User
 from app.services.auth_service import AuthService
@@ -35,6 +36,7 @@ def _auth_bypass_user() -> User:
 
 
 async def get_current_user(
+    request: Request,
     token: Optional[str] = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> User:
@@ -44,15 +46,18 @@ async def get_current_user(
     体系（含 traceback_id），并自动携带 OAuth2 规范要求的 WWW-Authenticate 头。
     """
     if not settings.AUTH_ENABLED:
-        return _auth_bypass_user()
+        user = _auth_bypass_user()
+        request.state.user_id = user.id
+        set_logging_context(user_id=user.id)
+        return user
 
     if token is None:
         raise AuthenticationException(message="无法验证凭据")
 
     auth_service = AuthService(db)
-    user = await auth_service.get_current_user(token)
+    authenticated_user = await auth_service.get_current_user(token)
 
-    if user is None:
+    if authenticated_user is None:
         raise AuthenticationException(message="无法验证凭据")
 
     # 黑名单检查：登出/改密后让未过期 access token 立即失效
@@ -62,11 +67,13 @@ async def get_current_user(
             details={"reason": "revoked"},
         )
 
-    return user
+    request.state.user_id = authenticated_user.id
+    set_logging_context(user_id=authenticated_user.id)
+    return authenticated_user
 
 
 async def get_current_active_user(
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ) -> User:
     """获取当前活跃用户"""
     if not current_user.is_active:
@@ -74,9 +81,7 @@ async def get_current_active_user(
     return current_user
 
 
-async def get_current_superuser(
-    current_user: User = Depends(get_current_user)
-) -> User:
+async def get_current_superuser(current_user: User = Depends(get_current_user)) -> User:
     """获取当前超级用户"""
     if not current_user.is_superuser:
         raise PermissionDeniedException(required_permissions=["superuser"])

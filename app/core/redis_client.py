@@ -5,12 +5,14 @@ Redis 客户端（可选）
 调用方据此走纯内存逻辑，不会触发 redis 依赖的导入与连接。
 """
 
+from typing import Any, Optional
+
 from app.core.config import settings
 from app.core.loguru_logger import get_logger
 
 logger = get_logger("redis")
 
-_redis_client = None  # type: ignore[var-annotated]
+_redis_client: Optional[Any] = None
 _initialized = False
 
 
@@ -44,7 +46,9 @@ def get_redis_client():
         )
         logger.info("Redis 客户端已创建", url=_mask_url(settings.REDIS_URL))
     except ImportError:
-        logger.error("已配置 REDIS_URL 但未安装 redis 包，请执行 pip install redis；本次回退为内存模式")
+        logger.error(
+            "已配置 REDIS_URL 但未安装 redis 包，请执行 pip install redis；本次回退为内存模式"
+        )
         _redis_client = None
     except Exception as e:  # noqa: BLE001 - 创建失败不应阻断应用启动
         logger.error("Redis 客户端创建失败，回退为内存模式", error=str(e))

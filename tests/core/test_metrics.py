@@ -21,4 +21,6 @@ def test_get_metrics_shape():
     mw = MetricsMiddleware(_dummy_app)
     m = mw.get_metrics()
     assert {"requests", "performance", "error_rate", "uptime_seconds"}.issubset(m)
-    assert {"total", "errors", "by_status", "by_method", "by_path"}.issubset(m["requests"])
+    assert {"total", "errors", "by_status", "by_method", "by_path"}.issubset(
+        m["requests"]
+    )

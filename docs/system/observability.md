@@ -23,9 +23,9 @@ otel-collector 等）。**默认关闭**，遵循项目"可降级"哲学：`OTEL
 | Method | Path | 说明 |
 |---|---|---|
 | GET | `/health` | liveness 浅检查，仅表示进程存活，供 k8s `livenessProbe` |
-| GET | `/readyz` | readiness，探 DB；不通返回 **503**，供 k8s `readinessProbe` |
-| GET | `/metrics/json` | 手搓内存指标 JSON（单实例速览；非 Prometheus 格式） |
-| GET | `/status` | 应用各组件状态明细 |
+| GET | `/readyz` | 公开 readiness，仅返回 `ready/not_ready`；不通返回 **503** |
+| GET | `/metrics/json` | 需超级用户；单实例内存指标 JSON（非 Prometheus 格式） |
+| GET | `/status` | 需超级用户；应用各组件状态明细 |
 
 > 标准 OTel 指标不走 HTTP 端点，而是经 OTLP **推送**到 collector，再由 Grafana 等消费。
 
@@ -83,7 +83,7 @@ otel-collector 等）。**默认关闭**，遵循项目"可降级"哲学：`OTEL
 ## 测试
 
 OTel 默认关闭，单测不依赖它。验证方式：
-- 关闭路径：`python -m pytest`（51 passed 不受影响即证明 no-op）。
+- 关闭路径：`python -m pytest`（测试不受影响即证明 no-op）。
 - 启用路径冒烟：设 `OTEL_ENABLED=true OTEL_CONSOLE_EXPORT=true` 导入 `app.main`，确认
   provider 已设置、`app._is_instrumented_by_opentelemetry` 为 True、`/readyz` 与 `/metrics/json` 在路由表。
 

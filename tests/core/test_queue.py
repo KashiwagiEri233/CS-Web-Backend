@@ -23,10 +23,10 @@ async def test_enqueue_eager_runs_inline_when_disabled(monkeypatch):
 
     job_id = await enqueue(spy_task, 3, y=4)
 
-    assert job_id is None              # eager 模式不产生 job_id
-    assert ran["called"] is True       # 就地执行了
-    assert ran["args"] == (3, 4)       # 参数透传正确
-    assert ran["eager"] is True        # ctx 标记 eager
+    assert job_id is None  # eager 模式不产生 job_id
+    assert ran["called"] is True  # 就地执行了
+    assert ran["args"] == (3, 4)  # 参数透传正确
+    assert ran["eager"] is True  # ctx 标记 eager
 
 
 async def test_enqueue_eager_when_enabled_but_no_broker(monkeypatch):
@@ -52,8 +52,7 @@ async def test_enqueue_eager_when_enabled_but_no_broker(monkeypatch):
 async def test_enqueue_rejects_unregistered_task():
     """未登记到 TASKS 的任务应被拒绝投递（防止 worker 收到无法执行的 job）。"""
 
-    async def ghost_task(ctx):
-        ...
+    async def ghost_task(ctx): ...
 
     with pytest.raises(ValueError, match="未在.*TASKS 注册"):
         await enqueue(ghost_task)

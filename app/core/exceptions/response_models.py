@@ -61,9 +61,7 @@ class ErrorResponse(TZModel):
     )
     context: Optional[ErrorContext] = Field(None, description="错误上下文")
     traceback_id: Optional[str] = Field(None, description="异常跟踪ID")
-    timestamp: datetime = Field(
-        default_factory=now_utc, description="响应时间"
-    )
+    timestamp: datetime = Field(default_factory=now_utc, description="响应时间")
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -91,6 +89,7 @@ class ErrorResponse(TZModel):
             }
         }
     )
+
 
 class ValidationErrorResponse(ErrorResponse):
     """验证错误响应"""
@@ -121,6 +120,3 @@ class ValidationErrorResponse(ErrorResponse):
             }
         }
     )
-
-
-
