@@ -96,14 +96,24 @@ class RBACService:
         role = await self.rbac_repo.get_role_by_id(role_id)
         if not role:
             return None
-        return await self.rbac_repo.update_role(role, update_data)
+        updated = await self.rbac_repo.update_role(role, update_data)
+        await self.db.commit()
+        # 角色属性变更可能影响授权展示；失效持有该角色的用户权限缓存
+        await self._invalidate_role_users_perm_cache(role_id)
+        return updated
 
     async def update_permission(self, permission_id: int, update_data: dict) -> Optional[Permission]:
         """更新权限：权限不存在返回 None，否则返回更新后的权限。"""
         permission = await self.rbac_repo.get_permission_by_id(permission_id)
         if not permission:
             return None
-        return await self.rbac_repo.update_permission(permission, update_data)
+        # 变更前取关联角色，用于缓存失效
+        role_ids = await self.rbac_repo.get_role_ids_by_permission(permission_id)
+        updated = await self.rbac_repo.update_permission(permission, update_data)
+        await self.db.commit()
+        for rid in role_ids:
+            await self._invalidate_role_users_perm_cache(rid)
+        return updated
 
     # ------------------------------------------------------------------ 角色 / 权限 CRUD
     # 路由层统一通过这些方法访问数据，避免直接操作 repo。
@@ -122,11 +132,20 @@ class RBACService:
 
     async def create_role(self, role_data: dict) -> Role:
         """创建角色。调用方应先做名称查重。"""
-        return await self.rbac_repo.create_role(role_data)
+        role = await self.rbac_repo.create_role(role_data)
+        await self.db.commit()
+        return role
 
     async def delete_role(self, role_id: int) -> bool:
         """删除角色：角色不存在返回 False。"""
-        return await self.rbac_repo.delete_role(role_id)
+        # 删除前先收集受影响用户，便于提交后清缓存
+        user_ids = await self.rbac_repo.get_user_ids_by_role(role_id)
+        ok = await self.rbac_repo.delete_role(role_id)
+        if ok:
+            await self.db.commit()
+            for uid in user_ids:
+                await _invalidate_user_perm_cache(uid)
+        return ok
 
     async def get_all_permissions(self, skip: int = 0, limit: Optional[int] = None) -> List[Permission]:
         """获取权限列表，可分页。"""
@@ -142,11 +161,19 @@ class RBACService:
 
     async def create_permission(self, permission_data: dict) -> Permission:
         """创建权限。调用方应先做名称查重。"""
-        return await self.rbac_repo.create_permission(permission_data)
+        permission = await self.rbac_repo.create_permission(permission_data)
+        await self.db.commit()
+        return permission
 
     async def delete_permission(self, permission_id: int) -> bool:
         """删除权限：权限不存在返回 False。"""
-        return await self.rbac_repo.delete_permission(permission_id)
+        role_ids = await self.rbac_repo.get_role_ids_by_permission(permission_id)
+        ok = await self.rbac_repo.delete_permission(permission_id)
+        if ok:
+            await self.db.commit()
+            for rid in role_ids:
+                await self._invalidate_role_users_perm_cache(rid)
+        return ok
 
     async def get_role_by_name(self, name: str) -> Optional[Role]:
         """按名称查角色（用于查重）。"""

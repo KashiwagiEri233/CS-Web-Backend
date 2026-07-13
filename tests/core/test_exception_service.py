@@ -108,15 +108,15 @@ async def test_record_exception_to_db():
     if not await _db_available():
         pytest.skip("数据库不可用")
 
-    from app.database import engine, get_session
-    from app.models import Base
+    from app.database import get_session
     from app.services.exception_service import ExceptionService
     from sqlalchemy import text
     import uuid
 
-    # 确保表存在
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    from tests._alembic_helpers import upgrade_schema_to_head
+
+    # 确保表存在（Alembic only）
+    await upgrade_schema_to_head()
 
     ctx = {
         "method": "GET",

@@ -42,7 +42,11 @@ class AuthService:
         return user
 
     async def get_current_user(self, token: str) -> Optional[User]:
-        """通过 access token 获取当前用户。调用方需自行处理黑名单检查。"""
+        """通过 access token 获取当前用户。调用方需自行处理黑名单检查。
+
+        若 token 含 ``pwd_at`` 且用户 ``password_changed_at`` 已更新（改密），
+        视为 token 失效（返回 None → 上层 401）。
+        """
         payload = verify_token(token)
         if payload is None:
             return None
@@ -51,7 +55,21 @@ class AuthService:
         if username is None:
             return None
 
-        return await self.user_repo.get_by_username(username)
+        user = await self.user_repo.get_by_username(username)
+        if user is None:
+            return None
+        # get_by_username 已排除软删；双保险
+        if getattr(user, "deleted_at", None) is not None:
+            return None
+
+        # 改密后吊销旧 access：token 内 pwd_at 落后于用户当前 password_changed_at
+        if user.password_changed_at is not None:
+            token_pwd_at = payload.get("pwd_at")
+            user_pwd_at = int(user.password_changed_at.timestamp())
+            if token_pwd_at is None or int(token_pwd_at) < user_pwd_at:
+                return None
+
+        return user
 
     # ------------------------------------------------------------------ 用户
 
@@ -89,14 +107,16 @@ class AuthService:
         if full_name is not None:
             user_dict["full_name"] = full_name
 
-        return await self.user_repo.create(user_dict)
+        user = await self.user_repo.create(user_dict)
+        await self.db.commit()
+        return user
 
     # ------------------------------------------------------------------ token 套件
 
     async def issue_token_pair(self, user: User) -> TokenPair:
         """登录成功时签发 access + refresh 双 token（refresh 落库）。"""
         access_token, jti, _expire = create_access_token(
-            data={"sub": user.username, "id": user.id}
+            data=self._access_token_claims(user)
         )
 
         refresh_plain = generate_refresh_token()
@@ -145,14 +165,15 @@ class AuthService:
             )
 
         user = await self.user_repo.get_by_id(rt.user_id)
-        if user is None or not user.is_active:
+        # 软删 / 停用用户不得再签发 token
+        if user is None or not user.is_active or getattr(user, "deleted_at", None) is not None:
             raise UserNotActiveException(user_id=rt.user_id)
 
         # 轮换：撤销当前 token，签发新 token（同 family）
         await self.refresh_repo.revoke(rt.id)
 
         new_access, _jti, _exp = create_access_token(
-            data={"sub": user.username, "id": user.id}
+            data=self._access_token_claims(user)
         )
         new_refresh_plain = generate_refresh_token()
         new_refresh_hash = hash_refresh_token(new_refresh_plain)
@@ -225,6 +246,18 @@ class AuthService:
         return await get_blacklist().contains(jti)
 
     # ------------------------------------------------------------------ 内部
+
+    @staticmethod
+    def _access_token_claims(user: User) -> dict:
+        """构造 access token 声明。
+
+        写入 ``pwd_at``（password_changed_at 的 UTC 时间戳秒）：
+        校验时与用户当前 password_changed_at 对比，改密前签发的 token 立即失效。
+        """
+        claims: dict = {"sub": user.username, "id": user.id}
+        if getattr(user, "password_changed_at", None) is not None:
+            claims["pwd_at"] = int(user.password_changed_at.timestamp())
+        return claims
 
     @staticmethod
     def _refresh_expire_at():

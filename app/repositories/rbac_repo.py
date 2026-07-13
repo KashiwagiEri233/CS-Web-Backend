@@ -14,13 +14,13 @@ class RBACRepository:
         self.db = db
     
     async def get_user_by_id(self, user_id: int) -> Optional[User]:
-        """通过ID获取用户"""
-        stmt = select(User).where(User.id == user_id)
+        """通过ID获取未软删用户。"""
+        stmt = select(User).where(User.id == user_id, User.deleted_at.is_(None))
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
-    
+
     async def get_user_with_roles(self, user_id: int) -> Optional[User]:
-        """获取用户及其角色（并嵌套预加载角色的权限）。
+        """获取未软删用户及其角色（并嵌套预加载角色的权限）。
 
         嵌套到 roles.permissions 是必要的：权限聚合（get_user_permissions /
         check_permission）会遍历 role.permissions，否则异步下触发懒加载 -> MissingGreenlet。
@@ -28,7 +28,7 @@ class RBACRepository:
         stmt = (
             select(User)
             .options(selectinload(User.roles).selectinload(Role.permissions))
-            .where(User.id == user_id)
+            .where(User.id == user_id, User.deleted_at.is_(None))
         )
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
@@ -106,43 +106,54 @@ class RBACRepository:
             select(user_roles.c.user_id).where(user_roles.c.role_id == role_id)
         )
         return [row[0] for row in result.all()]
-    
+
+    async def get_role_ids_by_permission(self, permission_id: int) -> List[int]:
+        """查询拥有指定权限的全部角色 id（用于权限定义变更时缓存失效）。"""
+        from app.models.role import role_permissions
+
+        result = await self.db.execute(
+            select(role_permissions.c.role_id).where(
+                role_permissions.c.permission_id == permission_id
+            )
+        )
+        return [row[0] for row in result.all()]
+
     async def create_role(self, role_data: dict) -> Role:
-        """创建角色"""
+        """创建角色（flush，未 commit）。"""
         role = Role(**role_data)
         self.db.add(role)
-        await self.db.commit()
+        await self.db.flush()
         await self.db.refresh(role)
-        # 预加载权限关系，避免 MissingGreenlet 错误
-        # 使用更直接的方式预加载关系
+        # 预加载权限关系，避免 MissingGreenlet
         stmt = select(Role).options(selectinload(Role.permissions)).where(Role.id == role.id)
         result = await self.db.execute(stmt)
         return result.scalar_one()
-    
+
     async def create_permission(self, permission_data: dict) -> Permission:
-        """创建权限"""
+        """创建权限（flush，未 commit）。"""
         permission = Permission(**permission_data)
         self.db.add(permission)
-        await self.db.commit()
+        await self.db.flush()
         await self.db.refresh(permission)
-        # 预加载角色关系，避免 MissingGreenlet 错误
-        # 使用更直接的方式预加载关系
-        stmt = select(Permission).options(selectinload(Permission.roles)).where(Permission.id == permission.id)
+        stmt = (
+            select(Permission)
+            .options(selectinload(Permission.roles))
+            .where(Permission.id == permission.id)
+        )
         result = await self.db.execute(stmt)
         return result.scalar_one()
-    
-    async def update_role(self, role: Role, update_data: dict) -> Role:
-        """更新角色字段并持久化，返回预加载权限关系后的角色。
 
-        仅写入 update_data 中非 None 的字段；最后重新查询以预加载
-        permissions，避免异步懒加载触发 MissingGreenlet。
+    async def update_role(self, role: Role, update_data: dict) -> Role:
+        """更新角色字段并 flush，返回预加载权限后的角色。
+
+        仅写入 update_data 中非 None 的字段。
         """
         for field in ("name", "description", "is_active"):
             value = update_data.get(field)
             if value is not None:
                 setattr(role, field, value)
 
-        await self.db.commit()
+        await self.db.flush()
         stmt = (
             select(Role)
             .options(selectinload(Role.permissions))
@@ -152,27 +163,23 @@ class RBACRepository:
         return result.scalar_one()
 
     async def delete_role(self, role_id: int) -> bool:
-        """删除角色"""
+        """删除角色（flush，未 commit）。"""
         role = await self.get_role_by_id(role_id)
         if not role:
             return False
-        
-        await self.db.delete(role)
-        await self.db.commit()
-        return True
-    
-    async def update_permission(self, permission: Permission, update_data: dict) -> Permission:
-        """更新权限字段并持久化，返回预加载角色关系后的权限。
 
-        仅写入 update_data 中非 None 的字段；最后重新查询以预加载
-        roles，避免异步懒加载触发 MissingGreenlet。
-        """
+        await self.db.delete(role)
+        await self.db.flush()
+        return True
+
+    async def update_permission(self, permission: Permission, update_data: dict) -> Permission:
+        """更新权限字段并 flush，返回预加载角色后的权限。"""
         for field in ("name", "resource", "action", "description"):
             value = update_data.get(field)
             if value is not None:
                 setattr(permission, field, value)
 
-        await self.db.commit()
+        await self.db.flush()
         stmt = (
             select(Permission)
             .options(selectinload(Permission.roles))
@@ -182,17 +189,17 @@ class RBACRepository:
         return result.scalar_one()
 
     async def delete_permission(self, permission_id: int) -> bool:
-        """删除权限"""
+        """删除权限（flush，未 commit）。"""
         permission = await self.get_permission_by_id(permission_id)
         if not permission:
             return False
-        
+
         await self.db.delete(permission)
-        await self.db.commit()
+        await self.db.flush()
         return True
-    
+
     async def assign_permission_to_role(self, role_id: int, permission_id: int) -> bool:
-        """为角色分配权限"""
+        """为角色分配权限（flush，未 commit）。"""
         role = await self.get_role_with_permissions(role_id)
         permission = await self.get_permission_by_id(permission_id)
 
@@ -201,6 +208,6 @@ class RBACRepository:
 
         if permission not in role.permissions:
             role.permissions.append(permission)
-            await self.db.commit()
+            await self.db.flush()
 
         return True

@@ -91,7 +91,9 @@ class MetricsMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         MetricsMiddleware._instance = self
         self._start_time = time.time()
-        self._lock = asyncio.Lock()
+        # 延迟创建 Lock：Python 3.9 在无 running loop 时 asyncio.Lock() 会
+        # RuntimeError；构造常发生在 import / 同步测试中，真正用时（dispatch）必有 loop。
+        self._lock: asyncio.Lock | None = None
         self._total_requests = 0
         self._total_errors = 0
         self._total_response_time = 0.0
@@ -99,12 +101,19 @@ class MetricsMiddleware(BaseHTTPMiddleware):
         self._by_method: Counter = Counter()
         self._by_path: Counter = Counter()
 
+    def _get_lock(self) -> asyncio.Lock:
+        """在已有事件循环的上下文中惰性创建锁。"""
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
+
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         start_time = time.time()
         method = request.method
         path = request.url.path
+        lock = self._get_lock()
 
-        async with self._lock:
+        async with lock:
             self._total_requests += 1
             self._by_method[method] += 1
             if len(self._by_path) < self._MAX_PATH_ENTRIES or path in self._by_path:
@@ -114,7 +123,7 @@ class MetricsMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             process_time = time.time() - start_time
 
-            async with self._lock:
+            async with lock:
                 self._total_response_time += process_time
                 self._by_status[str(response.status_code)] += 1
                 if response.status_code >= 500:
@@ -123,7 +132,7 @@ class MetricsMiddleware(BaseHTTPMiddleware):
             response.headers["X-Request-Count"] = str(self._total_requests)
             return response
         except Exception:
-            async with self._lock:
+            async with lock:
                 self._total_errors += 1
             raise
 

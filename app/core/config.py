@@ -28,6 +28,9 @@ class Settings(BaseSettings):
 
     # JWT 配置
     SECRET_KEY: Optional[str] = None  # 强制要求从环境变量设置（见 validate_secret_key）
+    # 密钥轮换：逗号分隔的历史 SECRET_KEY 列表；校验时在当前密钥失败后依次尝试。
+    # 轮换步骤：1) 把旧 SECRET_KEY 追加到本字段 2) 设置新 SECRET_KEY 3) 等 access 过期后清空本字段。
+    JWT_PREVIOUS_SECRET_KEYS: str = ""
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15  # 短期 access token（分钟），配合 refresh token 使用
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7  # 长期 refresh token（天）
@@ -35,6 +38,8 @@ class Settings(BaseSettings):
     #   未配置 Redis 时退回进程内内存黑名单（仅本进程可见，多实例部署会失效）
     #   配置 Redis 后跨实例一致；Redis 不可用时不阻断请求，回退内存
     TOKEN_BLACKLIST_FALLBACK: str = "memory"  # memory=降级内存 / open=故障时放行（不推荐）
+    # 过期/已撤销 refresh token 清理任务间隔（秒）；0=禁用周期 GC（仅依赖业务撤销）
+    REFRESH_TOKEN_GC_INTERVAL_SECONDS: int = 3600
 
     # 默认管理员（仅在数据库首次初始化、且该用户不存在时创建）
     ADMIN_USERNAME: str = "admin"
@@ -55,20 +60,18 @@ class Settings(BaseSettings):
     # 一键开关鉴权：False 时所有接口视为超级用户放行（跳过 token 校验与权限检查）。
     # 仅限本地开发！只允许在 DEBUG=True 下关闭，生产（DEBUG=False）若置 False 会拒绝启动。
     AUTH_ENABLED: bool = True
-    # 启动时是否用 Base.metadata.create_all 自动建表。
-    # 开发环境置 True 方便起步；生产环境应置 False，改用 `alembic upgrade head` 管理 schema，
-    # 避免 create_all 与迁移双轨并存导致的不一致。
-    DB_AUTO_CREATE: bool = True
+    # 【已废弃】历史开关：曾用 Base.metadata.create_all 自动建表。
+    # 现已全面改为 Alembic 管理 schema；启动路径**忽略**此字段（即使 True 也不 create_all）。
+    # 保留仅为兼容旧 .env，请从配置中删除，勿再开启。
+    DB_AUTO_CREATE: bool = False
     # 启动时若目标数据库不存在则自动创建（连接到维护库执行 CREATE DATABASE）。
     # 开发便利用 True；生产通常由 DBA/运维预建库，可置 False。
     DB_AUTO_CREATE_DATABASE: bool = True
     DB_MAINTENANCE_DB: str = "postgres"  # 用于建库的维护库名
-    # 启动时是否自动执行 alembic upgrade head（建表/升级到最新）。仅在 DB_AUTO_CREATE=False 时生效。
-    # True（默认）：空库启动自动迁移到位；多 worker 下由 advisory lock 串行化（只有一个进程真正
-    #   建表，其余等待后 no-op），安全无竞态。
-    # False：启动只做版本一致性检查（不一致 fail fast），迁移完全交给独立步骤——适合要求
-    #   迁移与发布严格分离/受控审查的部署流程。
-    DB_AUTO_MIGRATE: bool = True
+    # 启动时是否自动执行 alembic upgrade head。
+    # 开发/测试建议 True；**生产建议 False**：迁移与发布分离，先跑 job 再起多 worker。
+    # True 时多 worker 下仍有 advisory lock 串行化，但更稳妥是独立迁移步骤。
+    DB_AUTO_MIGRATE: bool = False
     
     # CORS配置（.env 文件里写逗号分隔字符串，如 ALLOWED_ORIGINS=http://a,http://b）
     # 用 str 类型 + validator 转 list，避免 pydantic-settings v2 对 list 字段强制 JSON 解析

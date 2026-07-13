@@ -190,23 +190,24 @@ async def _verify_alembic_version() -> None:
 
 
 async def _init_schema() -> None:
-    """在目标库已存在的前提下，按配置完成 schema 初始化。
+    """在目标库已存在的前提下，按 Alembic 完成 schema 初始化。
 
-    - DB_AUTO_CREATE=True  → create_all（开发 / 测试）
-    - DB_AUTO_CREATE=False → 走 alembic：
-        DB_AUTO_MIGRATE=True  → 自动 upgrade head
-        DB_AUTO_MIGRATE=False → 仅校验版本一致性，不一致 fail fast
+    **唯一建表路径 = Alembic**（不再支持 Base.metadata.create_all）。
+    - DB_AUTO_MIGRATE=True  → 自动 ``alembic upgrade head``
+    - DB_AUTO_MIGRATE=False → 仅校验版本一致性，不一致 fail fast
+
+    历史字段 ``DB_AUTO_CREATE`` 已废弃：即使为 True 也会被忽略并记 warning。
     """
     if settings.DB_AUTO_CREATE:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        _db_logger.info("已自动建表 (DB_AUTO_CREATE=True)")
+        _db_logger.warning(
+            "DB_AUTO_CREATE=True 已废弃（create_all 双轨已移除），将忽略并走 Alembic；"
+            "请从 .env 删除 DB_AUTO_CREATE 或置 False"
+        )
+    _db_logger.info("schema 由 Alembic 管理")
+    if settings.DB_AUTO_MIGRATE:
+        await _run_alembic_upgrade()
     else:
-        _db_logger.info("跳过自动建表 (DB_AUTO_CREATE=False)，由 alembic 管理 schema")
-        if settings.DB_AUTO_MIGRATE:
-            await _run_alembic_upgrade()
-        else:
-            await _verify_alembic_version()
+        await _verify_alembic_version()
 
 
 async def _check_connection() -> None:

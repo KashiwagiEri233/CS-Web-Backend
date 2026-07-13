@@ -30,7 +30,7 @@
 
 | 任务名 | 类型 | priority | critical | 位置 | 说明 |
 |---|---|---|---|---|---|
-| `database` | startup | 10 | **True** | `app/database.py` | 建库 + schema(create_all/alembic) + 连通性探测；失败拒绝启动 |
+| `database` | startup | 10 | **True** | `app/database.py` | 建库 + schema(Alembic upgrade/版本校验) + 连通性探测；失败拒绝启动 |
 | `rbac_seed` | startup | 20 | False | `app/services/rbac_init.py` | 权限/角色/默认管理员（幂等）；失败仅告警 |
 | `redis_probe` | startup | 30 | False | `app/core/redis_client.py` | 探测 Redis 连通性；未配置/故障都降级 |
 | `log_status` | startup | 90 | False | `app/main.py` | 输出访问地址 / 文档路径 |
@@ -43,7 +43,7 @@
 ## 配置
 
 本模块无 `Settings` 字段。任务行为（是否执行某步、降级策略）由**各自能力模块**的配置控制
-（如 `DB_AUTO_CREATE`、`REDIS_URL`、`OTEL_ENABLED`），注册表只管调度。
+（如 `DB_AUTO_MIGRATE`、`REDIS_URL`、`OTEL_ENABLED`），注册表只管调度。
 
 ### priority 约定
 

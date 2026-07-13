@@ -39,7 +39,8 @@ python run.py --env 3 --prod   # 生产 + 多 worker
 
 ## 配置（定义在 `app/core/config.py` 的 `Settings`，新增字段须同步 `.env.example`）
 - `SECRET_KEY` 必须从环境变量设置，禁止占位值。
-- `DB_AUTO_CREATE`（生产置 False，走 alembic）、`DB_AUTO_CREATE_DATABASE`（启动时缺库则自动建）。
+- JWT 轮换：`JWT_PREVIOUS_SECRET_KEYS`（逗号分隔历史密钥，校验回退）。
+- Schema **仅 Alembic**（`create_all` / `DB_AUTO_CREATE` 已废弃）。`DB_AUTO_MIGRATE`（启动自动 upgrade head；False 则只校验版本）、`DB_AUTO_CREATE_DATABASE`（缺库时自动 CREATE DATABASE）。
 - 连接池 `DB_POOL_SIZE`/`DB_MAX_OVERFLOW`/`DB_POOL_TIMEOUT`/`DB_POOL_RECYCLE`/`DB_POOL_PRE_PING`（均有默认值，引擎在 `database.py` 由这些字段构建；生产保持 `pool_pre_ping=True`）。
 - `REDIS_URL`（空=纯内存）、`RATE_LIMIT_FALLBACK` / `CACHE_FALLBACK`。
 - `ADMIN_PASSWORD`（空=首启随机生成、日志只提示一次；配置则不写日志）。
@@ -65,8 +66,8 @@ python run.py --env 3 --prod   # 生产 + 多 worker
 - **出参时间**：见上「时区」——带 datetime 的响应模型继承 `TZModel`。
 
 ## 数据库迁移
-- 单一 baseline；改模型后 `alembic revision --autogenerate -m "..."` → `alembic upgrade head`。
-- 生产用 alembic 管 schema，不要同时开 `create_all` 形成双轨。
+- Schema **唯一来源 = Alembic**（开发/测试/生产一致）；禁止 `Base.metadata.create_all`。
+- 改模型：`alembic revision --autogenerate -m "..."` → 检查 → `alembic upgrade head`（或 `DB_AUTO_MIGRATE=True` 启动时自动 upgrade）。
 
 ## 禁止事项
 - 禁止前端渲染：Jinja2 / StaticFiles / HTMLResponse。

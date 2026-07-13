@@ -22,6 +22,7 @@ def _make_auth_service(monkeypatch) -> AuthService:
     )
     svc = AuthService.__new__(AuthService)
     svc.db = MagicMock()
+    svc.db.commit = AsyncMock()  # service 层统一 commit
     svc.user_repo = AsyncMock()
     return svc
 

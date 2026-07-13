@@ -75,12 +75,12 @@ FastAPI-foundation-framework/
 │   ├── api/v1/              # 路由层
 │   │   ├── auth.py          # 认证（登录/注册/刷新/登出）
 │   │   ├── users.py         # 用户管理
-│   │   ├── rbac.py          # RBAC 权限/角色管理
+│   │   ├── rbac/            # RBAC 权限/角色管理（roles/permissions/assignments/queries）
 │   │   ├── exceptions.py    # 异常日志查询
 │   │   └── test_exceptions.py # 异常测试端点
 │   ├── core/                # 基础设施层
 │   │   ├── config.py        # pydantic-settings 配置（.env 映射）
-│   │   ├── loguru_logger.py # 环境感知日志封装
+│   │   ├── loguru_logger/   # 环境感知日志封装（adapter/config/context/init）
 │   │   ├── security.py      # JWT 签发/校验
 │   │   ├── security_blacklist.py  # Token 黑名单（Redis/内存）
 │   │   ├── redis_client.py  # Redis 连接（可降级）
@@ -90,7 +90,9 @@ FastAPI-foundation-framework/
 │   │   └── exceptions/      # 业务异常体系
 │   │       ├── base_exceptions.py   # 异常基类
 │   │       ├── error_codes.py       # 错误码注册表（命名空间）
-│   │       ├── exception_handlers.py  # 全局异常处理器
+│   │       ├── error_builders.py    # 错误响应体构造
+│   │       ├── exception_handlers.py  # 全局异常处理器注册
+│   │       ├── exception_middleware.py  # 异常处理中间件
 │   │       ├── exception_logging.py   # 异常落日志（DB 持久化）
 │   │       └── response_models.py     # 统一错误响应体
 │   ├── middleware/          # HTTP 中间件
@@ -123,7 +125,7 @@ FastAPI-foundation-framework/
 │   ├── database.py          # 异步引擎 + get_db / get_session
 │   ├── dependencies.py      # 全局依赖
 │   └── main.py              # 应用入口（lifespan + 中间件注册）
-├── alembic/                 # 数据库迁移（仅生产环境使用）
+├── alembic/                 # 数据库迁移（全环境 Schema 唯一来源）
 ├── tests/                   # 测试代码（目录镜像 app/ 结构）
 │   ├── core/                # 核心模块测试
 │   ├── integration/         # 集成测试

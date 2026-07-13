@@ -71,3 +71,26 @@ class RefreshTokenRepository:
             .values(revoked_at=_now())
         )
         return result.rowcount or 0
+
+    async def purge_expired(self, *, batch_size: int = 1000) -> int:
+        """物理删除已过期或已撤销超过保留期的 refresh 行。返回删除行数。
+
+        策略：expires_at < now 或 revoked_at 非空且 revoked_at < now - 1 天。
+        """
+        from datetime import timedelta
+
+        from sqlalchemy import and_, delete, or_
+
+        cutoff = _now() - timedelta(days=1)
+        now = _now()
+        stmt = delete(RefreshToken).where(
+            or_(
+                RefreshToken.expires_at < now,
+                and_(
+                    RefreshToken.revoked_at.is_not(None),
+                    RefreshToken.revoked_at < cutoff,
+                ),
+            )
+        )
+        result = await self.db.execute(stmt)
+        return result.rowcount or 0

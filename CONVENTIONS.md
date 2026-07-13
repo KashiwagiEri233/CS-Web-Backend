@@ -26,7 +26,7 @@ app/
 ├── dependencies.py
 └── main.py        # 入口：中间件注册、异常处理器、lifespan
 tests/             # 镜像 app/ 结构，子包必须有 __init__.py
-alembic/           # 生产 schema 迁移（开发/测试不用）
+alembic/           # Schema 迁移（开发/测试/生产唯一建表路径）
 ```
 
 ### 分层调用规则（铁律）
@@ -63,7 +63,7 @@ api (路由)  →  service (业务)  →  repository (数据)  →  model (ORM)
 | 常量 | `UPPER_SNAKE_CASE` | `DEFAULT_PAGE_SIZE` |
 | 路由前缀 | 小写复数，`/` 分隔 | `/users`, `/rbac/permissions` |
 | 数据库表 | `snake_case`，复数 | `users`, `refresh_tokens` |
-| 配置项 | `UPPER_SNAKE_CASE`（`.env` 与 `Settings` 字段同名） | `SECRET_KEY`, `DB_AUTO_CREATE` |
+| 配置项 | `UPPER_SNAKE_CASE`（`.env` 与 `Settings` 字段同名） | `SECRET_KEY`, `DB_AUTO_MIGRATE` |
 
 ---
 
@@ -71,10 +71,13 @@ api (路由)  →  service (业务)  →  repository (数据)  →  model (ORM)
 
 - **全异步**：所有 IO（DB、Redis、HTTP）一律 `async def`；禁止在异步路径里调用阻塞 IO。
 - **Python 版本**：跟随 `requirements.txt`，类型注解必填（公共函数签名、Pydantic 字段）。
-- **DB 会话**：
+- **DB 会话与事务边界**：
   - 路由内：`Depends(get_db)`。
   - 路由外（worker/脚本/后台任务）：`async with get_session() as db:`。
-  - **两者都不自动提交**，必须显式 `await db.commit()`；出异常自动回滚。
+  - 会话**不自动提交**；出异常应回滚。
+  - **Repository 只 flush，不 commit**（`BaseRepository` / 各 repo 写操作统一）。
+  - **Service 负责 `await db.commit()`**（单步或跨多 repo 的业务事务）。
+  - 禁止在路由层手写 commit（除非极少数运维脚本）。
 - **时间列**：ORM 时间列一律带时区，使用 `DateTime = _DateTime(timezone=True)` 别名模式（参考现有 models）。
 - **日志**：`from app.core.loguru_logger import get_logger`；**禁止 `print`、禁止直接配置 loguru handler**。
 
@@ -140,9 +143,9 @@ api (路由)  →  service (业务)  →  repository (数据)  →  model (ORM)
 - 所有配置项定义在 `app/core/config.py` 的 `Settings` 类。
 - **新增配置字段必须同步 `.env.example` 与 `.env.development`**，否则他人无法知道配置项。
 - 环境分层（`run.py` **默认不带参数即加载 `.env.development`**；`--env 2`=测试、`--env 3`=生产）：
-  - `.env.development`（开发，`DB_AUTO_CREATE=True`）—— **最全的参考样板**，所有可配字段都应在此列出。
-  - `.env.test`（测试，`DB_AUTO_CREATE=True`）
-  - `.env`（生产，`DB_AUTO_CREATE=False`，走 alembic）
+  - `.env.development`（开发，`DB_AUTO_MIGRATE=True`）—— **最全的参考样板**，所有可配字段都应在此列出。
+  - `.env.test`（测试，同样走 Alembic）
+  - `.env`（生产，`DB_AUTO_MIGRATE` 按部署策略）
 - **`SECRET_KEY` 必须从环境变量设置，禁止占位值**。
 - 例外：队列开关 `QUEUE_ENABLED` 由可选队列模块自读环境/.env（不在 `Settings`），见 `docs/system/queue.md`。
 
@@ -169,12 +172,11 @@ api (路由)  →  service (业务)  →  repository (数据)  →  model (ORM)
 
 ## 10. 数据库迁移约定（摘要）
 
-> 完整规则与爆炸场景见 `AGENTS.md` 的「Alembic 迁移管理」章节。
+> 完整规则见 `AGENTS.md` 的「Alembic 迁移管理」章节。
 
-- **铁律**：`create_all` 与 `alembic` **绝不在同一库同时用**。
-  - 开发/测试环境：`DB_AUTO_CREATE=True`，**不跑 alembic**。
-  - 生产环境：`DB_AUTO_CREATE=False`，走 `alembic upgrade head`。
-- **改模型流程**：改 model → 登记 `models/__init__.py` → `alembic revision --autogenerate -m "..."` → 检查 upgrade() → 确认单一 head。
+- **铁律**：全环境 **仅 Alembic**；禁止 `Base.metadata.create_all`（`DB_AUTO_CREATE` 已废弃）。
+- **启动**：`DB_AUTO_MIGRATE=True` 自动 `upgrade head`；`False` 仅校验版本不一致则 fail fast。
+- **改模型流程**：改 model → 登记 `models/__init__.py` → `alembic revision --autogenerate -m "..."` → 检查 upgrade() → 确认单一 head → upgrade。
 - **禁止**修改 baseline 或已有迁移文件（历史事实不可改）。
 - **专属库**：本项目用 PG 库 `domefff`，**勿与其它项目共用一个库**。
 

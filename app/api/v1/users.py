@@ -1,27 +1,34 @@
 from typing import Any
 
-from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, Depends, Request
 
-from app.database import get_db
-from app.dependencies import get_current_active_user, get_current_superuser
+from app.dependencies import get_current_active_user
+from app.dependencies_services import get_audit_service, get_auth_service, get_user_service
+from app.middleware.rbac import require_permission
 from app.models.user import User
 from app.schemas.pagination import PaginatedResponse, PaginationParams
-from app.schemas.user import UserResponse, UserCreate, UserUpdate
+from app.schemas.user import UserCreate, UserResponse, UserUpdate
+from app.services.audit_service import AuditService
 from app.services.auth_service import AuthService
 from app.services.user_service import UserService
 
 router = APIRouter()
 
 
+def _client_meta(request: Request) -> dict:
+    return {
+        "ip_address": request.client.host if request.client else None,
+        "user_agent": request.headers.get("user-agent"),
+    }
+
+
 @router.get("/", response_model=PaginatedResponse[UserResponse])
 async def read_users(
     pagination: PaginationParams = Depends(),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_superuser)
+    user_service: UserService = Depends(get_user_service),
+    current_user: User = Depends(require_permission("user", "list")),
 ) -> Any:
-    """获取用户列表（需要超级用户权限，分页）"""
-    user_service = UserService(db)
+    """获取用户列表（需要 user:list 权限，分页）"""
     users, total = await user_service.list_users(
         skip=pagination.skip, limit=pagination.limit
     )
@@ -41,71 +48,91 @@ async def read_user_me(
 @router.get("/{user_id}", response_model=UserResponse)
 async def read_user(
     user_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_superuser)
+    user_service: UserService = Depends(get_user_service),
+    current_user: User = Depends(require_permission("user", "read")),
 ) -> Any:
-    """获取指定用户信息（需要超级用户权限）"""
-    user_service = UserService(db)
+    """获取指定用户信息（需要 user:read）"""
     return await user_service.get_user(user_id)
 
 
 @router.post("/", response_model=UserResponse)
 async def create_user(
     user_data: UserCreate,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_superuser)
+    request: Request,
+    auth_service: AuthService = Depends(get_auth_service),
+    audit: AuditService = Depends(get_audit_service),
+    current_user: User = Depends(require_permission("user", "create")),
 ) -> Any:
-    """创建用户（需要超级用户权限）。
-
-    查重 + 哈希 + 落库统一走 AuthService.create_user，
-    与 /auth/register 复用同一逻辑。UserCreate 含密码强度/用户名/邮箱验证。
-    """
-    auth_service = AuthService(db)
-    return await auth_service.create_user(user_data, is_superuser=False)
+    """创建用户（需要 user:create）。"""
+    created = await auth_service.create_user(user_data, is_superuser=False)
+    meta = _client_meta(request)
+    await audit.record(
+        action="user.create",
+        resource_type="user",
+        resource_id=str(created.id),
+        actor_id=current_user.id,
+        actor_username=current_user.username,
+        detail={"username": created.username},
+        **meta,
+    )
+    return created
 
 
 @router.put("/{user_id}", response_model=UserResponse)
 async def update_user(
     user_id: int,
     user_data: UserUpdate,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_superuser)
+    request: Request,
+    user_service: UserService = Depends(get_user_service),
+    audit: AuditService = Depends(get_audit_service),
+    current_user: User = Depends(require_permission("user", "update")),
 ) -> Any:
-    """更新用户信息（需要超级用户权限）"""
-    user_service = UserService(db)
-    updated = await user_service.update_user(user_id, user_data.model_dump(exclude_unset=True))
-    # 改密即作废旧会话：撤销该用户全部 refresh token
-    if user_data.password is not None:
-        auth_service = AuthService(db)
-        await auth_service.revoke_all_user_tokens(user_id)
+    """更新用户（改密与撤 refresh 同事务）。"""
+    updated = await user_service.update_user(
+        user_id, user_data.model_dump(exclude_unset=True)
+    )
+    meta = _client_meta(request)
+    await audit.record(
+        action="user.update",
+        resource_type="user",
+        resource_id=str(user_id),
+        actor_id=current_user.id,
+        actor_username=current_user.username,
+        detail={"fields": list(user_data.model_dump(exclude_unset=True).keys())},
+        **meta,
+    )
     return updated
 
 
 @router.put("/me", response_model=UserResponse)
 async def update_user_me(
     user_data: UserUpdate,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    user_service: UserService = Depends(get_user_service),
+    current_user: User = Depends(get_current_active_user),
 ) -> Any:
-    """更新当前用户信息（自助资料：不可改 is_active）"""
-    user_service = UserService(db)
-    updated = await user_service.update_profile(
+    """更新当前用户资料（不可改 is_active）。"""
+    return await user_service.update_profile(
         current_user, user_data.model_dump(exclude_unset=True)
     )
-    # 改密即作废旧会话：撤销自己全部 refresh token
-    if user_data.password is not None:
-        auth_service = AuthService(db)
-        await auth_service.revoke_all_user_tokens(current_user.id)
-    return updated
 
 
 @router.delete("/{user_id}")
 async def delete_user(
     user_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_superuser)
+    request: Request,
+    user_service: UserService = Depends(get_user_service),
+    audit: AuditService = Depends(get_audit_service),
+    current_user: User = Depends(require_permission("user", "delete")),
 ) -> Any:
-    """删除用户（需要超级用户权限）"""
-    user_service = UserService(db)
+    """软删除用户（需要 user:delete）。"""
     await user_service.delete_user(user_id, current_user.id)
+    meta = _client_meta(request)
+    await audit.record(
+        action="user.delete",
+        resource_type="user",
+        resource_id=str(user_id),
+        actor_id=current_user.id,
+        actor_username=current_user.username,
+        **meta,
+    )
     return {"message": "用户已删除"}

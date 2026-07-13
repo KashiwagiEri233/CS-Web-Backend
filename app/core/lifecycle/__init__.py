@@ -40,6 +40,7 @@ def _import_registrants() -> None:
     from app import database  # noqa: F401  DB 初始化任务
     from app.core import observability, redis_client  # noqa: F401  OTel/Redis 任务
     from app.services import rbac_init  # noqa: F401  RBAC seed 任务
+    from app.services import token_gc  # noqa: F401  refresh token GC
 
 
 _import_registrants()

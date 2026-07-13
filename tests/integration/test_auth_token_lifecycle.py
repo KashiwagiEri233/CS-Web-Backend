@@ -21,9 +21,9 @@ from app.core.security import (
     verify_token,
 )
 from app.core.security_blacklist import get_blacklist
-from app.database import engine, get_session
-from app.models import Base  # noqa: F401  确保所有模型被注册到 metadata
+from app.database import get_session
 from app.services.auth_service import AuthService
+from tests._alembic_helpers import upgrade_schema_to_head
 
 
 async def _db_available() -> bool:
@@ -43,19 +43,13 @@ async def _db_available() -> bool:
 
 
 async def _ensure_schema():
-    """确保测试所需的表存在（create_all 仅在 app.main lifespan 中执行，
-    测试不启动 app，需要显式建表）。"""
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    """确保测试所需的表存在：仅走 Alembic（禁止 create_all）。"""
+    await upgrade_schema_to_head()
 
 
 @pytest.fixture
 async def db_ready():
-    """确保数据库可用且表已建。无 DB 时 skip。
-
-    function 作用域：pytest-asyncio 0.21 的 event_loop 是 function scoped，
-    无法与 module scoped fixture 组合。create_all 幂等，重复调用不会重建已存在的表。
-    """
+    """确保数据库可用且 schema 已是 alembic head。无 DB 时 skip。"""
     if not await _db_available():
         pytest.skip("数据库不可用，跳过 refresh token 集成测试")
     await _ensure_schema()

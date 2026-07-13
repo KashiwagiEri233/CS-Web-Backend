@@ -1,7 +1,14 @@
+"""JWT / 密码安全原语。
+
+支持密钥轮换：签发用当前 SECRET_KEY；校验时依次尝试 SECRET_KEY + JWT_PREVIOUS_SECRET_KEYS。
+"""
+
+from __future__ import annotations
+
 import hashlib
 import secrets
 from datetime import datetime, timedelta
-from typing import Optional, Union
+from typing import List, Optional, Union
 
 import bcrypt
 from jose import JWTError, jwt
@@ -32,10 +39,7 @@ def generate_refresh_token() -> str:
 
 
 def hash_refresh_token(token: str) -> str:
-    """refresh token 哈希：存库用 sha256（固定 64 位十六进制）。
-
-    用 sha256 而非 bcrypt：refresh token 足够长且高熵，bcrypt 是为了抵抗低熵密码的离线穷举。
-    """
+    """refresh token 哈希：存库用 sha256（固定 64 位十六进制）。"""
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
@@ -47,7 +51,6 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
             hashed_password.encode("utf-8"),
         )
     except (ValueError, TypeError):
-        # 哈希格式不合法（旧数据/损坏），返回 False 而非抛异常
         return False
 
 
@@ -59,6 +62,24 @@ def get_password_hash(password: str) -> str:
     ).decode("utf-8")
 
 
+def _signing_key() -> str:
+    return settings.SECRET_KEY or ""
+
+
+def _verification_keys() -> List[str]:
+    """校验用密钥列表：当前密钥优先，其后为历史密钥（轮换窗口）。"""
+    keys: List[str] = []
+    current = settings.SECRET_KEY
+    if current:
+        keys.append(current)
+    prev = getattr(settings, "JWT_PREVIOUS_SECRET_KEYS", "") or ""
+    for part in prev.split(","):
+        k = part.strip()
+        if k and k not in keys:
+            keys.append(k)
+    return keys
+
+
 def create_access_token(
     data: dict,
     expires_delta: Optional[timedelta] = None,
@@ -66,9 +87,7 @@ def create_access_token(
 ) -> tuple[str, str, datetime]:
     """创建访问令牌。
 
-    返回 (token, jti, expire)：
-    - jti 用于黑名单；调用方可在签发后据此建立黑名单映射。
-    - data 里的 "sub" 等声明仍由调用方提供。
+    返回 (token, jti, expire)。
     """
     to_encode = data.copy()
     if expires_delta:
@@ -81,17 +100,17 @@ def create_access_token(
     token_jti = jti or generate_token_jti()
     to_encode.update({"exp": expire, "jti": token_jti})
     encoded_jwt = jwt.encode(
-        to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM
+        to_encode, _signing_key(), algorithm=settings.ALGORITHM
     )
     return encoded_jwt, token_jti, expire
 
 
 def verify_token(token: str) -> Optional[dict]:
-    """验证令牌"""
-    try:
-        payload = jwt.decode(
-            token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
-        )
-        return payload
-    except JWTError:
-        return None
+    """验证令牌：依次尝试当前密钥与历史密钥（支持轮换窗口）。"""
+    algorithms = [settings.ALGORITHM]
+    for key in _verification_keys():
+        try:
+            return jwt.decode(token, key, algorithms=algorithms)
+        except JWTError:
+            continue
+    return None

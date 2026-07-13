@@ -58,7 +58,9 @@ class ExceptionService:
             "priority": self._determine_priority(exception, log_record.get("status_code")),
         }
 
-        return await self.log_repo.create_exception_log(exception_log_data)
+        log = await self.log_repo.create_exception_log(exception_log_data)
+        await self.db.commit()
+        return log
 
     async def record_validation_error(
         self,
@@ -88,7 +90,9 @@ class ExceptionService:
             "priority": "normal",
         }
 
-        return await self.log_repo.create_exception_log(exception_log_data)
+        log = await self.log_repo.create_exception_log(exception_log_data)
+        await self.db.commit()
+        return log
 
     async def get_exception_logs(
         self,
@@ -101,6 +105,10 @@ class ExceptionService:
             skip=skip, limit=limit, **filters
         )
 
+    async def get_exception_log(self, log_id: int) -> Optional[ExceptionLog]:
+        """获取单条异常日志。"""
+        return await self.log_repo.get_exception_log_by_id(log_id)
+
     async def resolve_exception(
         self,
         log_id: int,
@@ -108,11 +116,14 @@ class ExceptionService:
         resolution_notes: Optional[str] = None,
     ) -> Optional[ExceptionLog]:
         """标记异常为已解决。"""
-        return await self.log_repo.resolve_exception_log(
+        log = await self.log_repo.resolve_exception_log(
             log_id=log_id,
             resolved_by=resolved_by,
             resolution_notes=resolution_notes,
         )
+        if log is not None:
+            await self.db.commit()
+        return log
 
     # ------------------------------------------------------------------ 内部
 

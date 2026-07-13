@@ -30,6 +30,10 @@ async def test_grant_role_then_aggregate_permissions():
     if not await _db_available():
         pytest.skip("数据库不可用，跳过 RBAC 集成测试")
 
+    from tests._alembic_helpers import upgrade_schema_to_head
+
+    await upgrade_schema_to_head()
+
     sfx = uuid.uuid4().hex[:8]
     uname, rname, pname = f"itest_u_{sfx}", f"itest_r_{sfx}", f"itest:p_{sfx}"
 

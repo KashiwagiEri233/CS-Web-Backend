@@ -63,7 +63,7 @@
 ┌──────────────────────────────────────────────────────────┐
 │  Model 层  app/models/                                    │
 │  SQLAlchemy 2.0 ORM，时间列一律 timezone=True              │
-│  在 models/__init__.py 汇总导出（create_all / alembic 依赖）│
+│  在 models/__init__.py 汇总导出（alembic autogenerate 依赖）│
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -128,9 +128,9 @@ JWT 签发/校验  ──→  当前用户解析  ──→  权限校验依赖
 - 降级策略由 `RATE_LIMIT_FALLBACK` / `CACHE_FALLBACK` 控制。
 - 启动时 Redis 探测任务（lifecycle `redis_probe`，见第 7 节）仅记连通性日志，**不阻断启动**。
 
-### 4.5 日志（`app/core/loguru_logger.py`）
+### 4.5 日志（`app/core/loguru_logger/`）
 
-- 统一入口：`from app.core.loguru_logger import get_logger`。
+- 统一入口：`from app.core.loguru_logger import get_logger`（包内按 adapter / config / context / intercept / init 拆分）。
 - **禁止 `print`、禁止直接配置 loguru handler**。
 - Profile：`LOG_PROFILE=dev`（DEBUG + 彩色控制台）/ `prod`（INFO + JSON + 文件轮转）。
 
@@ -178,7 +178,7 @@ JWT 签发/校验  ──→  当前用户解析  ──→  权限校验依赖
 lifespan 启动段
   ├─ 应用级展示（不进注册表）：启动横幅、AUTH_ENABLED 告警
   └─ run_startup() —— 按 priority 升序执行已注册任务：
-       ├─ priority=10  database      [critical] 建库 + schema(create_all/alembic) + 连通性探测
+       ├─ priority=10  database      [critical] 建库 + schema(alembic upgrade/校验) + 连通性探测
        │                                    └─ advisory lock 串行化 schema 操作（多 worker 安全）
        ├─ priority=20  rbac_seed     [降级]   权限/角色/默认管理员（幂等；失败仅告警）
        ├─ priority=30  redis_probe   [降级]   探测 Redis 连通性（未配置/故障都降级）
@@ -208,7 +208,7 @@ main.py
   ├── app/core/lifecycle   （run_startup / run_shutdown 驱动启动/关闭任务）
   ├── app/core/loguru_logger
   ├── app/database         （engine、lifespan 用）
-  └── app/models           （Base，create_all 用）
+  └── app/models           （Base / ORM，供 Alembic 与查询使用）
 
 api/v1/*
   ├── Depends(get_db)
@@ -259,7 +259,7 @@ core/security, middleware/rbac
 7. **日志**：`get_logger`，不 `print`、不直接配 handler。
 8. **Redis 可降级**：限流/缓存把 Redis 当增强项，不是强依赖。
 9. **配置单一来源**：`Settings` + `.env*`；新增字段同步 `.env.example`。
-10. **迁移铁律**：`create_all` 与 `alembic` 不同库共存；开发 `create_all`，生产 `alembic upgrade head`。
+10. **迁移铁律**：全环境仅 Alembic 管理 schema；禁止 `Base.metadata.create_all`（`DB_AUTO_CREATE` 已废弃）。
 
 ---
 

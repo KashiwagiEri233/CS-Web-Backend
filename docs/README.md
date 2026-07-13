@@ -15,7 +15,8 @@ docs/
 └── modules/               # 业务模块级：与具体业务实体绑定
     ├── auth.md            # 认证（登录/注册/刷新/登出）
     ├── users.md           # 用户管理（CRUD）
-    └── rbac.md            # 角色 / 权限 / 分配 / 校验
+    ├── rbac.md            # 角色 / 权限 / 分配 / 校验
+    └── audit.md           # 审计日志查询
 ```
 
 ## 分类标准（一篇文档放哪？）
@@ -87,15 +88,16 @@ docs/
 | _rate_limit.md_ | `app/core/rate_limit/`、`app/middleware/rate_limit.py` | ⬜ 待补 |
 | _cache.md_ | `app/core/cache/` | ⬜ 待补 |
 | _security_auth.md_ | `app/core/security.py`、`app/middleware/rbac.py` | ⬜ 待补 |
-| _logging.md_ | `app/core/loguru_logger.py` | ⬜ 待补 |
+| _logging.md_ | `app/core/loguru_logger/` | ⬜ 待补 |
 | _database.md_ | `app/database.py` | ⬜ 待补 |
 
 ### 业务模块级（`docs/modules/`）
 | 文档 | 覆盖代码 | 状态 |
 |---|---|---|
 | [auth.md](modules/auth.md) | `app/api/v1/auth.py`、`app/services/auth_service.py` | ✅ |
-| [users.md](modules/users.md) | `app/api/v1/users.py` | ✅ |
-| [rbac.md](modules/rbac.md) | `app/api/v1/rbac.py`、`app/services/rbac_service.py` | ✅ |
+| [users.md](modules/users.md) | `app/api/v1/users.py`、`app/services/user_service.py` | ✅ |
+| [rbac.md](modules/rbac.md) | `app/api/v1/rbac/`、`app/services/rbac_service.py` | ✅ |
+| [audit.md](modules/audit.md) | `app/api/v1/audit.py`、`app/services/audit_service.py` | ✅ |
 
 > ⬜ 待补项是已存在的系统能力但文档未写——欢迎按模板补齐，不要让索引与实际能力脱节。
 

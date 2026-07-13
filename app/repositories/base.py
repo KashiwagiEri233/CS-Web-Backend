@@ -3,17 +3,22 @@
 子类只需声明 ``model`` 类属性即可获得 get_by_id / get_all / count / create / update / delete；
 特化查询（如按用户名、预加载关联）在子类自行追加。
 
-约定（与路由层一致）：create/update/delete 内部 commit；查询方法不提交。
+事务约定（全项目统一）：
+- Repository **只 flush**，不 commit。
+- 由 **Service**（或路由外的编排代码）显式 ``await db.commit()``。
+- 这样跨多个 repo 的业务可以在同一事务内完成，避免半提交。
 """
 
-from typing import Generic, List, Optional, Type, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, List, Optional, Type, TypeVar
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import Base
+if TYPE_CHECKING:
+    from app.database import Base
 
-ModelT = TypeVar("ModelT", bound=Base)
+# 不用 bound=Base：运行时 import database 会经 lifecycle → rbac_init → repo 形成环
+ModelT = TypeVar("ModelT")
 
 
 class BaseRepository(Generic[ModelT]):
@@ -41,22 +46,25 @@ class BaseRepository(Generic[ModelT]):
         return int(result.scalar_one())
 
     async def create(self, data: dict) -> ModelT:
+        """新增并 flush（未 commit）；调用方负责 commit。"""
         obj = self.model(**data)
         self.db.add(obj)
-        await self.db.commit()
+        await self.db.flush()
         await self.db.refresh(obj)
         return obj
 
     async def update(self, obj: ModelT) -> ModelT:
+        """更新并 flush（未 commit）；调用方负责 commit。"""
         self.db.add(obj)
-        await self.db.commit()
+        await self.db.flush()
         await self.db.refresh(obj)
         return obj
 
     async def delete(self, id_) -> bool:
+        """删除并 flush（未 commit）；调用方负责 commit。"""
         obj = await self.get_by_id(id_)
         if obj is None:
             return False
         await self.db.delete(obj)
-        await self.db.commit()
+        await self.db.flush()
         return True

@@ -39,6 +39,14 @@ class User(Base):
     full_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_superuser: Mapped[bool] = mapped_column(Boolean, default=False)
+    # 改密时间：用于让改密前签发的 access token 立即失效（JWT 内 pwd_at 对比）
+    password_changed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True, default=None
+    )
+    # 软删除时间；非空表示已删除，列表/鉴权默认排除
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True, default=None, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=now_utc
     )
