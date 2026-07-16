@@ -13,6 +13,7 @@ from app.core.exceptions import setup_exception_handlers
 from app.database import get_db
 from app.dependencies import get_current_active_user
 from app.dependencies_services import get_audit_service, get_auth_service
+from app.schemas.auth import TokenPair
 
 
 def _fake_user(user_id=1, is_superuser=True):
@@ -99,3 +100,79 @@ def test_register_weak_password_rejected():
         json={"username": "weak", "email": "w@t.com", "password": "123"},
     )
     assert resp.status_code == 422
+
+
+def _build_login_app(auth_svc, audit_svc) -> FastAPI:
+    app = FastAPI()
+    setup_exception_handlers(app)
+    app.include_router(auth_router, prefix="/auth")
+
+    async def _fake_db():
+        yield None
+
+    app.dependency_overrides[get_db] = _fake_db
+    app.dependency_overrides[get_auth_service] = lambda: auth_svc
+    app.dependency_overrides[get_audit_service] = lambda: audit_svc
+    return app
+
+
+class _LoginAuthService:
+    """模拟 authenticate / issue_token_pair 的登录用 AuthService。"""
+
+    def __init__(self, user):
+        self._user = user
+
+    async def authenticate(self, username, password):
+        return self._user
+
+    async def issue_token_pair(self, user):
+        return TokenPair(
+            access_token="a", refresh_token="r", token_type="bearer", expires_in=60
+        )
+
+
+class _RecordingAuditService:
+    def __init__(self):
+        self.calls = []
+
+    async def record(self, **kwargs):
+        self.calls.append(kwargs)
+        return None
+
+
+def test_login_success_writes_audit():
+    audit = _RecordingAuditService()
+    auth = _LoginAuthService(_fake_user(is_superuser=False))
+    client = TestClient(_build_login_app(auth, audit), raise_server_exceptions=False)
+
+    resp = client.post("/auth/login", data={"username": "admin", "password": "x"})
+
+    assert resp.status_code == 200
+    assert [c["action"] for c in audit.calls] == ["auth.login"]
+    assert audit.calls[0]["actor_username"] == "admin"
+
+
+def test_login_failure_writes_audit():
+    audit = _RecordingAuditService()
+    auth = _LoginAuthService(None)  # 凭据错误
+    client = TestClient(_build_login_app(auth, audit), raise_server_exceptions=False)
+
+    resp = client.post("/auth/login", data={"username": "ghost", "password": "bad"})
+
+    assert resp.status_code == 401
+    assert [c["action"] for c in audit.calls] == ["auth.login_failed"]
+    assert audit.calls[0]["detail"] == {"username": "ghost"}
+
+
+def test_login_inactive_user_writes_audit():
+    audit = _RecordingAuditService()
+    inactive = _fake_user(is_superuser=False)
+    inactive.is_active = False
+    auth = _LoginAuthService(inactive)
+    client = TestClient(_build_login_app(auth, audit), raise_server_exceptions=False)
+
+    resp = client.post("/auth/login", data={"username": "admin", "password": "x"})
+
+    assert resp.status_code == 401
+    assert [c["action"] for c in audit.calls] == ["auth.login_failed"]
+    assert audit.calls[0]["detail"]["reason"] == "user not active"

@@ -41,10 +41,13 @@ class Settings(BaseSettings):
     JWT_ISSUER: str = "fastapi-witchcat-framework"
     JWT_AUDIENCE: str = "fastapi-witchcat-api"
     # 迁移窗口：允许旧版中完全没有 iss/aud/token_type 的 access token。
-    # 新项目/迁移窗口结束后应置 False。
-    JWT_ACCEPT_LEGACY_TOKENS: bool = True
+    # 默认关闭；仅在从旧系统迁移的短窗口期内显式置 True，迁移结束立即关回。
+    JWT_ACCEPT_LEGACY_TOKENS: bool = False
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(15, gt=0)
     REFRESH_TOKEN_EXPIRE_DAYS: int = Field(7, gt=0)
+    # 轮换宽限窗口（秒）：已撤销 refresh token 在窗口内再次被使用视为客户端并发重试
+    # （多标签页/网络重试），允许继续轮换而不吊销 family；0 = 关闭宽限，复用即吊销。
+    REFRESH_TOKEN_ROTATION_LEEWAY_SECONDS: int = Field(10, ge=0)
     # access token 黑名单（登出/改密后让未过期 token 立即失效）
     #   未配置 Redis 时退回进程内内存黑名单（仅本进程可见，多实例部署会失效）
     #   配置 Redis 后跨实例一致；Redis 不可用时不阻断请求，回退内存

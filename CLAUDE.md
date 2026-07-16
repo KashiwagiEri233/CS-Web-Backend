@@ -40,6 +40,7 @@ python run.py --env 3 --prod   # 等价的显式写法
 ## 配置（定义在 `app/core/config.py` 的 `Settings`，新增字段须同步 `.env.example`）
 - `SECRET_KEY` 必须从环境变量设置，禁止占位值。
 - JWT 轮换：`JWT_PREVIOUS_SECRET_KEYS`（逗号分隔历史密钥，校验回退）。
+- `JWT_ACCEPT_LEGACY_TOKENS` 默认 `False`（仅旧系统迁移窗口临时开启）；token 强制 `exp`。`REFRESH_TOKEN_ROTATION_LEEWAY_SECONDS`（默认 10）：refresh 轮换宽限，窗口内重用已撤销 refresh 视为并发重试；0=复用即吊销 family。
 - Schema **仅 Alembic**（`create_all` / `DB_AUTO_CREATE` 已废弃）。`DB_AUTO_MIGRATE`（启动自动 upgrade head；False 则只校验版本）、`DB_AUTO_CREATE_DATABASE`（缺库时自动 CREATE DATABASE）。
 - 连接池 `DB_POOL_SIZE`/`DB_MAX_OVERFLOW`/`DB_POOL_TIMEOUT`/`DB_POOL_RECYCLE`/`DB_POOL_PRE_PING`（均有默认值，引擎在 `database.py` 由这些字段构建；生产保持 `pool_pre_ping=True`）。
 - `REDIS_URL`（空=纯内存）、`RATE_LIMIT_FALLBACK` / `CACHE_FALLBACK`。

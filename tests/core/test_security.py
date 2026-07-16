@@ -67,3 +67,45 @@ def test_rate_limit_does_not_accept_fail_closed_mode():
             DATABASE_PASSWORD="pw",
             RATE_LIMIT_FALLBACK="closed",
         )
+
+
+def test_legacy_token_rejected_by_default():
+    """默认（JWT_ACCEPT_LEGACY_TOKENS=False）拒绝无 iss/aud/token_type 的旧 token。"""
+    token = jwt.encode(
+        {"sub": "alice", "exp": 4102444800},
+        settings.SECRET_KEY,
+        algorithm=settings.ALGORITHM,
+    )
+
+    assert verify_token(token) is None
+
+
+def test_legacy_token_accepted_only_during_migration_window(monkeypatch):
+    """迁移窗口显式开启时，完全无新增声明的旧 token 仍可校验。"""
+    monkeypatch.setattr(settings, "JWT_ACCEPT_LEGACY_TOKENS", True)
+    token = jwt.encode(
+        {"sub": "alice", "exp": 4102444800},
+        settings.SECRET_KEY,
+        algorithm=settings.ALGORITHM,
+    )
+
+    payload = verify_token(token)
+
+    assert payload is not None
+    assert payload["sub"] == "alice"
+
+
+def test_token_without_exp_is_rejected():
+    """缺失 exp 的 token 永不过期，即使 iss/aud 正确也必须拒绝。"""
+    token = jwt.encode(
+        {
+            "sub": "alice",
+            "iss": settings.JWT_ISSUER,
+            "aud": settings.JWT_AUDIENCE,
+            "token_type": "access",
+        },
+        settings.SECRET_KEY,
+        algorithm=settings.ALGORITHM,
+    )
+
+    assert verify_token(token) is None

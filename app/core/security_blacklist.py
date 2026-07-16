@@ -3,7 +3,7 @@
 用途：登出、改密后让尚未过期的 access token 立即失效。
 - 未配置 Redis：纯进程内 TTL 字典（单实例可见）。
 - 配置了 Redis：跨实例一致；任意一次调用失败进入冷却期，期间按 fallback 兜底。
-- fallback="memory"（默认）：故障时回退内存（单进程保护）。
+- fallback="memory"（默认）：故障时回退内存（单进程保护）；Redis 恢复后仍回查内存，覆盖降级窗口。
 - fallback="open"：Redis 故障时放行（牺牲保护换可用性，不推荐）。
 - fallback="closed"：Redis 故障时拒绝所有 access token（高安全部署）。
 
@@ -76,7 +76,7 @@ class TokenBlacklist:
         try:
             await self._redis.setex(f"{_REDIS_KEY_PREFIX}{jti}", ttl_seconds, "1")
             self._mark_healthy()
-            # Redis 与内存双写：Redis 故障降级期间内存里仍能命中本进程的登出
+            # Redis 与内存双写：降级期间及 Redis 恢复之后，内存都能命中本进程的登出
             self._memory.add(jti, ttl_seconds)
         except Exception as e:  # noqa: BLE001 - 黑名单故障绝不阻塞业务
             self._mark_unhealthy(e)
@@ -91,7 +91,12 @@ class TokenBlacklist:
         try:
             hit = await self._redis.exists(f"{_REDIS_KEY_PREFIX}{jti}")
             self._mark_healthy()
-            return bool(hit)
+            if bool(hit):
+                return True
+            # add() 所有路径都双写内存：恢复后回查内存，覆盖降级窗口内本进程拉黑的
+            # jti——否则故障期间的登出/改密保护会在 Redis 恢复瞬间失效（fail-open）。
+            # fallback="open" 例外：运维已选择可用性优先，保持只信 Redis。
+            return self._fallback != "open" and self._memory.contains(jti)
         except Exception as e:  # noqa: BLE001
             self._mark_unhealthy(e)
             return self._fallback_contains(jti)

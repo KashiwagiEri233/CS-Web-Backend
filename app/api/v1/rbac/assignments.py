@@ -27,7 +27,9 @@ async def assign_role_to_user(
     current_user: User = Depends(require_permission("user", "manage_roles")),
 ) -> Any:
     """为用户分配角色（需要 user:manage_roles）。"""
-    success = await rbac_service.grant_role_to_user(user_id, role_id, commit=False)
+    success = await rbac_service.grant_role_to_user(
+        user_id, role_id, commit=False, actor=current_user
+    )
     if not success:
         raise NotFoundException(
             message="用户或角色不存在",
@@ -56,7 +58,9 @@ async def revoke_role_from_user(
     current_user: User = Depends(require_permission("user", "manage_roles")),
 ) -> Any:
     """从用户撤销角色（需要 user:manage_roles）。"""
-    success = await rbac_service.revoke_role_from_user(user_id, role_id, commit=False)
+    success = await rbac_service.revoke_role_from_user(
+        user_id, role_id, commit=False, actor=current_user
+    )
     if not success:
         raise NotFoundException(
             message="用户或角色不存在",

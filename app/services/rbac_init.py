@@ -18,7 +18,11 @@ from app.models.role import Role
 from app.models.user import User
 from app.repositories.rbac_repo import RBACRepository
 from app.repositories.user_repo import UserRepository
-from app.services.rbac_seed_data import DEFAULT_PERMISSIONS, build_default_roles
+from app.services.rbac_seed_data import (
+    ADMIN_ROLE_NAME,
+    DEFAULT_PERMISSIONS,
+    build_default_roles,
+)
 
 logger = get_logger("rbac_init")
 
@@ -185,7 +189,7 @@ class RBACInitializer:
                 "框架不会生成或记录明文管理员密码"
             )
 
-        admin_role = next((r for r in roles if r.name == "admin"), None)
+        admin_role = next((r for r in roles if r.name == ADMIN_ROLE_NAME), None)
         if not admin_role:
             self.logger.error("未找到管理员角色")
             return False

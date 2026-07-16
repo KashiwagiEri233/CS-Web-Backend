@@ -12,8 +12,13 @@ from typing import Tuple
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ConflictException, NotFoundException
-from app.core.security import async_get_password_hash
+from app.core.exceptions import (
+    ConflictException,
+    InvalidCredentialsException,
+    NotFoundException,
+    ValidationException,
+)
+from app.core.security import async_get_password_hash, async_verify_password
 from app.core.timezone import now_utc
 from app.models.user import User
 from app.repositories.refresh_token_repo import RefreshTokenRepository
@@ -66,7 +71,8 @@ class UserService:
         return user
 
     async def update_profile(self, user: User, update_data: dict) -> User:
-        """当前用户自助更新（不可改 is_active；改密同事务撤 refresh）。"""
+        """当前用户自助更新（不可改 is_active；改密需旧密码，同事务撤 refresh）。"""
+        await self._verify_old_password(user, update_data)
         email_conflicts = await self._email_conflicts(user.id, update_data)
         password_changed = await self._apply_update(
             user,
@@ -113,6 +119,27 @@ class UserService:
             await self.db.commit()
 
     # ------------------------------------------------------------------ 内部
+
+    @staticmethod
+    async def _verify_old_password(user: User, update_data: dict) -> None:
+        """自助改密前置校验：提供新密码时必须附带正确的旧密码。
+
+        access token 短暂泄露（XSS/日志）即可改密并吊销全部会话，旧密码校验把
+        "持有 token"升级为"知道密码"，阻断该接管路径。old_password 消费后即弹出，
+        不会进入字段更新流程。
+        """
+        old_password = update_data.pop("old_password", None)
+        if update_data.get("password") is None:
+            return
+        if not old_password:
+            raise ValidationException(
+                message="修改密码必须提供当前密码",
+                details={"field": "old_password"},
+            )
+        if not await async_verify_password(old_password, user.hashed_password):
+            raise InvalidCredentialsException(
+                details={"reason": "old password incorrect"}
+            )
 
     async def _email_conflicts(self, self_id: int, update_data: dict) -> bool:
         email = update_data.get("email")

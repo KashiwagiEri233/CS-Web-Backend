@@ -7,7 +7,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.core.exceptions import ConflictException, NotFoundException
+from app.core.exceptions import (
+    ConflictException,
+    InvalidCredentialsException,
+    NotFoundException,
+    ValidationException,
+)
 from app.services.user_service import UserService
 
 
@@ -154,6 +159,10 @@ async def test_update_profile_ignores_is_active(monkeypatch):
 
 async def test_update_profile_allows_password_change(monkeypatch):
     svc = _make_service(monkeypatch)
+    monkeypatch.setattr(
+        "app.services.user_service.async_verify_password",
+        AsyncMock(return_value=True),
+    )
     user = MagicMock(
         id=3,
         deleted_at=None,
@@ -165,9 +174,34 @@ async def test_update_profile_allows_password_change(monkeypatch):
     svc.user_repo.get_by_email.return_value = None
     svc.user_repo.update.return_value = user
 
-    await svc.update_profile(user, {"password": "newp"})
+    await svc.update_profile(user, {"password": "newp", "old_password": "oldp"})
 
     assert user.hashed_password == "hash:newp"
+
+
+async def test_update_profile_password_requires_old_password(monkeypatch):
+    """自助改密必须提供当前密码，缺失则 422。"""
+    svc = _make_service(monkeypatch)
+    user = MagicMock(id=3, hashed_password="h")
+
+    with pytest.raises(ValidationException):
+        await svc.update_profile(user, {"password": "newp"})
+
+    svc.user_repo.update.assert_not_called()
+
+
+async def test_update_profile_rejects_wrong_old_password(monkeypatch):
+    """旧密码错误拒绝改密，且不会进入字段更新流程。"""
+    svc = _make_service(monkeypatch)
+    verify = AsyncMock(return_value=False)
+    monkeypatch.setattr("app.services.user_service.async_verify_password", verify)
+    user = MagicMock(id=3, hashed_password="h")
+
+    with pytest.raises(InvalidCredentialsException):
+        await svc.update_profile(user, {"password": "newp", "old_password": "bad"})
+
+    verify.assert_awaited_once_with("bad", "h")
+    svc.user_repo.update.assert_not_called()
 
 
 # ---- delete_user ----

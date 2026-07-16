@@ -2,9 +2,10 @@
 
 覆盖：
 1. issue_token_pair → refresh_access_token 轮换成功；
-2. 旧 refresh token 被撤销后再用 → 复用检测 → 整个 family 失效；
+2. 旧 refresh token 被撤销后再用（关闭宽限）→ 复用检测 → 整个 family 失效；
 3. revoke_all_user_tokens 撤销全部；
-4. access token 黑名单（登出后失效）。
+4. access token 黑名单（登出后失效）；
+5. 默认宽限窗口内旧 token 重用 → 视为并发重试放行，family 不受影响。
 
 本地无法连接数据库时自动 skip；CI 严格模式下直接失败。
 """
@@ -14,6 +15,7 @@ import uuid
 import pytest
 from sqlalchemy import text
 
+from app.core.config import settings
 from app.core.exceptions import InvalidCredentialsException
 from app.core.security import (
     create_access_token,
@@ -47,7 +49,9 @@ async def _cleanup(username: str, user_id: int) -> None:
         await db.commit()
 
 
-async def test_issue_then_refresh_rotation(integration_db_ready):
+async def test_issue_then_refresh_rotation(integration_db_ready, monkeypatch):
+    # 关闭宽限窗口：本用例验证的是"复用检测 → family 吊销"本身
+    monkeypatch.setattr(settings, "REFRESH_TOKEN_ROTATION_LEEWAY_SECONDS", 0)
     sfx = uuid.uuid4().hex[:8]
     uname = f"rtlife_u_{sfx}"
 
@@ -74,6 +78,31 @@ async def test_issue_then_refresh_rotation(integration_db_ready):
             # family 失效后，连新 token 也应失效（同 family）
             with pytest.raises(InvalidCredentialsException):
                 await svc.refresh_access_token(pair2.refresh_token)
+        finally:
+            await _cleanup(uname, uid)
+
+
+async def test_refresh_reuse_within_leeway_allows_retry(integration_db_ready):
+    """默认宽限窗口内：旧 token 立即重用视为并发重试，可换新对且 family 存活。"""
+    sfx = uuid.uuid4().hex[:8]
+    uname = f"rtleeway_u_{sfx}"
+
+    async with get_session() as db:
+        svc = AuthService(db)
+        uid = await _create_test_user(db, uname)
+
+        try:
+            user = await svc.user_repo.get_by_id(uid)
+            pair = await svc.issue_token_pair(user)
+            pair2 = await svc.refresh_access_token(pair.refresh_token)
+
+            # 宽限窗口内重用旧 token：并发重试，放行并签发新对（同 family）
+            pair3 = await svc.refresh_access_token(pair.refresh_token)
+            assert pair3.refresh_token not in (pair.refresh_token, pair2.refresh_token)
+
+            # family 未被吊销：上一个后继 token 仍可正常轮换
+            pair4 = await svc.refresh_access_token(pair2.refresh_token)
+            assert pair4.access_token
         finally:
             await _cleanup(uname, uid)
 

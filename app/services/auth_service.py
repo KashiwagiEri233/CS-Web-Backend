@@ -156,11 +156,13 @@ class AuthService:
     async def refresh_access_token(self, refresh_token_plain: str) -> TokenPair:
         """用 refresh token 换取新的 access + refresh（rotation + 复用检测）。
 
-        检测到已撤销的 token 再次被使用 → 视为泄漏 → 整个 family 立即失效。
+        已撤销 token 在宽限窗口（REFRESH_TOKEN_ROTATION_LEEWAY_SECONDS）内再次被
+        使用，视为客户端并发重试，允许继续轮换；超出窗口 → 视为泄漏 → family 失效。
         """
         token_hash = hash_refresh_token(refresh_token_plain)
         # 对当前 token 加行锁，确保同一 refresh token 的并发轮换只有一个成功；
-        # 后到请求会在锁释放后看到 revoked_at，并触发 family 复用处置。
+        # 后到请求会在锁释放后看到 revoked_at：宽限窗口内按并发重试放行，
+        # 超出窗口才触发 family 复用处置。
         rt = await self.refresh_repo.get_by_hash(token_hash, for_update=True)
 
         if rt is None:
@@ -170,14 +172,24 @@ class AuthService:
             )
 
         if rt.revoked_at is not None:
-            # 复用！family 内的已撤销 token 又出现，整条 family 立即吊销
-            await self.refresh_repo.revoke_family(rt.family_id)
-            await self.db.commit()
-            raise InvalidCredentialsException(
-                details={"reason": "refresh token reuse detected; family revoked"}
-            )
+            leeway = settings.REFRESH_TOKEN_ROTATION_LEEWAY_SECONDS
+            revoked_age = (now_utc() - rt.revoked_at).total_seconds()
+            within_leeway = leeway > 0 and revoked_age <= leeway
+            if within_leeway:
+                # 仅当 family 内仍存在活跃后继 token 时才视为轮换并发重试；
+                # 整体撤销（改密/封禁/revoke_all）后 family 无活跃 token，按复用处置。
+                within_leeway = await self.refresh_repo.family_has_active(rt.family_id)
+            if not within_leeway:
+                # 复用！family 内的已撤销 token 又出现，整条 family 立即吊销
+                await self.refresh_repo.revoke_family(rt.family_id)
+                await self.db.commit()
+                raise InvalidCredentialsException(
+                    details={"reason": "refresh token reuse detected; family revoked"}
+                )
+            # 宽限窗口内：视为客户端并发重试（多标签页/网络重试），允许继续轮换；
+            # 不再 revoke 本行——避免刷新 revoked_at 导致宽限窗口被无限延长。
 
-        if not rt.is_active:
+        if rt.expires_at is not None and now_utc() >= rt.expires_at:
             # 已过期自然失效
             raise InvalidCredentialsException(
                 details={"reason": "refresh token expired"}
@@ -192,8 +204,10 @@ class AuthService:
         ):
             raise UserNotActiveException(user_id=rt.user_id)
 
-        # 轮换：撤销当前 token，签发新 token（同 family）
-        await self.refresh_repo.revoke(rt.id)
+        # 轮换：撤销当前 token，签发新 token（同 family）。
+        # 宽限重试路径的本行已处于撤销态，跳过以免刷新 revoked_at 延长窗口。
+        if rt.revoked_at is None:
+            await self.refresh_repo.revoke(rt.id)
 
         new_access, _jti, _exp = create_access_token(
             data=self._access_token_claims(user)

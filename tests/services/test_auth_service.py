@@ -3,13 +3,14 @@
 验证 #2 修复：用户创建逻辑统一入口——查重、哈希、full_name 写入、is_superuser 控制。
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from app.core.exceptions import InvalidCredentialsException, UserAlreadyExistsException
 from app.core.security import hash_refresh_token
+from app.core.timezone import now_utc
 from app.services.auth_service import AuthService
 
 
@@ -120,7 +121,8 @@ async def test_refresh_loads_token_with_row_lock():
     svc.db.commit = AsyncMock()
     svc.refresh_repo = AsyncMock()
     svc.user_repo = AsyncMock()
-    revoked = MagicMock(revoked_at=object(), family_id="family")
+    # 撤销时间远超宽限窗口 → 复用检测 → 吊销 family
+    revoked = MagicMock(revoked_at=now_utc() - timedelta(days=1), family_id="family")
     svc.refresh_repo.get_by_hash.return_value = revoked
 
     with pytest.raises(InvalidCredentialsException):
@@ -129,6 +131,57 @@ async def test_refresh_loads_token_with_row_lock():
     svc.refresh_repo.get_by_hash.assert_awaited_once_with(
         hash_refresh_token("refresh-token"), for_update=True
     )
+    svc.refresh_repo.revoke_family.assert_awaited_once_with("family")
+
+
+async def test_refresh_within_leeway_allows_concurrent_retry():
+    """宽限窗口内 + family 仍有活跃后继：视为并发重试，放行轮换。"""
+    svc = AuthService.__new__(AuthService)
+    svc.db = MagicMock()
+    svc.db.commit = AsyncMock()
+    svc.refresh_repo = AsyncMock()
+    svc.user_repo = AsyncMock()
+    rotated = MagicMock(
+        id=5,
+        revoked_at=now_utc(),  # 刚被轮换撤销，处于宽限窗口内
+        family_id="family",
+        user_id=1,
+        expires_at=now_utc() + timedelta(days=1),
+    )
+    svc.refresh_repo.get_by_hash.return_value = rotated
+    svc.refresh_repo.family_has_active.return_value = True
+    svc.user_repo.get_by_id.return_value = MagicMock(
+        id=1, username="u", is_active=True, deleted_at=None, password_changed_at=None
+    )
+
+    pair = await svc.refresh_access_token("refresh-token")
+
+    assert pair.access_token and pair.refresh_token
+    svc.refresh_repo.revoke_family.assert_not_called()
+    # 不刷新 revoked_at，宽限窗口不被延长
+    svc.refresh_repo.revoke.assert_not_called()
+    assert svc.refresh_repo.create.await_args.kwargs["family_id"] == "family"
+
+
+async def test_refresh_revoked_without_active_family_is_reuse():
+    """宽限时间内但 family 已无活跃 token（整体撤销）→ 仍按复用处置。"""
+    svc = AuthService.__new__(AuthService)
+    svc.db = MagicMock()
+    svc.db.commit = AsyncMock()
+    svc.refresh_repo = AsyncMock()
+    svc.user_repo = AsyncMock()
+    revoked = MagicMock(
+        revoked_at=now_utc(),
+        family_id="family",
+        user_id=1,
+        expires_at=now_utc() + timedelta(days=1),
+    )
+    svc.refresh_repo.get_by_hash.return_value = revoked
+    svc.refresh_repo.family_has_active.return_value = False
+
+    with pytest.raises(InvalidCredentialsException):
+        await svc.refresh_access_token("refresh-token")
+
     svc.refresh_repo.revoke_family.assert_awaited_once_with("family")
 
 

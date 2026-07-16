@@ -32,7 +32,7 @@
 ### 分配与查询
 | Method | Path | 鉴权 | 说明 |
 |---|---|---|---|
-| POST/DELETE | `/users/{uid}/roles/{rid}` | `user:manage_roles` | 赋/撤角色 + 审计 |
+| POST/DELETE | `/users/{uid}/roles/{rid}` | `user:manage_roles` | 赋/撤角色 + 审计；目标为 admin 角色或超级用户时需操作者是超级用户 |
 | POST/DELETE | `/roles/{rid}/permissions/{pid}` | `role:manage_permissions` | 赋/撤权限 + 审计 |
 | POST | `/users/{uid}/check-permission` | 活跃用户（本人/超管） | 校验 |
 | GET | `/me/permissions` · `/me/roles` | 活跃用户 | 当前授权 |

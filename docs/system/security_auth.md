@@ -25,7 +25,10 @@
 ## 降级与不变量
 
 - 新 token 必须携带 `iss`、`aud`、`iat`、`jti` 和 `token_type`。
-- 旧 token 兼容仅用于迁移窗口；新部署关闭 `JWT_ACCEPT_LEGACY_TOKENS`。
+- 旧 token 兼容仅用于迁移窗口；`JWT_ACCEPT_LEGACY_TOKENS` 默认关闭。
+  所有 token 强制要求 `exp` 声明（缺失即拒绝，杜绝永不过期 token）。
+- 黑名单 Redis 恢复后仍回查进程内存，覆盖降级窗口内本进程拉黑的 jti
+  （`fallback="open"` 除外，恢复后只信 Redis）。
 - 多 worker 且要求即时撤销一致性时，必须配置 Redis 并开启
   `REQUIRE_REDIS_FOR_SECURITY`。
 - bcrypt 输入限制为 72 UTF-8 字节，哈希操作不得阻塞事件循环。

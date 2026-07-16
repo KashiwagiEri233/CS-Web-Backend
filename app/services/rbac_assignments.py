@@ -4,9 +4,15 @@
 ``app.services.rbac_service.RBACService``。
 """
 
+from typing import Optional
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import PermissionDeniedException
+from app.models.role import Role
+from app.models.user import User
 from app.repositories.rbac_repo import RBACRepository
+from app.services.rbac_seed_data import ADMIN_ROLE_NAME
 
 
 class RBACAssignmentMixin:
@@ -26,13 +32,22 @@ class RBACAssignmentMixin:
         return await self.rbac_repo.get_user_by_id(user_id) is not None
 
     async def grant_role_to_user(
-        self, user_id: int, role_id: int, commit: bool = True
+        self,
+        user_id: int,
+        role_id: int,
+        commit: bool = True,
+        actor: Optional[User] = None,
     ) -> bool:
-        """为用户授予角色。"""
+        """为用户授予角色。
+
+        提权防护：授予内置 admin 角色、或目标用户为超级用户时，要求 actor
+        是超级用户；actor=None 视为可信内部调用（如种子初始化），放行。
+        """
         user = await self.rbac_repo.get_user_with_roles(user_id)
         role = await self.rbac_repo.get_role_by_id(role_id)
         if not user or not role:
             return False
+        self._check_privilege_escalation(user, role, actor)
 
         if not any(item.id == role.id for item in user.roles):
             user.roles.append(role)
@@ -42,9 +57,13 @@ class RBACAssignmentMixin:
         return True
 
     async def revoke_role_from_user(
-        self, user_id: int, role_id: int, commit: bool = True
+        self,
+        user_id: int,
+        role_id: int,
+        commit: bool = True,
+        actor: Optional[User] = None,
     ) -> bool:
-        """从用户撤销角色。"""
+        """从用户撤销角色。提权防护同 grant_role_to_user。"""
         user = await self.rbac_repo.get_user_with_roles(user_id)
         if not user:
             return False
@@ -52,6 +71,7 @@ class RBACAssignmentMixin:
         role = await self.rbac_repo.get_role_by_id(role_id)
         if not role:
             return False
+        self._check_privilege_escalation(user, role, actor)
 
         target = next((item for item in user.roles if item.id == role.id), None)
         if target is not None:
@@ -60,6 +80,18 @@ class RBACAssignmentMixin:
                 await self.db.commit()
             await self._invalidate_user_perm_cache(user_id)
         return True
+
+    # ------------------------------------------------------------------ 内部
+
+    @staticmethod
+    def _check_privilege_escalation(
+        user: User, role: Role, actor: Optional[User]
+    ) -> None:
+        """阻止非超级用户借角色分配提权（授 admin）或操纵超级用户的角色。"""
+        if actor is None or actor.is_superuser:
+            return
+        if role.name == ADMIN_ROLE_NAME or user.is_superuser:
+            raise PermissionDeniedException(required_permissions=["superuser"])
 
     async def grant_permission_to_role(
         self, role_id: int, permission_id: int, commit: bool = True

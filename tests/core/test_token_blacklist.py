@@ -116,3 +116,31 @@ async def test_blacklist_half_open_recovery():
     redis.fail = False
     await bl.add("jti-3", 60)
     assert bl.using_redis, "冷却期满后 Redis 恢复应切回"
+
+
+async def test_blacklist_rechecks_memory_after_redis_recovery():
+    """回归：降级窗口内拉黑的 jti，Redis 恢复后仍应命中（防恢复瞬间 fail-open）。"""
+    redis = _FlakyRedis(fail=True)
+    bl = TokenBlacklist(
+        redis, _MemoryBlacklist(), fallback="memory", retry_interval=0.1
+    )
+    # 降级窗口：只能写内存（Redis 无此 key）
+    await bl.add("jti-during-outage", 60)
+    assert not bl.using_redis
+
+    # 冷却期满 + Redis 恢复：Redis 未命中时必须回查内存
+    await asyncio.sleep(0.15)
+    redis.fail = False
+    assert await bl.contains("jti-during-outage")
+    assert bl.using_redis
+
+
+async def test_blacklist_open_fallback_ignores_memory_after_recovery():
+    """fallback=open 尊重可用性优先：恢复后只信 Redis，不回查内存。"""
+    redis = _FlakyRedis(fail=True)
+    bl = TokenBlacklist(redis, _MemoryBlacklist(), fallback="open", retry_interval=0.1)
+    await bl.add("jti-open-outage", 60)
+
+    await asyncio.sleep(0.15)
+    redis.fail = False
+    assert not await bl.contains("jti-open-outage")

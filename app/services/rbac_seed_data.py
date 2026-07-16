@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
+# 系统内置管理员角色名。授予/撤销该角色、或对超级用户做角色变更时，
+# 要求操作者是超级用户（见 rbac_assignments._check_privilege_escalation）。
+ADMIN_ROLE_NAME = "admin"
+
 # 系统默认权限定义
 DEFAULT_PERMISSIONS: List[Dict[str, str]] = [
     # 用户管理权限
@@ -151,7 +155,7 @@ def build_default_roles(all_permission_keys: List[str]) -> List[Dict[str, Any]]:
     """
     return [
         {
-            "name": "admin",
+            "name": ADMIN_ROLE_NAME,
             "description": "系统管理员，拥有所有权限",
             "permissions": list(all_permission_keys),
         },

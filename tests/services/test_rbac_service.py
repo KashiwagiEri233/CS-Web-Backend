@@ -7,7 +7,11 @@ get_user_roles / check_permission 的行为契约。
 
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 import app.services.rbac_service as rbac_svc_module
+from app.core.exceptions import PermissionDeniedException
+from app.services.rbac_seed_data import ADMIN_ROLE_NAME
 from app.services.rbac_service import RBACService
 
 
@@ -350,3 +354,73 @@ async def test_grant_permission_to_role_invalidates_all_role_users(monkeypatch):
 
     assert await cache.get(rbac_svc_module._user_perm_cache_key(1)) is None
     assert await cache.get(rbac_svc_module._user_perm_cache_key(2)) is None
+
+
+# ---- 提权防护：admin 角色 / 超级用户目标（actor 必须是超级用户） ----
+
+
+def _make_actor(is_superuser: bool) -> MagicMock:
+    return MagicMock(id=100, is_superuser=is_superuser)
+
+
+def _make_role(role_id: int, name: str) -> MagicMock:
+    role = MagicMock(id=role_id)
+    role.name = name
+    return role
+
+
+async def test_grant_admin_role_requires_superuser(monkeypatch):
+    svc = _make_service(monkeypatch)
+    user = MagicMock(id=1, is_superuser=False)
+    user.roles = []
+    svc.rbac_repo.get_user_with_roles.return_value = user
+    svc.rbac_repo.get_role_by_id.return_value = _make_role(9, ADMIN_ROLE_NAME)
+
+    with pytest.raises(PermissionDeniedException):
+        await svc.grant_role_to_user(1, 9, actor=_make_actor(False))
+
+    svc.db.commit.assert_not_called()
+
+
+async def test_grant_admin_role_allowed_for_superuser(monkeypatch):
+    svc = _make_service(monkeypatch)
+    user = MagicMock(id=1, is_superuser=False)
+    user.roles = []
+    svc.rbac_repo.get_user_with_roles.return_value = user
+    svc.rbac_repo.get_role_by_id.return_value = _make_role(9, ADMIN_ROLE_NAME)
+
+    assert await svc.grant_role_to_user(1, 9, actor=_make_actor(True)) is True
+
+
+async def test_grant_role_to_superuser_target_requires_superuser(monkeypatch):
+    svc = _make_service(monkeypatch)
+    target = MagicMock(id=2, is_superuser=True)
+    target.roles = []
+    svc.rbac_repo.get_user_with_roles.return_value = target
+    svc.rbac_repo.get_role_by_id.return_value = _make_role(3, "developer")
+
+    with pytest.raises(PermissionDeniedException):
+        await svc.grant_role_to_user(2, 3, actor=_make_actor(False))
+
+
+async def test_revoke_role_from_superuser_target_requires_superuser(monkeypatch):
+    svc = _make_service(monkeypatch)
+    role = _make_role(3, "developer")
+    target = MagicMock(id=2, is_superuser=True)
+    target.roles = [role]
+    svc.rbac_repo.get_user_with_roles.return_value = target
+    svc.rbac_repo.get_role_by_id.return_value = role
+
+    with pytest.raises(PermissionDeniedException):
+        await svc.revoke_role_from_user(2, 3, actor=_make_actor(False))
+
+
+async def test_grant_admin_role_without_actor_is_trusted_internal_call(monkeypatch):
+    """actor=None（种子初始化/脚本）不受防护限制。"""
+    svc = _make_service(monkeypatch)
+    user = MagicMock(id=1, is_superuser=False)
+    user.roles = []
+    svc.rbac_repo.get_user_with_roles.return_value = user
+    svc.rbac_repo.get_role_by_id.return_value = _make_role(9, ADMIN_ROLE_NAME)
+
+    assert await svc.grant_role_to_user(1, 9) is True

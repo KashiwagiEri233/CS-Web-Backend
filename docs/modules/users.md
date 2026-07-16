@@ -17,12 +17,13 @@
 | GET | `/{user_id}` | `user:read` | 详情 |
 | POST | `/` | `user:create` | 创建 + 审计 |
 | PUT | `/{user_id}` | `user:update` | 更新；改密同事务撤 refresh + 审计 |
-| PUT | `/me` | 活跃用户 | 自助（不可改 is_active） |
+| PUT | `/me` | 活跃用户 | 自助（不可改 is_active；改密需 `old_password`） |
 | DELETE | `/{user_id}` | `user:delete` | 软删 + 撤 refresh + 审计（禁自删） |
 
 ## 安全
 
 - 改密：`password_changed_at` + 微秒精度 JWT `pwd_at`；同事务 `revoke_all_for_user`。
+- 自助改密必须校验旧密码（`old_password`），防 access token 泄露被直接接管；管理端 `PUT /{user_id}` 重置不需要。
 - 密码按 UTF-8 编码后最多 72 字节，避免 bcrypt 静默截断。
 - 软删：释放 username/email 唯一键（截断拼接后缀）。
 

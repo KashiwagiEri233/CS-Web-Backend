@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timezone import now_utc
@@ -51,6 +51,21 @@ class RefreshTokenRepository:
             .where(RefreshToken.id == token_id)
             .values(revoked_at=_now())
         )
+
+    async def family_has_active(self, family_id: str) -> bool:
+        """family 内是否仍有未撤销且未过期的 token。
+
+        用于轮换宽限判定：仅当 family 仍有活跃后继 token 时，已撤销 token 的
+        再次出现才按并发重试放行；整体撤销（revoke_all）后无活跃 token，按复用处置。
+        """
+        now = _now()
+        stmt = select(func.count(RefreshToken.id)).where(
+            RefreshToken.family_id == family_id,
+            RefreshToken.revoked_at.is_(None),
+            RefreshToken.expires_at > now,
+        )
+        result = await self.db.execute(stmt)
+        return (result.scalar() or 0) > 0
 
     async def revoke_family(self, family_id: str) -> int:
         """撤销整个 family（检测到复用时批量失效）。返回受影响行数。"""

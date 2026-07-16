@@ -55,6 +55,9 @@ class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     full_name: Optional[str] = None
     password: Optional[str] = None
+    # 自助改密（PUT /users/me）时必填：校验当前密码，防 access token 泄露被接管。
+    # 管理端重置（PUT /users/{id}）由 UserService.update_user 忽略本字段。
+    old_password: Optional[str] = None
     is_active: Optional[bool] = None
     model_config = ConfigDict(str_strip_whitespace=True)
 

@@ -26,36 +26,81 @@ router = APIRouter()
 
 
 async def _do_login(
-    auth_service: AuthService, username: str, password: str
+    auth_service: AuthService,
+    audit: AuditService,
+    username: str,
+    password: str,
+    client_meta: dict,
 ) -> TokenPair:
-    """登录公共逻辑：验证凭据 → 检查激活 → 签发 access + refresh 双 token。"""
+    """登录公共逻辑：验证凭据 → 检查激活 → 签发 access + refresh 双 token。
+
+    成功与失败都写审计（best-effort 独立会话，故障不阻断登录）；
+    暴力破解溯源依赖登录失败事件。
+    """
     user = await auth_service.authenticate(username, password)
 
     if not user:
+        await audit.record(
+            action="auth.login_failed",
+            resource_type="auth",
+            detail={"username": username},
+            **client_meta,
+        )
         raise InvalidCredentialsException()
 
     if not user.is_active:
+        await audit.record(
+            action="auth.login_failed",
+            resource_type="auth",
+            detail={"username": username, "reason": "user not active"},
+            **client_meta,
+        )
         raise UserNotActiveException(user_id=user.id)
 
-    return await auth_service.issue_token_pair(user)
+    pair = await auth_service.issue_token_pair(user)
+    await audit.record(
+        action="auth.login",
+        resource_type="auth",
+        resource_id=str(user.id),
+        actor_id=user.id,
+        actor_username=user.username,
+        **client_meta,
+    )
+    return pair
 
 
 @router.post("/login", response_model=TokenPair)
 async def login(
+    request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     auth_service: AuthService = Depends(get_auth_service),
+    audit: AuditService = Depends(get_audit_service),
 ) -> Any:
     """用户登录，返回 access + refresh 双 token。"""
-    return await _do_login(auth_service, form_data.username, form_data.password)
+    return await _do_login(
+        auth_service,
+        audit,
+        form_data.username,
+        form_data.password,
+        get_client_meta(request),
+    )
 
 
 @router.post("/login-json", response_model=TokenPair)
 async def login_json(
+    request: Request,
     login_data: LoginRequest,
     auth_service: AuthService = Depends(get_auth_service),
+    audit: AuditService = Depends(get_audit_service),
 ) -> Any:
     """用户登录（JSON 格式），返回 access + refresh 双 token。"""
-    return await _do_login(auth_service, login_data.username, login_data.password)
+    return await _do_login(
+        auth_service,
+        audit,
+        login_data.username,
+        login_data.password,
+        get_client_meta(request),
+    )
 
 
 @router.post("/refresh", response_model=TokenPair)

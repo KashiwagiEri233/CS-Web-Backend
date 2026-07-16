@@ -124,7 +124,7 @@ def create_access_token(
 
 
 def verify_token(token: str) -> Optional[dict]:
-    """验证 access token 的签名、签发方、受众和类型。
+    """验证 access token 的签名、签发方、受众和类型，并强制要求 exp 声明。
 
     ``JWT_ACCEPT_LEGACY_TOKENS`` 仅用于短期迁移：只接受完全不含新增声明的旧 token，
     不会把 issuer/audience 错误的新 token 降级成 legacy 放行。
@@ -138,6 +138,8 @@ def verify_token(token: str) -> Optional[dict]:
                 algorithms=algorithms,
                 issuer=settings.JWT_ISSUER,
                 audience=settings.JWT_AUDIENCE,
+                # 强制 exp：PyJWT 默认只在 exp 存在时才校验过期，缺失则永不过期。
+                options={"require": ["exp"]},
             )
             if payload.get("token_type") != "access":
                 continue
@@ -152,7 +154,11 @@ def verify_token(token: str) -> Optional[dict]:
                     token,
                     key,
                     algorithms=algorithms,
-                    options={"verify_iss": False, "verify_aud": False},
+                    options={
+                        "verify_iss": False,
+                        "verify_aud": False,
+                        "require": ["exp"],
+                    },
                 )
             except InvalidTokenError:
                 continue
