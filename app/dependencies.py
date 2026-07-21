@@ -7,7 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.exceptions import (
     AuthenticationException,
-    PermissionDeniedException,
     UserNotActiveException,
 )
 from app.core.loguru_logger import set_logging_context
@@ -78,11 +77,4 @@ async def get_current_active_user(
     """获取当前活跃用户"""
     if not current_user.is_active:
         raise UserNotActiveException(user_id=current_user.id)
-    return current_user
-
-
-async def get_current_superuser(current_user: User = Depends(get_current_user)) -> User:
-    """获取当前超级用户"""
-    if not current_user.is_superuser:
-        raise PermissionDeniedException(required_permissions=["superuser"])
     return current_user

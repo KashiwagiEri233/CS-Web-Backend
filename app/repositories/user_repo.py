@@ -8,7 +8,7 @@ from app.repositories.base import BaseRepository
 
 
 class UserRepository(BaseRepository[User]):
-    """用户仓储。通用 CRUD（get_by_id/get_all/count/create/update/delete）继承自 BaseRepository，
+    """用户仓储。通用 CRUD（get_by_id/create/update）继承自 BaseRepository，
     此处仅保留用户特有查询。"""
 
     model = User

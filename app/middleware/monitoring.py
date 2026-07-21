@@ -114,22 +114,26 @@ class MetricsMiddleware(BaseHTTPMiddleware):
         request.app.state.metrics_middleware = self
         start_time = time.time()
         method = request.method
-        path = request.url.path
         lock = self._get_lock()
 
         async with lock:
             self._total_requests += 1
             self._by_method[method] += 1
-            if len(self._by_path) < self._MAX_PATH_ENTRIES or path in self._by_path:
-                self._by_path[path] += 1
 
         try:
             response = await call_next(request)
             process_time = time.time() - start_time
 
+            # 用路由模板（/users/{user_id}）而非原始 path 做维度：含参路径
+            # （/users/123）会无限膨胀，撑爆上限后静默丢统计。
+            route = request.scope.get("route")
+            path = getattr(route, "path", request.url.path)
+
             async with lock:
                 self._total_response_time += process_time
                 self._by_status[str(response.status_code)] += 1
+                if len(self._by_path) < self._MAX_PATH_ENTRIES or path in self._by_path:
+                    self._by_path[path] += 1
                 if response.status_code >= 500:
                     self._total_errors += 1
 

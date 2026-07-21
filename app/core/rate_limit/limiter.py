@@ -84,3 +84,18 @@ def build_limiter() -> DegradableRateLimiter:
         fallback=settings.RATE_LIMIT_FALLBACK,
         retry_interval=settings.RATE_LIMIT_REDIS_RETRY_INTERVAL,
     )
+
+
+_limiter: Optional[DegradableRateLimiter] = None
+
+
+def get_limiter() -> DegradableRateLimiter:
+    """全局限流器单例（中间件之外的调用方使用，如账号级登录防爆破）。
+
+    中间件各自持有独立实例（隔离不同限流域的内存后端）；
+    业务层需要限流时统一走本单例，避免每次新建内存后端导致计数失效。
+    """
+    global _limiter
+    if _limiter is None:
+        _limiter = build_limiter()
+    return _limiter

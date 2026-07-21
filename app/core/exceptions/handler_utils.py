@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Dict, Optional
 
 from fastapi import Request
@@ -12,6 +13,10 @@ from app.core.request_context import get_client_meta
 from app.database import get_session
 
 logger = get_logger("exception_handler")
+
+# 异常落库的硬超时（秒）：5xx 常源于 DB 自身故障，此时再开 session 写日志会
+# 经历完整池超时（默认 30s）才返回响应。用短超时兜底，失败仅记日志。
+_DB_RECORD_TIMEOUT_SECONDS = 5.0
 
 
 def build_request_context_dict(request: Request) -> dict:
@@ -38,15 +43,16 @@ async def record_exception_to_db(
     兜底 500 处理器不应调用此函数。
     """
     try:
-        async with get_session() as db:
-            from app.services.exception_service import ExceptionService
+        async with asyncio.timeout(_DB_RECORD_TIMEOUT_SECONDS):
+            async with get_session() as db:
+                from app.services.exception_service import ExceptionService
 
-            exception_service = ExceptionService(db)
-            await record_fn(
-                exception_service,
-                request_context=build_request_context_dict(request),
-                *args,
-            )
+                exception_service = ExceptionService(db)
+                await record_fn(
+                    exception_service,
+                    request_context=build_request_context_dict(request),
+                    *args,
+                )
     except Exception as db_error:
         logger.error(
             f"记录{log_label}到数据库失败: {type(db_error).__name__}: {str(db_error)}",

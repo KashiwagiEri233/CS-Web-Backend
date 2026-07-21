@@ -8,7 +8,7 @@
 
 from __future__ import annotations
 
-from typing import Tuple
+from typing import Optional, Tuple
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +16,7 @@ from app.core.exceptions import (
     ConflictException,
     InvalidCredentialsException,
     NotFoundException,
+    PermissionDeniedException,
     ValidationException,
 )
 from app.core.security import async_get_password_hash, async_verify_password
@@ -51,10 +52,19 @@ class UserService:
         return user
 
     async def update_user(
-        self, user_id: int, update_data: dict, commit: bool = True
+        self,
+        user_id: int,
+        update_data: dict,
+        commit: bool = True,
+        actor: Optional[User] = None,
     ) -> User:
-        """更新指定用户字段（含改密时同事务撤 refresh）。"""
+        """更新指定用户字段（含改密时同事务撤 refresh）。
+
+        提权防护：目标为超级用户时要求 actor 也是超级用户（与角色分配同标准，
+        防止持有 user:update 权限的角色停用/改密超管接管系统）。
+        """
         user = await self.get_user(user_id)
+        self._check_superuser_manipulation(user, actor)
         email_conflicts = await self._email_conflicts(user_id, update_data)
         password_changed = await self._apply_update(user, update_data, email_conflicts)
         try:
@@ -91,19 +101,19 @@ class UserService:
         await self.db.refresh(user)
         return user
 
-    async def delete_user(
-        self, user_id: int, current_user_id: int, commit: bool = True
-    ) -> None:
+    async def delete_user(self, user_id: int, actor: User, commit: bool = True) -> None:
         """软删除用户。禁止自删；不存在抛 NotFoundException。
 
         同事务撤销全部 refresh，使会话立即失效。
+        提权防护：目标为超级用户时要求 actor 也是超级用户。
         """
-        if user_id == current_user_id:
+        if user_id == actor.id:
             raise ConflictException(
                 message="不能删除自己",
                 details={"user_id": user_id},
             )
         user = await self.get_user(user_id)
+        self._check_superuser_manipulation(user, actor)
         user.deleted_at = now_utc()
         user.is_active = False
         # 释放 username/email 唯一约束，便于同名重新注册。
@@ -119,6 +129,18 @@ class UserService:
             await self.db.commit()
 
     # ------------------------------------------------------------------ 内部
+
+    @staticmethod
+    def _check_superuser_manipulation(user: User, actor: Optional[User]) -> None:
+        """阻止非超级用户操纵超级用户账号（改密/停用/软删等效于接管系统）。
+
+        与 rbac_assignments._check_privilege_escalation 同一防护标准；
+        actor=None 视为可信内部调用（脚本/种子初始化），放行。
+        """
+        if actor is None or actor.is_superuser:
+            return
+        if user.is_superuser:
+            raise PermissionDeniedException(required_permissions=["superuser"])
 
     @staticmethod
     async def _verify_old_password(user: User, update_data: dict) -> None:

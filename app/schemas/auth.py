@@ -96,11 +96,6 @@ class User(UserBase):
 UserResponse = User
 
 
-class Token(BaseModel):
-    access_token: str
-    token_type: str
-
-
 class TokenPair(BaseModel):
     """登录/刷新返回：access + refresh 双 token。
 
@@ -117,11 +112,6 @@ class RefreshRequest(BaseModel):
     """用 refresh token 换新 access token 的请求体。"""
 
     refresh_token: str
-
-
-class TokenData(BaseModel):
-    username: Optional[str] = None
-    user_id: Optional[int] = None
 
 
 class LoginRequest(BaseModel):

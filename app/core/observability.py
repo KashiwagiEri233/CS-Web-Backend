@@ -200,8 +200,8 @@ def shutdown_telemetry() -> None:
 # 关闭任务：OTel providers 释放
 # ---------------------------------------------------------------------------
 # 原在 main.py lifespan 关闭段直接调用 shutdown_telemetry()，现收敛到本模块并以
-# @register_shutdown 自注册。priority=10 先于 Redis（priority=20）关闭——OTel 先 flush，
-# 避免后续关闭动作的 span 丢失。OTel 关闭是同步调用，包一层 async 适配注册表签名。
+# @register_shutdown 自注册。关闭任务按 priority **降序**执行，priority=10 使 OTel
+# **最后**关闭——Redis(20)/DB(15) 等先行关闭阶段的 span 仍能被 flush，避免丢失。
 
 from app.core.lifecycle import register_shutdown  # noqa: E402
 

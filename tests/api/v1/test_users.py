@@ -37,13 +37,13 @@ class _FakeUserService:
         users = [_fake_user(i) for i in range(skip, min(skip + limit, _TOTAL))]
         return users, _TOTAL
 
-    async def update_user(self, user_id, update_data):
+    async def update_user(self, user_id, update_data, commit=True, actor=None):
         return _fake_user(user_id)
 
     async def update_profile(self, user, update_data):
         return user
 
-    async def delete_user(self, user_id, current_user_id):
+    async def delete_user(self, user_id, actor, commit=True):
         return None
 
     async def get_user(self, user_id):
@@ -127,7 +127,7 @@ def test_update_user_password_calls_service(monkeypatch):
     called = {"data": None}
 
     class _Capturing(_FakeUserService):
-        async def update_user(self, user_id, update_data, commit=True):
+        async def update_user(self, user_id, update_data, commit=True, actor=None):
             called["data"] = (user_id, update_data)
             called["commit"] = commit
             return _fake_user(user_id)
@@ -161,7 +161,7 @@ def test_update_user_without_password(monkeypatch):
     called = {"data": None}
 
     class _Capturing(_FakeUserService):
-        async def update_user(self, user_id, update_data, commit=True):
+        async def update_user(self, user_id, update_data, commit=True, actor=None):
             called["data"] = update_data
             called["commit"] = commit
             return _fake_user(user_id)

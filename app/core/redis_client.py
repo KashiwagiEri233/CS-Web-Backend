@@ -82,14 +82,36 @@ async def close_redis_client() -> None:
 
 
 def _mask_url(url: str) -> str:
-    """隐去 URL 中的密码用于日志。"""
-    if "@" not in url:
-        return url
-    head, tail = url.rsplit("@", 1)
-    if ":" in head:
-        scheme_user = head.rsplit(":", 1)[0]
-        return f"{scheme_user}:***@{tail}"
-    return f"***@{tail}"
+    """隐去 URL 中的密码用于日志。
+
+    覆盖两种漏掩码情形：
+    - query string 携带密码（redis://host/0?password=xxx）→ 剔除 password 参数；
+    - 仅用户名无密码（redis://user@host）→ 原样保留，不误判为含密码。
+    """
+    from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return "***"
+    # 重建 netloc：有密码则替换为 ***，仅用户名则保留
+    netloc = parts.hostname or ""
+    if parts.port is not None:
+        netloc = f"{netloc}:{parts.port}"
+    if parts.username is not None:
+        userinfo = parts.username
+        if parts.password is not None:
+            userinfo = f"{userinfo}:***"
+        netloc = f"{userinfo}@{netloc}"
+    # 剔除 query 中的敏感参数（如 password=...）
+    query = urlencode(
+        [
+            (k, v)
+            for k, v in parse_qsl(parts.query, keep_blank_values=True)
+            if k.lower() not in {"password", "passwd", "secret"}
+        ]
+    )
+    return urlunsplit((parts.scheme, netloc, parts.path, query, parts.fragment))
 
 
 # ---------------------------------------------------------------------------
@@ -101,12 +123,14 @@ def _mask_url(url: str) -> str:
 from app.core.lifecycle import register_shutdown, register_startup  # noqa: E402
 
 
-@register_startup("redis_probe", priority=30, critical=False)
+@register_startup(
+    "redis_probe", priority=30, critical=settings.REQUIRE_REDIS_FOR_SECURITY
+)
 async def startup_redis_probe() -> None:
-    """启动任务：探测 Redis（可选）。未配置或不可用都不阻断启动——限流会自动降级。
+    """启动任务：探测 Redis（可选）。未配置或不可用默认不阻断启动——限流会自动降级。
 
-    critical=False：探测纯粹是「记一条启动日志方便运维判断后端」，任何情况都
-    不应阻止应用起来。
+    critical 由 REQUIRE_REDIS_FOR_SECURITY 决定：该开关语义是「多实例撤销状态必须
+    一致」，Redis 不可用时报错拒绝启动，防止安全开关 fail-open 成内存降级。
     """
     if not settings.REDIS_URL:
         logger.info("限流后端: 内存模式（未配置 REDIS_URL）")
@@ -114,6 +138,11 @@ async def startup_redis_probe() -> None:
 
     if await ping_redis():
         logger.info("限流后端: Redis（已连通）", fallback=settings.RATE_LIMIT_FALLBACK)
+    elif settings.REQUIRE_REDIS_FOR_SECURITY:
+        raise RuntimeError(
+            "REQUIRE_REDIS_FOR_SECURITY=True 但 Redis 不可用（连接失败或客户端创建失败），"
+            "拒绝启动：多实例 access token 撤销状态无法保持一致"
+        )
     else:
         logger.warning(
             "已配置 REDIS_URL 但当前不可用，启动后将按 fallback 策略降级运行",

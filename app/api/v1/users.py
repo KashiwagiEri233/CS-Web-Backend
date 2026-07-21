@@ -58,24 +58,15 @@ async def create_user(
     user_data: UserCreate,
     request: Request,
     auth_service: AuthService = Depends(get_auth_service),
-    audit: AuditService = Depends(get_audit_service),
     current_user: User = Depends(require_permission("user", "create")),
 ) -> Any:
-    """创建用户（需要 user:create）。"""
-    created = await auth_service.create_user(
-        user_data, is_superuser=False, commit=False
+    """创建用户（需要 user:create）。创建 + 审计 + 提交走 service 原子入口。"""
+    return await auth_service.create_user_with_audit(
+        user_data,
+        actor=current_user,
+        client_meta=get_client_meta(request),
+        via="users.create",
     )
-    meta = get_client_meta(request)
-    await audit.record_atomic(
-        action="user.create",
-        resource_type="user",
-        resource_id=str(created.id),
-        actor_id=current_user.id,
-        actor_username=current_user.username,
-        detail={"username": created.username},
-        **meta,
-    )
-    return created
 
 
 @router.put("/me", response_model=UserResponse)
@@ -101,7 +92,10 @@ async def update_user(
 ) -> Any:
     """更新用户（改密与撤 refresh 同事务）。"""
     updated = await user_service.update_user(
-        user_id, user_data.model_dump(exclude_unset=True), commit=False
+        user_id,
+        user_data.model_dump(exclude_unset=True),
+        commit=False,
+        actor=current_user,
     )
     meta = get_client_meta(request)
     await audit.record_atomic(
@@ -125,7 +119,7 @@ async def delete_user(
     current_user: User = Depends(require_permission("user", "delete")),
 ) -> Any:
     """软删除用户（需要 user:delete）。"""
-    await user_service.delete_user(user_id, current_user.id, commit=False)
+    await user_service.delete_user(user_id, actor=current_user, commit=False)
     meta = get_client_meta(request)
     await audit.record_atomic(
         action="user.delete",

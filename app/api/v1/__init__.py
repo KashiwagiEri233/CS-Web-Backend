@@ -12,6 +12,6 @@ api_router.include_router(exceptions.router, prefix="/exceptions", tags=["异常
 api_router.include_router(audit.router, prefix="/audit", tags=["审计日志"])
 
 if settings.DEBUG:
-    from app.api.v1 import test_exceptions
+    from app.api.v1 import dev_exceptions
 
-    api_router.include_router(test_exceptions.router, prefix="/test", tags=["异常测试"])
+    api_router.include_router(dev_exceptions.router, prefix="/test", tags=["异常测试"])

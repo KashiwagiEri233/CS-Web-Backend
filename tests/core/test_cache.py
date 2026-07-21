@@ -6,7 +6,6 @@ from app.core.cache.backends import InMemoryCacheBackend, RedisCacheBackend
 from app.core.cache.cache import DegradableCache, cached
 import app.core.cache.cache as cache_module
 
-
 # --------------------------- 内存后端 ---------------------------
 
 
@@ -22,7 +21,8 @@ async def test_memory_get_set_delete():
 async def test_memory_ttl_expiry(monkeypatch):
     c = InMemoryCacheBackend()
     t = {"now": 1000.0}
-    monkeypatch.setattr(time, "time", lambda: t["now"])
+    # 内存缓存过期用单调时钟（防系统时钟回拨），测试同步 patch monotonic
+    monkeypatch.setattr(time, "monotonic", lambda: t["now"])
     await c.set("k", "v", ttl=10)
     assert await c.get("k") == "v"
     t["now"] += 11

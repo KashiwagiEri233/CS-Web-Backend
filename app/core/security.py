@@ -104,9 +104,9 @@ def create_access_token(
     to_encode = data.copy()
     issued_at = now_utc()
     if expires_delta:
-        expire = now_utc() + expires_delta
+        expire = issued_at + expires_delta
     else:
-        expire = now_utc() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = issued_at + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
 
     token_jti = jti or generate_token_jti()
     to_encode.update(

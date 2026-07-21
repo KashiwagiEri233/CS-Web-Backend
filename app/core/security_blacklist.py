@@ -22,16 +22,23 @@ logger = get_logger("token_blacklist")
 
 _REDIS_KEY_PREFIX = "jwt:blacklist:"
 
+# 内存黑名单容量上限：登出/改密产生的 jti 大多不会再被查询（惰性清理鞭长莫及），
+# 无上限会随时间无界增长。达到上限时先清过期项，仍超则淘汰最旧条目。
+_MEMORY_BLACKLIST_MAX_ENTRIES = 100_000
+
 
 class _MemoryBlacklist:
-    """进程内 TTL 黑名单。lazy 清理过期项，避免后台线程。"""
+    """进程内 TTL 黑名单（有界）。lazy 清理过期项 + 容量上限兜底，避免后台线程。"""
 
-    def __init__(self) -> None:
+    def __init__(self, max_entries: int = _MEMORY_BLACKLIST_MAX_ENTRIES) -> None:
         self._store: dict[str, float] = {}  # jti -> expire_monotonic
+        self._max_entries = max_entries
 
     def add(self, jti: str, ttl_seconds: int) -> None:
         if ttl_seconds <= 0:
             return
+        if len(self._store) >= self._max_entries and jti not in self._store:
+            self._evict_to_make_room()
         self._store[jti] = time.monotonic() + ttl_seconds
 
     def contains(self, jti: str) -> bool:
@@ -43,6 +50,18 @@ class _MemoryBlacklist:
             self._store.pop(jti, None)
             return False
         return True
+
+    def _evict_to_make_room(self) -> None:
+        """先清全部过期项；仍满则按插入序淘汰最旧 10%（dict 保持插入序）。"""
+        now = time.monotonic()
+        expired = [k for k, exp in self._store.items() if now >= exp]
+        for k in expired:
+            del self._store[k]
+        if len(self._store) < self._max_entries:
+            return
+        evict_count = max(1, self._max_entries // 10)
+        for k in list(self._store)[:evict_count]:
+            del self._store[k]
 
 
 class TokenBlacklist:
@@ -67,6 +86,10 @@ class TokenBlacklist:
 
     async def add(self, jti: str, ttl_seconds: int) -> None:
         """把 jti 加入黑名单。失败绝不抛出（黑名单是安全增强，不是强依赖）。"""
+        # ttl<=0 的边界（exp 已过/竞态算出 0）直接跳过：对 Redis 发 setex(key, 0)
+        # 会抛 ResponseError，把健康后端误标为故障进入冷却。
+        if ttl_seconds <= 0:
+            return
         if self._redis is None:
             self._memory.add(jti, ttl_seconds)
             return

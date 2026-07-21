@@ -10,7 +10,6 @@ from .adapter import LoguruAdapter, basicConfig, get_logger, getLogger
 from .config import LOG_PROFILES, configure_logging, resolve_log_config
 from .context import (
     LoggingContextManager,
-    bind_context,
     clear_logging_context,
     generate_request_id,
     get_logging_context,
@@ -31,7 +30,6 @@ __all__ = [
     "clear_logging_context",
     "get_logging_context",
     "reset_logging_context",
-    "bind_context",
     "generate_request_id",
     "resolve_log_config",
     "configure_logging",

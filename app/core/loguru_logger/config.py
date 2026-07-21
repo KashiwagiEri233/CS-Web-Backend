@@ -9,7 +9,7 @@ from typing import Any, Dict, Optional, Union
 
 from loguru import logger as loguru_logger
 
-from .adapter import LoguruAdapter
+from .adapter import LoguruAdapter, _adapter_cache
 
 # 日志 profile 预置配置
 # dev: 开发级（彩色控制台 + DEBUG + 完整回溯栈，无文件）
@@ -163,6 +163,11 @@ def configure_logging(
         level = getattr(logging, level.upper(), logging.INFO)
 
     loguru_level = LoguruAdapter("", level)._map_logging_level_to_loguru(level)
+
+    # 同步已缓存适配器的级别，保证 isEnabledFor 与 sink 实际级别一致
+    # （级别过滤本身由 sink 完成，这里只让查询接口反映真实配置）。
+    for adapter in _adapter_cache.values():
+        adapter.setLevel(level)
 
     # format 兜底：即使 serialize=True，loguru.add() 仍要求 format 为 str/callable
     if format_string is None:

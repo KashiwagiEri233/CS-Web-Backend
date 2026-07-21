@@ -52,12 +52,15 @@ class ExceptionLog(Base):
     method: Mapped[Optional[str]] = mapped_column(
         String(10), nullable=True, comment="HTTP方法"
     )
+    # endpoint/request_id/severity/priority/related_incident_id 不加索引：
+    # 本表写密集，列表查询只按 type/code/status/user/resolved/created 过滤，
+    # 这些列几乎没有查询场景，索引只会拖慢每次异常插入。
     endpoint: Mapped[Optional[str]] = mapped_column(
-        String(255), nullable=True, index=True, comment="请求端点"
+        String(255), nullable=True, comment="请求端点"
     )
 
     request_id: Mapped[Optional[str]] = mapped_column(
-        String(64), nullable=True, index=True, comment="请求ID"
+        String(64), nullable=True, comment="请求ID"
     )
     user_id: Mapped[Optional[str]] = mapped_column(
         String(64), nullable=True, index=True, comment="用户ID"
@@ -101,17 +104,17 @@ class ExceptionLog(Base):
     )
 
     severity: Mapped[str] = mapped_column(
-        String(20), default="medium", nullable=False, index=True, comment="严重程度"
+        String(20), default="medium", nullable=False, comment="严重程度"
     )
     priority: Mapped[str] = mapped_column(
-        String(20), default="normal", nullable=False, index=True, comment="优先级"
+        String(20), default="normal", nullable=False, comment="优先级"
     )
 
     parent_exception_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("exception_logs.id"), nullable=True, comment="父异常ID"
     )
     related_incident_id: Mapped[Optional[str]] = mapped_column(
-        String(64), nullable=True, index=True, comment="关联事件ID"
+        String(64), nullable=True, comment="关联事件ID"
     )
 
     response_time_ms: Mapped[Optional[float]] = mapped_column(
@@ -119,12 +122,11 @@ class ExceptionLog(Base):
     )
 
     __table_args__ = (
+        # 只保留与列表查询过滤 + 排序模式匹配的复合索引
         Index("idx_exception_type_created", "exception_type", "created_at"),
         Index("idx_error_code_created", "error_code", "created_at"),
         Index("idx_status_code_created", "status_code", "created_at"),
         Index("idx_user_id_created", "user_id", "created_at"),
-        Index("idx_traceback_id_user", "traceback_id", "user_id"),
-        Index("idx_created_at_severity", "created_at", "severity"),
         Index("idx_is_resolved_created", "is_resolved", "created_at"),
     )
 

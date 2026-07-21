@@ -1,5 +1,7 @@
 from typing import List, Optional, Set
 
+import asyncio
+
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -186,8 +188,9 @@ class RBACService(RBACAssignmentMixin):
         if ok:
             if commit:
                 await self.db.commit()
-            for uid in user_ids:
-                await _invalidate_user_perm_cache(uid)
+            await asyncio.gather(
+                *(_invalidate_user_perm_cache(uid) for uid in user_ids)
+            )
         return ok
 
     async def get_all_permissions(
@@ -250,7 +253,9 @@ class RBACService(RBACAssignmentMixin):
         await _invalidate_user_perm_cache(user_id)
 
     async def _invalidate_role_users_perm_cache(self, role_id: int) -> None:
-        """失效指定角色下所有用户的权限缓存（role↔permission 变更时调用）。"""
+        """失效指定角色下所有用户的权限缓存（role↔permission 变更时调用）。
+
+        并发失效：大角色下逐个串行 await 会堆积缓存 RTT。
+        """
         user_ids = await self.rbac_repo.get_user_ids_by_role(role_id)
-        for uid in user_ids:
-            await _invalidate_user_perm_cache(uid)
+        await asyncio.gather(*(_invalidate_user_perm_cache(uid) for uid in user_ids))

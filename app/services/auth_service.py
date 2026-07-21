@@ -7,9 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.exceptions import (
     InvalidCredentialsException,
+    RateLimitException,
     UserAlreadyExistsException,
     UserNotActiveException,
 )
+from app.core.rate_limit import get_limiter
 from app.core.security import (
     async_get_password_hash,
     async_verify_password,
@@ -24,7 +26,7 @@ from app.models.user import User
 from app.repositories.refresh_token_repo import RefreshTokenRepository
 from app.repositories.user_repo import UserRepository
 from app.schemas.auth import TokenPair
-
+from app.services.audit_service import AuditService
 
 # 与 bcrypt 的正常工作因子一致；即使用户名不存在也执行一次验证，降低用户枚举的时序差异。
 _DUMMY_PASSWORD_HASH = "$2b$12$4wW.7xG3E9HU7z3dlkl37u4CVbHfGfgjXVLYP2A0WcBAe3ZQojbPS"
@@ -32,10 +34,13 @@ _MICROSECONDS_PER_SECOND = 1_000_000
 
 
 class AuthService:
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, audit: Optional[AuditService] = None):
         self.db = db
         self.user_repo = UserRepository(db)
         self.refresh_repo = RefreshTokenRepository(db)
+        # 审计服务构造函数注入（service 间调用只允许走注入依赖）。
+        # 默认无 db 的 AuditService：record() 走独立会话，互不污染。
+        self.audit = audit if audit is not None else AuditService()
 
     # ------------------------------------------------------------------ 认证
 
@@ -48,6 +53,63 @@ class AuthService:
         if not await async_verify_password(password, user.hashed_password):
             return None
         return user
+
+    async def login(self, username: str, password: str, client_meta: dict) -> TokenPair:
+        """登录：账号级防爆破 → 验证凭据 → 检查激活 → 签发双 token。
+
+        成功与失败都写审计（best-effort 独立会话，故障不阻断登录）；
+        暴力破解溯源依赖登录失败事件。
+        """
+        # 账号级防爆破：仅按 IP 限流挡不住分布式撞库（多 IP 打同一账号）。
+        # 成功登录也计入预算——真人登录频率远低于阈值，撞库脚本会迅速触顶。
+        allowed = await get_limiter().is_allowed(
+            f"ratelimit:auth_account:{username}",
+            settings.AUTH_ACCOUNT_RATE_LIMIT_CALLS,
+            settings.AUTH_ACCOUNT_RATE_LIMIT_PERIOD,
+        )
+        if not allowed:
+            await self.audit.record(
+                action="auth.login_rate_limited",
+                resource_type="auth",
+                detail={"username": username},
+                **client_meta,
+            )
+            raise RateLimitException(
+                message="登录尝试过于频繁，请稍后再试",
+                limit=settings.AUTH_ACCOUNT_RATE_LIMIT_CALLS,
+                window=settings.AUTH_ACCOUNT_RATE_LIMIT_PERIOD,
+            )
+
+        user = await self.authenticate(username, password)
+
+        if not user:
+            await self.audit.record(
+                action="auth.login_failed",
+                resource_type="auth",
+                detail={"username": username},
+                **client_meta,
+            )
+            raise InvalidCredentialsException()
+
+        if not user.is_active:
+            await self.audit.record(
+                action="auth.login_failed",
+                resource_type="auth",
+                detail={"username": username, "reason": "user not active"},
+                **client_meta,
+            )
+            raise UserNotActiveException(user_id=user.id)
+
+        pair = await self.issue_token_pair(user)
+        await self.audit.record(
+            action="auth.login",
+            resource_type="auth",
+            resource_id=str(user.id),
+            actor_id=user.id,
+            actor_username=user.username,
+            **client_meta,
+        )
+        return pair
 
     async def get_current_user(self, token: str) -> Optional[User]:
         """通过 access token 获取当前用户。调用方需自行处理黑名单检查。
@@ -125,6 +187,31 @@ class AuthService:
             await self.db.rollback()
             raise UserAlreadyExistsException(username=user_data.username) from exc
         return user
+
+    async def create_user_with_audit(
+        self,
+        user_data,
+        *,
+        actor: User,
+        client_meta: dict,
+        via: str,
+    ) -> User:
+        """创建用户 + 审计，同一事务原子提交（路由层唯一入口）。
+
+        把「业务变更 + 审计 + commit」收敛到 service 层：路由只调这一个方法，
+        不再各自组合 commit=False + record_atomic（漏配即静默丢数据）。
+        """
+        created = await self.create_user(user_data, is_superuser=False, commit=False)
+        await self.audit.record_atomic(
+            action="user.create",
+            resource_type="user",
+            resource_id=str(created.id),
+            actor_id=actor.id,
+            actor_username=actor.username,
+            detail={"username": created.username, "via": via},
+            **client_meta,
+        )
+        return created
 
     # ------------------------------------------------------------------ token 套件
 

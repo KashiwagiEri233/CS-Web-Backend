@@ -24,7 +24,11 @@ ENV_FILES = {
 
 def main():
     parser = argparse.ArgumentParser(description="FastAPI RBAC Framework")
-    parser.add_argument("--host", default="0.0.0.0", help="绑定地址 (默认: 0.0.0.0)")
+    parser.add_argument(
+        "--host",
+        default=None,
+        help="绑定地址（默认：开发 127.0.0.1，--prod 时 0.0.0.0）",
+    )
     parser.add_argument("--port", type=int, default=8000, help="端口号 (默认: 8000)")
     parser.add_argument(
         "--env",
@@ -53,6 +57,10 @@ def main():
         parser.error("--env 3 必须同时指定 --prod，避免生产配置启用热重载")
     else:
         args.env = args.env or 1
+
+    # 开发模式默认只绑回环（避免把热重载服务暴露到局域网）；生产默认全网卡
+    if args.host is None:
+        args.host = "0.0.0.0" if args.prod else "127.0.0.1"
 
     # 根据环境参数设置 ENV_FILE，config.py 的 Settings 会读取该变量
     if args.env is not None:

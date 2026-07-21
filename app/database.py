@@ -87,11 +87,24 @@ async def ensure_database_exists() -> bool:
 
 # 获取数据库会话的依赖注入函数（FastAPI 路由用）
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    # async with 退出时已含 close()，无需 finally 再关一次
     async with AsyncSessionLocal() as session:
+        failed = False
         try:
             yield session
+        except BaseException:
+            failed = True
+            raise
         finally:
-            await session.close()
+            # 安全网：get_db 不自动 commit。请求正常结束但会话仍有未提交的写
+            # （flush 后未 commit，session.new/dirty 在 commit 前不会清空），说明
+            # 写路由忘了显式 commit——数据会被静默回滚且接口仍返回 200。
+            # 开发期用 warning 立刻暴露这类"假成功"。
+            if not failed and (session.new or session.dirty or session.deleted):
+                _db_logger.warning(
+                    "请求结束但会话存在未提交的写操作，已回滚："
+                    "写路由必须显式 commit（或经 audit.record_atomic 原子提交）"
+                )
 
 
 # 在 FastAPI 依赖体系之外安全使用会话（worker / 脚本 / 后台任务 / 队列消费者）。
@@ -127,7 +140,7 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 
 from sqlalchemy.engine import make_url  # noqa: E402
 
-from app.core.lifecycle import register_startup  # noqa: E402
+from app.core.lifecycle import register_shutdown, register_startup  # noqa: E402
 from app.core.loguru_logger import get_logger  # noqa: E402
 
 _db_logger = get_logger("database")
@@ -270,8 +283,19 @@ async def _init_schema_under_lock() -> None:
 
         await _init_schema()
     finally:
-        await lock_conn.execute("SELECT pg_advisory_unlock($1)", _STARTUP_LOCK_KEY)
-        await lock_conn.close()
+        # session 级 advisory lock 在连接关闭时自动释放；显式 unlock 只是提前放行其他
+        # worker。清理动作的异常绝不允许掩盖 _init_schema() 的原始错误（如迁移版本
+        # 不一致）——那是启动排障的关键信息。
+        try:
+            await lock_conn.execute("SELECT pg_advisory_unlock($1)", _STARTUP_LOCK_KEY)
+        except Exception as exc:  # noqa: BLE001 - 清理失败不影响主流程
+            _db_logger.warning(
+                "释放启动 advisory lock 失败（连接关闭时会自动释放）", error=str(exc)
+            )
+        try:
+            await lock_conn.close()
+        except Exception as exc:  # noqa: BLE001
+            _db_logger.warning("关闭启动锁连接失败", error=str(exc))
 
 
 @register_startup("database", priority=10, critical=True)
@@ -283,3 +307,15 @@ async def startup_database() -> None:
     """
     await _init_schema_under_lock()
     await _check_connection()
+
+
+@register_shutdown("database", priority=15)
+async def shutdown_database() -> None:
+    """关闭任务：释放 engine 连接池。
+
+    priority=15：降序执行下排在 token_gc(30)/exception_retention(25)/redis(20) 之后
+    （这些任务可能还要用 DB），telemetry(10) 之前（OTel 最后 flush，不用 DB）。
+    进程内多次 lifespan（测试场景）靠它避免池连接持续累积。
+    """
+    await engine.dispose()
+    _db_logger.info("数据库连接池已释放")

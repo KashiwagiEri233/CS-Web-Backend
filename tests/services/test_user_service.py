@@ -11,6 +11,7 @@ from app.core.exceptions import (
     ConflictException,
     InvalidCredentialsException,
     NotFoundException,
+    PermissionDeniedException,
     ValidationException,
 )
 from app.services.user_service import UserService
@@ -207,11 +208,15 @@ async def test_update_profile_rejects_wrong_old_password(monkeypatch):
 # ---- delete_user ----
 
 
+def _actor(user_id: int = 1, is_superuser: bool = False) -> MagicMock:
+    return MagicMock(id=user_id, is_superuser=is_superuser)
+
+
 async def test_delete_user_prevents_self_delete(monkeypatch):
     svc = _make_service(monkeypatch)
 
     with pytest.raises(ConflictException):
-        await svc.delete_user(5, current_user_id=5)
+        await svc.delete_user(5, actor=_actor(user_id=5))
 
 
 async def test_delete_user_raises_when_missing(monkeypatch):
@@ -219,19 +224,71 @@ async def test_delete_user_raises_when_missing(monkeypatch):
     svc.user_repo.get_by_id.return_value = None
 
     with pytest.raises(NotFoundException):
-        await svc.delete_user(9, current_user_id=1)
+        await svc.delete_user(9, actor=_actor())
 
 
 async def test_delete_user_succeeds(monkeypatch):
     svc = _make_service(monkeypatch)
     user = MagicMock(
-        id=9, deleted_at=None, username="victim", email="v@t.com", is_active=True
+        id=9,
+        deleted_at=None,
+        username="victim",
+        email="v@t.com",
+        is_active=True,
+        is_superuser=False,
     )
     svc.user_repo.get_by_id.return_value = user
     svc.user_repo.update.return_value = user
 
-    await svc.delete_user(9, current_user_id=1)
+    await svc.delete_user(9, actor=_actor())
     assert user.deleted_at is not None
     assert user.is_active is False
     svc.refresh_repo.revoke_all_for_user.assert_awaited_with(9)
     svc.db.commit.assert_awaited()
+
+
+# ---- 超级用户操纵防护 ----
+
+
+async def test_update_user_blocks_non_superuser_editing_superuser(monkeypatch):
+    """非超管 actor 更新超管账号 → 拒绝（防提权接管）。"""
+    svc = _make_service(monkeypatch)
+    target = MagicMock(id=3, deleted_at=None, is_superuser=True)
+    svc.user_repo.get_by_id.return_value = target
+
+    with pytest.raises(PermissionDeniedException):
+        await svc.update_user(3, {"is_active": False}, actor=_actor())
+
+    svc.user_repo.update.assert_not_called()
+
+
+async def test_update_user_allows_superuser_editing_superuser(monkeypatch):
+    """超管 actor 更新超管账号 → 放行。"""
+    svc = _make_service(monkeypatch)
+    target = MagicMock(
+        id=3,
+        deleted_at=None,
+        is_superuser=True,
+        email="a@t.com",
+        full_name=None,
+        hashed_password="h",
+        is_active=True,
+    )
+    svc.user_repo.get_by_id.return_value = target
+    svc.user_repo.get_by_email.return_value = None
+    svc.user_repo.update.return_value = target
+
+    await svc.update_user(3, {"full_name": "x"}, actor=_actor(is_superuser=True))
+    assert target.full_name == "x"
+
+
+async def test_delete_user_blocks_non_superuser_deleting_superuser(monkeypatch):
+    """非超管 actor 删除超管账号 → 拒绝。"""
+    svc = _make_service(monkeypatch)
+    target = MagicMock(id=9, deleted_at=None, is_superuser=True)
+    svc.user_repo.get_by_id.return_value = target
+
+    with pytest.raises(PermissionDeniedException):
+        await svc.delete_user(9, actor=_actor())
+
+    svc.user_repo.update.assert_not_called()

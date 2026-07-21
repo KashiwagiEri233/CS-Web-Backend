@@ -6,7 +6,6 @@ from app.core.validators import (
     validate_password_strength,
     validate_username,
     validate_email,
-    validate_sql_like_pattern,
 )
 
 
@@ -57,15 +56,4 @@ class TestValidateEmail:
 
     def test_too_long(self):
         ok, err = validate_email("a" * 250 + "@example.com")
-        assert ok is False and err
-
-
-class TestValidateSqlLike:
-    def test_valid_prefix_suffix(self):
-        assert validate_sql_like_pattern("%abc")[0] is True
-        assert validate_sql_like_pattern("abc%")[0] is True
-
-    @pytest.mark.parametrize("pat", ["a%b", "ab[c]", "a_b"])
-    def test_invalid(self, pat):
-        ok, err = validate_sql_like_pattern(pat)
         assert ok is False and err

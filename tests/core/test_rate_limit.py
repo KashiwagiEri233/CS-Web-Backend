@@ -24,7 +24,6 @@ from app.middleware.rate_limit import (
 )
 from app.core.exceptions import setup_exception_handlers, ExceptionHandlerMiddleware
 
-
 # ----------------------------- 后端 -----------------------------
 
 
@@ -45,7 +44,8 @@ async def test_inmemory_keys_are_isolated():
 async def test_inmemory_window_expiry(monkeypatch):
     backend = InMemoryBackend()
     t = {"now": 1000.0}
-    monkeypatch.setattr(time, "time", lambda: t["now"])
+    # 内存限流用单调时钟（防系统时钟回拨），测试同步 patch monotonic
+    monkeypatch.setattr(time, "monotonic", lambda: t["now"])
     assert await backend.is_allowed("ip", 2, 10) is True
     assert await backend.is_allowed("ip", 2, 10) is True
     assert await backend.is_allowed("ip", 2, 10) is False  # 满

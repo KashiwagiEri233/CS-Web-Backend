@@ -6,7 +6,7 @@
   也可作为参数注入（校验通过返回当前用户）。
 
 用法：
-    from app.middleware.rbac import require_permission, require_role, require_superuser
+    from app.middleware.rbac import require_permission
 
     @router.get("/x", dependencies=[Depends(require_permission("user", "read"))])
     async def x(): ...
@@ -24,7 +24,6 @@ from app.core.exceptions import PermissionDeniedException
 from app.database import get_db
 from app.dependencies import get_current_active_user
 from app.models.user import User
-from app.repositories.rbac_repo import RBACRepository
 from app.services.rbac_service import RBACService
 
 
@@ -48,18 +47,16 @@ class PermissionChecker:
         if current_user.is_superuser:
             return current_user
 
-        # 授权判定直接查库，避免多 worker 内存缓存或 Redis 失效失败造成撤权延迟。
-        # get_user_permissions 的缓存只保留给展示/查询接口使用。
+        # 授权判定走带 TTL 缓存的权限集：所有变更点（grant/revoke/update/delete）
+        # 都做了显式失效，撤权延迟已被主动失效覆盖；缓存故障时自动回退查库。
+        # 相比每请求直查库（user+roles+permissions 三条 SQL），这是高并发下
+        # 数据库负载的最大单一来源。
         rbac_service = RBACService(db)
-        checks = []
-        for permission in self.required_permissions:
-            resource, separator, action = permission.partition(":")
-            checks.append(
-                separator == ":"
-                and await rbac_service.check_permission(
-                    current_user.id, resource, action
-                )
-            )
+        permissions = await rbac_service.get_user_permissions(current_user.id)
+        checks = [
+            ":" in permission and permission in permissions
+            for permission in self.required_permissions
+        ]
 
         ok = all(checks) if self.require_all else any(checks)
 
@@ -70,53 +67,8 @@ class PermissionChecker:
         return current_user
 
 
-class RoleChecker:
-    """角色校验依赖：校验当前用户是否拥有指定角色。"""
-
-    def __init__(self, role_name: str):
-        self.role_name = role_name
-
-    async def __call__(
-        self,
-        current_user: User = Depends(get_current_active_user),
-        db: AsyncSession = Depends(get_db),
-    ) -> User:
-        if current_user.is_superuser:
-            return current_user
-
-        rbac_repo = RBACRepository(db)
-        user = await rbac_repo.get_user_with_roles(current_user.id)
-        roles = [role for role in user.roles if role.is_active] if user else []
-        if self.role_name not in {r.name for r in roles}:
-            raise PermissionDeniedException(
-                required_permissions=[f"role:{self.role_name}"]
-            )
-        return current_user
-
-
-class SuperuserChecker:
-    """超级用户校验依赖。"""
-
-    async def __call__(
-        self,
-        current_user: User = Depends(get_current_active_user),
-    ) -> User:
-        if not current_user.is_superuser:
-            raise PermissionDeniedException(required_permissions=["superuser"])
-        return current_user
-
-
 def require_permission(
     resource: str, action: str, require_all: bool = True
 ) -> PermissionChecker:
     """构造权限校验依赖：require_permission("user", "read") -> Depends 可用对象。"""
     return PermissionChecker(f"{resource}:{action}", require_all)
-
-
-def require_role(role_name: str) -> RoleChecker:
-    """构造角色校验依赖。"""
-    return RoleChecker(role_name)
-
-
-# 超级用户校验依赖单例：直接 Depends(require_superuser)
-require_superuser = SuperuserChecker()

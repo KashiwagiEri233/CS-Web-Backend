@@ -34,7 +34,7 @@ class InMemoryCacheBackend:
         if item is None:
             return None
         value, expire_at = item
-        if expire_at is not None and expire_at <= time.time():
+        if expire_at is not None and expire_at <= time.monotonic():
             self._store.pop(key, None)
             return None
         # 命中时移到末尾，近似 LRU（最近访问的更"热"）
@@ -42,7 +42,8 @@ class InMemoryCacheBackend:
         return value
 
     async def set(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
-        expire_at = time.time() + ttl if ttl else None
+        # ttl=None 不过期；ttl<=0 立即过期（注意不能用真值判断，否则 ttl=0 会变成永不过期）
+        expire_at = None if ttl is None else time.monotonic() + max(ttl, 0)
         if key in self._store:
             self._store.move_to_end(key)
         self._store[key] = (value, expire_at)
@@ -55,7 +56,7 @@ class InMemoryCacheBackend:
         """超容量时先清过期项，仍有余则淘汰最旧条目。"""
         if len(self._store) <= self._max_entries:
             return
-        now = time.time()
+        now = time.monotonic()
         # 第一轮：淘汰所有已过期项
         expired = [
             k for k, (_, exp) in self._store.items() if exp is not None and exp <= now
@@ -84,10 +85,13 @@ class RedisCacheBackend:
 
     async def set(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
         raw = json.dumps(value, ensure_ascii=False, default=str)
-        if ttl:
-            await self._client.set(key, raw, ex=ttl)
-        else:
+        if ttl is None:
             await self._client.set(key, raw)
+        elif ttl <= 0:
+            # 立即过期语义：等价于不缓存（setex 不接受 0/负数）
+            await self._client.delete(key)
+        else:
+            await self._client.set(key, raw, ex=ttl)
 
     async def delete(self, key: str) -> None:
         await self._client.delete(key)

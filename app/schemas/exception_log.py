@@ -8,7 +8,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ExceptionLogItem(BaseModel):
-    """单条异常日志（列表/详情共用精简字段）。"""
+    """单条异常日志（详情用完整字段）。
+
+    列表接口通过 ``response_model_exclude={"traceback", "context"}`` 剔除
+    traceback/context（含绝对路径、SQL 片段、请求数据），缩小暴露面。
+    """
 
     model_config = ConfigDict(from_attributes=True)
 

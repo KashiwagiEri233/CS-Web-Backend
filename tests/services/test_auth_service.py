@@ -8,7 +8,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.core.exceptions import InvalidCredentialsException, UserAlreadyExistsException
+from app.core.exceptions import (
+    InvalidCredentialsException,
+    RateLimitException,
+    UserAlreadyExistsException,
+    UserNotActiveException,
+)
 from app.core.security import hash_refresh_token
 from app.core.timezone import now_utc
 from app.services.auth_service import AuthService
@@ -208,3 +213,83 @@ def test_password_change_claim_keeps_microsecond_precision():
     claims = AuthService._access_token_claims(user)
 
     assert claims["pwd_at"] == 1784030400123456
+
+
+# ---- login（编排：防爆破 → 凭据 → 激活 → 签发 + 审计） ----
+
+
+def _make_login_service(monkeypatch, *, limiter_allowed: bool = True):
+    """构造可测 login 的 AuthService：限流/审计/签发全部 mock。"""
+    svc = _make_auth_service(monkeypatch)
+    svc.audit = AsyncMock()
+
+    limiter = AsyncMock()
+    limiter.is_allowed.return_value = limiter_allowed
+    monkeypatch.setattr("app.services.auth_service.get_limiter", lambda: limiter)
+
+    issue = AsyncMock(return_value="pair")
+    monkeypatch.setattr(AuthService, "issue_token_pair", issue)
+    return svc, limiter, issue
+
+
+def _active_user():
+    return MagicMock(id=1, username="admin", is_active=True)
+
+
+async def test_login_success_issues_pair_and_writes_audit(monkeypatch):
+    svc, _limiter, issue = _make_login_service(monkeypatch)
+    monkeypatch.setattr(
+        AuthService, "authenticate", AsyncMock(return_value=_active_user())
+    )
+
+    pair = await svc.login("admin", "x", {"ip_address": "127.0.0.1"})
+
+    assert pair == "pair"
+    issue.assert_awaited_once()
+    actions = [c.kwargs["action"] for c in svc.audit.record.await_args_list]
+    assert actions == ["auth.login"]
+
+
+async def test_login_bad_credentials_raises_and_audits(monkeypatch):
+    svc, _limiter, issue = _make_login_service(monkeypatch)
+    monkeypatch.setattr(AuthService, "authenticate", AsyncMock(return_value=None))
+
+    with pytest.raises(InvalidCredentialsException):
+        await svc.login("ghost", "bad", {})
+
+    issue.assert_not_called()
+    actions = [c.kwargs["action"] for c in svc.audit.record.await_args_list]
+    assert actions == ["auth.login_failed"]
+
+
+async def test_login_inactive_user_raises_and_audits(monkeypatch):
+    svc, _limiter, issue = _make_login_service(monkeypatch)
+    monkeypatch.setattr(
+        AuthService,
+        "authenticate",
+        AsyncMock(return_value=MagicMock(id=1, username="u", is_active=False)),
+    )
+
+    with pytest.raises(UserNotActiveException):
+        await svc.login("u", "x", {})
+
+    issue.assert_not_called()
+    last = svc.audit.record.await_args_list[-1].kwargs
+    assert last["action"] == "auth.login_failed"
+    assert last["detail"]["reason"] == "user not active"
+
+
+async def test_login_rate_limited_per_account(monkeypatch):
+    """账号级限流触发：不验证凭据、不签发，直接 429 并写审计。"""
+    svc, limiter, issue = _make_login_service(monkeypatch, limiter_allowed=False)
+    authenticate = AsyncMock()
+    monkeypatch.setattr(AuthService, "authenticate", authenticate)
+
+    with pytest.raises(RateLimitException):
+        await svc.login("victim", "x", {})
+
+    authenticate.assert_not_called()
+    issue.assert_not_called()
+    assert limiter.is_allowed.await_args.args[0] == "ratelimit:auth_account:victim"
+    actions = [c.kwargs["action"] for c in svc.audit.record.await_args_list]
+    assert actions == ["auth.login_rate_limited"]

@@ -30,7 +30,7 @@ ASGI 部署入口保持为 `app.main:app`；测试或嵌入式使用可调用
 本私有仓库按项目约定跟踪三套环境配置；个人机器差异放在不跟踪的 `.env.local` 或
 `.env.*.local`。生产凭据也可以由部署平台的环境变量覆盖文件值。
 
-1. 使用 Python 3.12，并复制对应环境的模板文件为 `.env`，或直接通过 `--env` 参数指定：
+1. 使用 Python 3.13，并复制对应环境的模板文件为 `.env`，或直接通过 `--env` 参数指定：
 ```bash
 cp .env.development .env    # 开发
 cp .env.example .env        # 生产
@@ -43,11 +43,11 @@ pip install --require-hashes -r requirements.lock  # 仅运行时
 pip install --require-hashes -r requirements-dev.lock  # 开发/CI/队列
 ```
 
-修改顶层依赖后，用 Python 3.12 重新生成锁文件：
+修改顶层依赖后，用 Python 3.13 重新生成锁文件（uv 或 pip-tools 均可，输出均为 pip 兼容格式）：
 
 ```bash
-python -m piptools compile requirements.txt -o requirements.lock --strip-extras --generate-hashes
-python -m piptools compile requirements-dev.txt -o requirements-dev.lock --strip-extras --generate-hashes --allow-unsafe
+uv pip compile requirements.txt -o requirements.lock --generate-hashes --python 3.13
+uv pip compile requirements-dev.txt -o requirements-dev.lock --generate-hashes --python 3.13
 ```
 
 2. 修改配置文件中的 `SECRET_KEY`（至少 32 个 UTF-8 字节）和数据库连接信息（`DATABASE_PASSWORD` 必填，禁止写死默认密码）。部署在反向代理后时还要精确配置 `TRUSTED_PROXY_CIDRS`。
@@ -98,7 +98,7 @@ FastAPI-foundation-framework/
 │   │   ├── users.py         # 用户管理
 │   │   ├── rbac/            # RBAC 权限/角色管理（roles/permissions/assignments/queries）
 │   │   ├── exceptions.py    # 异常日志查询
-│   │   └── test_exceptions.py # 异常测试端点
+│   │   └── dev_exceptions.py # 异常联调端点（仅 DEBUG 挂载）
 │   ├── core/                # 基础设施层
 │   │   ├── config.py        # pydantic-settings 配置（.env 映射）
 │   │   ├── loguru_logger/   # 环境感知日志封装（adapter/config/context/init）
@@ -119,7 +119,7 @@ FastAPI-foundation-framework/
 │   ├── middleware/          # HTTP 中间件
 │   │   ├── monitoring.py    # 安全头 + 指标采集 + 请求日志
 │   │   ├── rate_limit.py    # 通用限流 + 认证端点限流
-│   │   └── rbac.py          # 权限校验依赖（require_permission/role/superuser）
+│   │   └── rbac.py          # 权限校验依赖（require_permission）
 │   ├── models/              # SQLAlchemy 2.0 ORM 模型
 │   │   ├── user.py
 │   │   ├── role.py

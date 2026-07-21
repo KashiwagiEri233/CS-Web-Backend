@@ -13,7 +13,7 @@ from app.dependencies_services import get_audit_service
 from app.middleware.rbac import require_permission
 from app.models.user import User
 from app.schemas.audit import AuditLogItem
-from app.schemas.pagination import PaginatedResponse
+from app.schemas.pagination import PaginatedResponse, PaginationParams
 from app.services.audit_service import AuditService
 
 router = APIRouter()
@@ -25,8 +25,7 @@ router = APIRouter()
     dependencies=[Depends(require_permission("system", "logs"))],
 )
 async def list_audit_logs(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500),
+    pagination: PaginationParams = Depends(),
     action: Optional[str] = Query(None, description="动作，如 user.create"),
     resource_type: Optional[str] = Query(None, description="资源类型，如 user/role"),
     resource_id: Optional[str] = Query(None),
@@ -38,8 +37,8 @@ async def list_audit_logs(
 ) -> Any:
     """分页查询审计日志（需要 system:logs）。"""
     rows, total = await svc.list_logs(
-        skip=skip,
-        limit=limit,
+        skip=pagination.skip,
+        limit=pagination.limit,
         action=action,
         resource_type=resource_type,
         resource_id=resource_id,
@@ -48,7 +47,9 @@ async def list_audit_logs(
         end_date=end_date,
     )
     items = [AuditLogItem.model_validate(svc.to_item_dict(r)) for r in rows]
-    return PaginatedResponse(items=items, total=total, skip=skip, limit=limit)
+    return PaginatedResponse(
+        items=items, total=total, skip=pagination.skip, limit=pagination.limit
+    )
 
 
 @router.get(

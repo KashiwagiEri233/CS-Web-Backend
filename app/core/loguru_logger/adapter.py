@@ -97,9 +97,9 @@ class LoguruAdapter:
         **kwargs,
     ):
         """内部日志记录方法"""
-        if not self.isEnabledFor(level):
-            return
-
+        # 级别过滤统一交给 loguru sink（configure_logging 按 profile/LOG_LEVEL 配置），
+        # 适配器层不再二次过滤——否则 sink 已放宽到 DEBUG 时，适配器缓存的 INFO 级别
+        # 会把 debug 日志静默吞掉（配置看着生效、实际无效）。
         level_name = logging.getLevelName(level)
         log_fields = _logging_context.get().copy()
         log_fields.update(
@@ -256,7 +256,7 @@ def basicConfig(**kwargs):
     )
 
     loguru_logger.add(
-        kwargs.get("stream", sys.stdout),
+        kwargs.get("stream") or sys.stdout,
         level=loguru_level,
         format=format_str,
         serialize=kwargs.get("serialize", False),

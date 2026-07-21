@@ -6,7 +6,8 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - "54329:5432"
+      # 仅绑定回环：共享 CI agent 上避免弱口令测试库暴露给同网段
+      - "127.0.0.1:54329:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d witchcat_test"]
       interval: 2s
@@ -16,7 +17,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "63799:6379"
+      - "127.0.0.1:63799:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 2s

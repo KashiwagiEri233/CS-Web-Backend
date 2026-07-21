@@ -15,6 +15,35 @@ from app.core.timezone import now_utc
 from app.models.exception_log import ExceptionLog
 from app.repositories.exception_log_repo import ExceptionLogRepository
 
+# 落库前脱敏的敏感键片段（小写子串匹配，覆盖 access_token/old_password 等变体）。
+# details/context 可能携带请求数据，含明文密码/令牌入库存量即泄露面。
+_SENSITIVE_KEY_PARTS = (
+    "password",
+    "passwd",
+    "secret",
+    "token",
+    "authorization",
+    "cookie",
+    "credential",
+)
+_MASKED = "***"
+
+
+def _mask_sensitive(value: Any) -> Any:
+    """递归脱敏 dict/list 中的敏感键值。"""
+    if isinstance(value, dict):
+        return {
+            k: (
+                _MASKED
+                if any(part in str(k).lower() for part in _SENSITIVE_KEY_PARTS)
+                else _mask_sensitive(v)
+            )
+            for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [_mask_sensitive(item) for item in value]
+    return value
+
 
 class ExceptionService:
     """异常管理服务（精简版：记录 + 查询 + 解决）"""
@@ -64,8 +93,8 @@ class ExceptionService:
                 request_context.get("user_agent") if request_context else None
             ),
             "traceback": log_record.get("traceback"),
-            "details": log_record.get("details"),
-            "context": log_record.get("context"),
+            "details": _mask_sensitive(log_record.get("details")),
+            "context": _mask_sensitive(log_record.get("context")),
             "severity": self._determine_severity(
                 exception, log_record.get("status_code")
             ),
@@ -113,7 +142,7 @@ class ExceptionService:
             "user_agent": (
                 request_context.get("user_agent") if request_context else None
             ),
-            "details": {"errors": errors},
+            "details": {"errors": _mask_sensitive(errors)},
             "severity": "low",
             "priority": "normal",
         }

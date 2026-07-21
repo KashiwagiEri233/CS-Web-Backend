@@ -23,7 +23,6 @@ from .error_builders import (
     create_http_exception_response,
     create_server_error_response,
 )
-from .error_codes import ErrorCode
 
 logger = get_logger("exception_handler")
 
@@ -56,9 +55,12 @@ class ExceptionHandlerMiddleware:
         )
         request.state.request_id = request_id
         context_token = set_logging_context(request_id=request_id)
+        response_started = False
 
         async def send_with_request_id(message):
+            nonlocal response_started
             if message["type"] == "http.response.start":
+                response_started = True
                 headers = [
                     header
                     for header in message.get("headers", [])
@@ -79,6 +81,18 @@ class ExceptionHandlerMiddleware:
                 )
                 return
 
+            # 流式响应已开始（http.response.start 已发出）后抛错：再发送完整错误
+            # 响应会违反 ASGI 协议（二次 response.start），引发 RuntimeError 掩盖
+            # 原始异常。此时只能记日志并原样上抛，由服务器断开连接。
+            if response_started:
+                logger.error(
+                    "响应已开始后发生异常，无法再发送错误响应",
+                    endpoint=f"{scope.get('method')} {scope.get('path')}",
+                    error=str(exc),
+                    exc_info=exc,
+                )
+                raise
+
             if isinstance(exc, (HTTPException, StarletteHTTPException)):
                 response = create_http_exception_response(exc, request)
                 extra_headers = getattr(exc, "headers", None)
@@ -97,20 +111,17 @@ class ExceptionHandlerMiddleware:
                     headers=extra_headers,
                 )
             except Exception:
+                # response 在上面三个分支必然已赋值；这里只是序列化失败的兜底
                 content = {
                     "success": False,
-                    "error_code": (
-                        response.error_code
-                        if response
-                        else ErrorCode.System.INTERNAL_SERVER_ERROR
-                    ),
-                    "message": response.message if response else "内部服务器错误",
-                    "status_code": response.status_code if response else 500,
-                    "traceback_id": response.traceback_id if response else None,
+                    "error_code": response.error_code,
+                    "message": response.message,
+                    "status_code": response.status_code,
+                    "traceback_id": response.traceback_id,
                     "timestamp": now_utc().isoformat(),
                 }
                 response_obj = JSONResponse(
-                    status_code=response.status_code if response else 500,
+                    status_code=response.status_code,
                     content=content,
                     headers=extra_headers,
                 )

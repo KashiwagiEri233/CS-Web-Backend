@@ -1,7 +1,6 @@
 import re
 from typing import Optional
 
-
 MAX_PASSWORD_BYTES = 72
 MAX_EMAIL_LENGTH = 100
 
@@ -62,20 +61,5 @@ def validate_email(email: str) -> tuple[bool, Optional[str]]:
 
     if len(email) > MAX_EMAIL_LENGTH:
         return False, f"邮箱长度不能超过{MAX_EMAIL_LENGTH}个字符"
-
-    return True, None
-
-
-def validate_sql_like_pattern(pattern: str) -> tuple[bool, Optional[str]]:
-    """
-    验证SQL LIKE模式，防止SQL注入
-    返回 (is_valid, error_message)
-    """
-    # 确保不包含SQL特殊字符
-    if "%" in pattern and not pattern.startswith("%") and not pattern.endswith("%"):
-        return False, "LIKE模式只能以%开头或结尾"
-
-    if "[" in pattern or "]" in pattern or "_" in pattern:
-        return False, "LIKE模式不能包含特殊字符"
 
     return True, None

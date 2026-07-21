@@ -5,11 +5,13 @@ from __future__ import annotations
 import os
 
 import pytest
-from arq import Retry, Worker
-from arq.jobs import Job
 
-import app.core.queue.client as queue_client
-from app.core.config import settings
+# arq 是可选队列依赖（requirements-queue.txt），未安装时整个模块 skip 而非收集报错
+arq = pytest.importorskip("arq")
+from arq import Retry, Worker  # noqa: E402
+from arq.jobs import Job  # noqa: E402
+import app.core.queue.client as queue_client  # noqa: E402
+from app.core.config import settings  # noqa: E402
 
 pytestmark = [pytest.mark.integration, pytest.mark.queue_integration]
 
@@ -27,7 +29,7 @@ async def test_enqueue_worker_consumes_and_retries(
 
     redis_url = os.environ.get("TEST_REDIS_URL") or os.environ["REDIS_URL"]
     monkeypatch.setattr(settings, "REDIS_URL", redis_url)
-    monkeypatch.setattr(queue_client, "_QUEUE_ENABLED", True)
+    monkeypatch.setattr(queue_client, "_read_queue_enabled", lambda: True)
     monkeypatch.setattr(queue_client, "_pool", None)
     monkeypatch.setattr(queue_client, "_pool_initialized", False)
     monkeypatch.setattr(

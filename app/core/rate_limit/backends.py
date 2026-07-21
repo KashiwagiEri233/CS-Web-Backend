@@ -32,7 +32,9 @@ class InMemoryBackend:
         self._max_keys = max_keys
 
     async def is_allowed(self, key: str, calls: int, period: int) -> bool:
-        now = time.time()
+        # 进程内窗口用单调时钟：系统时钟回拨（NTP 校时）不会错误延长限流窗口。
+        # （Redis 路径跨实例必须用 wall clock，不在此列。）
+        now = time.monotonic()
         cutoff = now - period
         # 清理窗口外的旧记录
         kept = [ts for ts in self._hits[key] if ts > cutoff]

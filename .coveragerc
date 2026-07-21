@@ -2,7 +2,7 @@
 branch = True
 source = app
 omit =
-    app/api/v1/test_exceptions.py
+    app/api/v1/dev_exceptions.py
 
 [report]
 fail_under = 70

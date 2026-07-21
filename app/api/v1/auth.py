@@ -3,13 +3,9 @@ from typing import Any, Optional
 from fastapi import APIRouter, Body, Depends, Header, Request
 from fastapi.security import OAuth2PasswordRequestForm
 
-from app.core.exceptions import (
-    InvalidCredentialsException,
-    UserNotActiveException,
-)
 from app.core.request_context import get_client_meta
 from app.dependencies import get_current_active_user
-from app.dependencies_services import get_audit_service, get_auth_service
+from app.dependencies_services import get_auth_service
 from app.middleware.rbac import require_permission
 from app.models.user import User
 from app.schemas.auth import (
@@ -19,54 +15,9 @@ from app.schemas.auth import (
     UserCreate,
     UserResponse,
 )
-from app.services.audit_service import AuditService
 from app.services.auth_service import AuthService
 
 router = APIRouter()
-
-
-async def _do_login(
-    auth_service: AuthService,
-    audit: AuditService,
-    username: str,
-    password: str,
-    client_meta: dict,
-) -> TokenPair:
-    """登录公共逻辑：验证凭据 → 检查激活 → 签发 access + refresh 双 token。
-
-    成功与失败都写审计（best-effort 独立会话，故障不阻断登录）；
-    暴力破解溯源依赖登录失败事件。
-    """
-    user = await auth_service.authenticate(username, password)
-
-    if not user:
-        await audit.record(
-            action="auth.login_failed",
-            resource_type="auth",
-            detail={"username": username},
-            **client_meta,
-        )
-        raise InvalidCredentialsException()
-
-    if not user.is_active:
-        await audit.record(
-            action="auth.login_failed",
-            resource_type="auth",
-            detail={"username": username, "reason": "user not active"},
-            **client_meta,
-        )
-        raise UserNotActiveException(user_id=user.id)
-
-    pair = await auth_service.issue_token_pair(user)
-    await audit.record(
-        action="auth.login",
-        resource_type="auth",
-        resource_id=str(user.id),
-        actor_id=user.id,
-        actor_username=user.username,
-        **client_meta,
-    )
-    return pair
 
 
 @router.post("/login", response_model=TokenPair)
@@ -74,15 +25,10 @@ async def login(
     request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     auth_service: AuthService = Depends(get_auth_service),
-    audit: AuditService = Depends(get_audit_service),
 ) -> Any:
     """用户登录，返回 access + refresh 双 token。"""
-    return await _do_login(
-        auth_service,
-        audit,
-        form_data.username,
-        form_data.password,
-        get_client_meta(request),
+    return await auth_service.login(
+        form_data.username, form_data.password, get_client_meta(request)
     )
 
 
@@ -91,15 +37,10 @@ async def login_json(
     request: Request,
     login_data: LoginRequest,
     auth_service: AuthService = Depends(get_auth_service),
-    audit: AuditService = Depends(get_audit_service),
 ) -> Any:
     """用户登录（JSON 格式），返回 access + refresh 双 token。"""
-    return await _do_login(
-        auth_service,
-        audit,
-        login_data.username,
-        login_data.password,
-        get_client_meta(request),
+    return await auth_service.login(
+        login_data.username, login_data.password, get_client_meta(request)
     )
 
 
@@ -135,24 +76,15 @@ async def register(
     user_data: UserCreate,
     request: Request,
     auth_service: AuthService = Depends(get_auth_service),
-    audit: AuditService = Depends(get_audit_service),
     current_user: User = Depends(require_permission("user", "create")),
 ) -> Any:
-    """用户注册（需要 user:create）。查重 + 哈希 + 落库走 AuthService.create_user。"""
-    created = await auth_service.create_user(
-        user_data, is_superuser=False, commit=False
+    """用户注册（需要 user:create）。创建 + 审计 + 提交走 service 原子入口。"""
+    return await auth_service.create_user_with_audit(
+        user_data,
+        actor=current_user,
+        client_meta=get_client_meta(request),
+        via="auth.register",
     )
-    meta = get_client_meta(request)
-    await audit.record_atomic(
-        action="user.create",
-        resource_type="user",
-        resource_id=str(created.id),
-        actor_id=current_user.id,
-        actor_username=current_user.username,
-        detail={"username": created.username, "via": "auth.register"},
-        **meta,
-    )
-    return created
 
 
 @router.get("/me", response_model=UserResponse)

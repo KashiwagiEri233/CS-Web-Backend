@@ -76,6 +76,10 @@ class DegradableCache:
         if self._redis is None:
             await self._memory.delete(key)
             return
+        # 与 get/set 一致的冷却短路：故障期内不再白等一个 socket 超时
+        if not self._healthy and time.monotonic() < self._next_retry:
+            await self._memory.delete(key)
+            return
         try:
             await self._redis.delete(key)
             self._mark_healthy()
@@ -140,6 +144,11 @@ def cached(ttl: Optional[int] = None, key_prefix: str = "") -> Callable:
 
     缓存键由 key_prefix + 函数限定名 + 位置/关键字参数派生。
     仅适用于参数可 repr 且返回值 JSON 可序列化的场景。
+
+    注意：
+    - 返回 None 的结果不会被缓存（None 与"未命中"同值，无法区分）；
+      返回 None 的热函数会每次穿透回源，调用方需自行评估是否接受。
+    - 无 single-flight：缓存击穿瞬间并发请求会同时回源，后端需能承受。
 
     Args:
         ttl: 过期秒数，None 表示不过期。

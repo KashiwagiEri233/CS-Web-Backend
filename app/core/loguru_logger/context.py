@@ -37,7 +37,11 @@ def get_logging_context() -> Dict[str, Any]:
 
 
 class LoggingContextManager:
-    """日志上下文管理器，用于临时设置上下文信息。"""
+    """日志上下文管理器，用于临时设置上下文信息。
+
+    用法：``with LoggingContextManager(key=value): ...``。
+    注意：__enter__ 之后再改 self.context 不会生效（ContextVar 已在进入时设置）。
+    """
 
     def __init__(self, **kwargs):
         """初始化上下文管理器"""
@@ -55,24 +59,6 @@ class LoggingContextManager:
     def __exit__(self, exc_type, exc_val, exc_tb):
         """退出上下文"""
         _logging_context.set(self.original_context)
-
-    def bind(self, **kwargs) -> "LoggingContextManager":
-        """绑定额外的上下文信息"""
-        self.context.update(kwargs)
-        return self
-
-
-def bind_context(**kwargs):
-    """创建上下文绑定装饰器"""
-
-    def decorator(func):
-        def wrapper(*args, **func_kwargs):
-            with LoggingContextManager(**kwargs):
-                return func(*args, **func_kwargs)
-
-        return wrapper
-
-    return decorator
 
 
 def generate_request_id() -> str:

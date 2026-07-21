@@ -11,7 +11,7 @@ from app.dependencies_services import get_exception_service
 from app.middleware.rbac import require_permission
 from app.models.user import User
 from app.schemas.exception_log import ExceptionLogItem, ExceptionLogResolveResponse
-from app.schemas.pagination import PaginatedResponse
+from app.schemas.pagination import PaginatedResponse, PaginationParams
 from app.services.exception_service import ExceptionService
 
 router = APIRouter()
@@ -20,11 +20,12 @@ router = APIRouter()
 @router.get(
     "/logs",
     response_model=PaginatedResponse[ExceptionLogItem],
+    # 列表不返回 traceback/context（含绝对路径、SQL 片段），详情接口保留
+    response_model_exclude={"items": {"__all__": {"traceback", "context"}}},
     dependencies=[Depends(require_permission("exception", "read"))],
 )
 async def get_exception_logs(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
+    pagination: PaginationParams = Depends(),
     exception_type: Optional[str] = Query(None),
     error_code: Optional[str] = Query(None),
     status_code: Optional[int] = Query(None),
@@ -39,8 +40,8 @@ async def get_exception_logs(
 ) -> Any:
     """获取异常日志列表（统一分页）。"""
     logs, total = await svc.get_exception_logs(
-        skip=skip,
-        limit=limit,
+        skip=pagination.skip,
+        limit=pagination.limit,
         exception_type=exception_type,
         error_code=error_code,
         status_code=status_code,
@@ -52,7 +53,9 @@ async def get_exception_logs(
         sort_order=sort_order,
     )
     items = [ExceptionLogItem.model_validate(log.to_dict()) for log in logs]
-    return PaginatedResponse(items=items, total=total, skip=skip, limit=limit)
+    return PaginatedResponse(
+        items=items, total=total, skip=pagination.skip, limit=pagination.limit
+    )
 
 
 @router.get(

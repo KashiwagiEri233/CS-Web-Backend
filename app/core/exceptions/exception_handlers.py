@@ -19,18 +19,7 @@ from app.core.loguru_logger import get_logger
 from app.core.config import settings
 from app.core.timezone import now_utc
 
-from .base_exceptions import (
-    AuthenticationException,
-    AuthorizationException,
-    BaseAppException,
-    BusinessException,
-    ConflictException,
-    DatabaseException,
-    ExternalServiceException,
-    NotFoundException,
-    RateLimitException,
-    ValidationException,
-)
+from .base_exceptions import BaseAppException
 from .error_builders import (
     _serialize_validation_errors,
     create_app_exception_response,
@@ -238,22 +227,9 @@ def setup_exception_handlers(app: FastAPI) -> None:
     FastAPI 按异常类型精确匹配（最具体优先）派发，不依赖注册顺序。
     按「业务异常 → HTTP → 验证 → 数据库 → 兜底 Exception」分组列出。
     """
-    # 各 handler 的 exc 参数比 Exception 更窄；FastAPI 类型存根会误报 arg-type。
-
-    app_exception_types = (
-        BaseAppException,
-        BusinessException,
-        AuthenticationException,
-        AuthorizationException,
-        ValidationException,
-        NotFoundException,
-        ConflictException,
-        DatabaseException,
-        ExternalServiceException,
-        RateLimitException,
-    )
-    for exc_type in app_exception_types:
-        app.add_exception_handler(exc_type, cast(Any, app_exception_handler))
+    # Starlette 按 type(exc).__mro__ 查找 handler：注册 BaseAppException 即可覆盖
+    # 全部业务异常子类，逐一注册子类是冗余（还暗示"注册顺序有意义"的错误认知）。
+    app.add_exception_handler(BaseAppException, cast(Any, app_exception_handler))
 
     app.add_exception_handler(HTTPException, cast(Any, http_exception_handler))
     app.add_exception_handler(StarletteHTTPException, cast(Any, http_exception_handler))

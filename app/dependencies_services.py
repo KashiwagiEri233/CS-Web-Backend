@@ -26,7 +26,9 @@ def get_user_service(db: AsyncSession = Depends(get_db)) -> UserService:
 
 
 def get_auth_service(db: AsyncSession = Depends(get_db)) -> AuthService:
-    return AuthService(db)
+    # 注入共享会话的 AuditService：login 的成败审计走独立会话（record 默认行为），
+    # create_user_with_audit 的原子审计（record_atomic）需要请求级会话。
+    return AuthService(db, audit=AuditService(db))
 
 
 def get_rbac_service(db: AsyncSession = Depends(get_db)) -> RBACService:

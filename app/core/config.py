@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 class Settings(BaseSettings):
     _tzinfo: tzinfo = PrivateAttr(default=timezone.utc)
+    _trusted_proxy_networks: tuple = PrivateAttr(default=())
 
     # 数据库配置
     # DATABASE_URL 与 DATABASE_PASSWORD 均不提供默认值，强制从环境变量设置（与 SECRET_KEY 同标准）。
@@ -112,6 +113,10 @@ class Settings(BaseSettings):
     RATE_LIMIT_PERIOD: int = Field(60, gt=0)
     AUTH_RATE_LIMIT_CALLS: int = Field(5, gt=0)
     AUTH_RATE_LIMIT_PERIOD: int = Field(60, gt=0)
+    # 账号级登录防爆破（按用户名计数，弥补仅按 IP 限流挡不住分布式撞库的缺口）。
+    # 成功登录也计入预算——真人登录频率远低于该阈值，撞库脚本则会迅速触顶。
+    AUTH_ACCOUNT_RATE_LIMIT_CALLS: int = Field(10, gt=0)
+    AUTH_ACCOUNT_RATE_LIMIT_PERIOD: int = Field(900, gt=0)
 
     # Redis 配置（限流/缓存的分布式后端，可选）
     # 留空 = 纯内存模式（单实例，行为同旧版，不引入 Redis 依赖）
@@ -190,12 +195,8 @@ class Settings(BaseSettings):
 
     @property
     def trusted_proxy_networks(self) -> tuple:
-        """返回已校验的可信代理 IP 网段。"""
-        return tuple(
-            ip_network(item.strip(), strict=False)
-            for item in self.TRUSTED_PROXY_CIDRS.split(",")
-            if item.strip()
-        )
+        """返回已校验的可信代理 IP 网段（model_validator 解析一次后缓存）。"""
+        return self._trusted_proxy_networks
 
     @field_validator("SECRET_KEY", mode="before")
     @classmethod
@@ -217,6 +218,20 @@ class Settings(BaseSettings):
             if item.strip():
                 ip_network(item.strip(), strict=False)
         return v
+
+    @model_validator(mode="after")
+    def _parse_trusted_proxy_networks(self):
+        """把 TRUSTED_PROXY_CIDRS 解析结果缓存到 _trusted_proxy_networks。
+
+        get_client_ip 是每请求路径，XFF 链检查会遍历网段；避免每请求重复
+        split + ip_network 重建（与 _validate_timezone 缓存 _tzinfo 同模式）。
+        """
+        self._trusted_proxy_networks = tuple(
+            ip_network(item.strip(), strict=False)
+            for item in self.TRUSTED_PROXY_CIDRS.split(",")
+            if item.strip()
+        )
+        return self
 
     @field_validator("TOKEN_BLACKLIST_FALLBACK", "RATE_LIMIT_FALLBACK")
     @classmethod
@@ -280,7 +295,24 @@ class Settings(BaseSettings):
                 "REQUIRE_REDIS_FOR_SECURITY=True 时必须配置 REDIS_URL，"
                 "否则多实例 access token 撤销状态无法保持一致"
             )
+        # closed 语义是「Redis 故障时拒绝所有 token」；但未配置 REDIS_URL 时客户端
+        # 恒为 None，会永久走 closed 分支 → 全站 401。配置错误直接拒绝启动。
+        if self.TOKEN_BLACKLIST_FALLBACK == "closed" and not self.REDIS_URL:
+            raise ValueError(
+                "TOKEN_BLACKLIST_FALLBACK=closed 时必须配置 REDIS_URL，"
+                "否则黑名单后端恒不可用，所有请求都会被拒绝（401）"
+            )
         return self
+
+    @field_validator("ALGORITHM")
+    @classmethod
+    def validate_algorithm(cls, v: str) -> str:
+        # 项目用对称密钥（SECRET_KEY）签发，只允许 HMAC 族；放任意算法字符串
+        # （如 RS256）会在签发时直接炸，属不必要的误配置面。
+        allowed = {"HS256", "HS384", "HS512"}
+        if v not in allowed:
+            raise ValueError(f"ALGORITHM 仅支持 {sorted(allowed)}（HMAC 对称签名）")
+        return v
 
     @model_validator(mode="after")
     def _validate_timezone(self):

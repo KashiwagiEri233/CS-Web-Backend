@@ -7,11 +7,16 @@
 """
 
 from app.core.rate_limit.backends import InMemoryBackend, RedisBackend
-from app.core.rate_limit.limiter import DegradableRateLimiter, build_limiter
+from app.core.rate_limit.limiter import (
+    DegradableRateLimiter,
+    build_limiter,
+    get_limiter,
+)
 
 __all__ = [
     "InMemoryBackend",
     "RedisBackend",
     "DegradableRateLimiter",
     "build_limiter",
+    "get_limiter",
 ]
