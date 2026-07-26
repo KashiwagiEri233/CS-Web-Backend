@@ -27,20 +27,21 @@ ASGI 部署入口保持为 `app.main:app`；测试或嵌入式使用可调用
 
 ## 环境配置
 
-本私有仓库按项目约定跟踪三套环境配置；个人机器差异放在不跟踪的 `.env.local` 或
-`.env.*.local`。生产凭据也可以由部署平台的环境变量覆盖文件值。
+本仓库跟踪 `.env.development` / `.env.test` / `.env.example` 作为模板（仅占位凭据）。
+**`.env` 不入库**（见 `.gitignore`）；生产密钥请用部署平台 Secret 注入，个人差异放
+`.env.local` 或 `.env.*.local`。若历史提交曾含真实密钥，请轮换后清理历史。
 
-1. 使用 Python 3.13，并复制对应环境的模板文件为 `.env`，或直接通过 `--env` 参数指定：
+1. 使用 **Python 3.13+**（与 `pyproject.toml` / `mypy.ini` / CI 一致），并复制对应环境的模板文件为 `.env`，或直接通过 `--env` 参数指定：
 ```bash
-cp .env.development .env    # 开发
-cp .env.example .env        # 生产
+cp .env.development .env    # 开发（再改成本机密码与 SECRET_KEY）
+cp .env.example .env        # 生产模板（务必替换全部 CHANGE_ME）
 ```
 
-安装依赖：
+安装依赖（推荐 uv，或 pip + lock）：
 
 ```bash
-pip install --require-hashes -r requirements.lock  # 仅运行时
-pip install --require-hashes -r requirements-dev.lock  # 开发/CI/队列
+uv sync                     # 或：pip install --require-hashes -r requirements.lock
+pip install --require-hashes -r requirements-dev.lock  # 开发/CI/队列（若仍用 pip-tools 锁）
 ```
 
 修改顶层依赖后，用 Python 3.13 重新生成锁文件（uv 或 pip-tools 均可，输出均为 pip 兼容格式）：
@@ -50,7 +51,9 @@ uv pip compile requirements.txt -o requirements.lock --generate-hashes --python 
 uv pip compile requirements-dev.txt -o requirements-dev.lock --generate-hashes --python 3.13
 ```
 
-2. 修改配置文件中的 `SECRET_KEY`（至少 32 个 UTF-8 字节）和数据库连接信息（`DATABASE_PASSWORD` 必填，禁止写死默认密码）。部署在反向代理后时还要精确配置 `TRUSTED_PROXY_CIDRS`。
+应用版本单一事实源：`app/__init__.py` 的 `__version__`（当前与 `pyproject.toml` 对齐为 1.0.0）。
+
+2. 修改配置文件中的 `SECRET_KEY`（至少 32 个 UTF-8 字节）和数据库连接信息（`DATABASE_PASSWORD` 必填，禁止写死默认密码）。多 worker 生产建议 `REQUIRE_REDIS_FOR_SECURITY=True` 并配置可达的 `REDIS_URL`。部署在反向代理后时还要精确配置 `TRUSTED_PROXY_CIDRS`。
 
 ## 日志系统
 

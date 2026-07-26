@@ -59,6 +59,19 @@ def test_required_distributed_security_state_needs_redis():
         )
 
 
+def test_require_redis_for_security_forces_closed_blacklist_fallback():
+    """开启 REQUIRE_REDIS_FOR_SECURITY 时强制 TOKEN_BLACKLIST_FALLBACK=closed。"""
+    cfg = Settings(
+        _env_file=None,
+        SECRET_KEY="x" * 32,
+        DATABASE_PASSWORD="pw",
+        REQUIRE_REDIS_FOR_SECURITY=True,
+        REDIS_URL="redis://127.0.0.1:6379/0",
+        TOKEN_BLACKLIST_FALLBACK="memory",
+    )
+    assert cfg.TOKEN_BLACKLIST_FALLBACK == "closed"
+
+
 def test_rate_limit_does_not_accept_fail_closed_mode():
     with pytest.raises(ValidationError, match="RATE_LIMIT_FALLBACK"):
         Settings(

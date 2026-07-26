@@ -14,8 +14,12 @@
 
 用法约定与扩展指引见 ``docs/system/lifecycle.md``。
 
-触发登记：下方 ``_import_registrants()`` 在包 import 完成后立即 import 各注册点
-模块，使装饰器在模块导入期执行并填充注册表。新增注册点只需在此处追加一行 import。
+触发登记：``ensure_registrants_loaded()`` 在 ``run_startup`` / ``run_shutdown`` 入口
+懒加载各注册点模块，使装饰器执行并填充注册表。**core 不在 import 期反向 import
+service**，避免分层倒置与循环导入规避代码。
+
+新增注册点：在 ``_CORE_REGISTRANT_MODULES`` 或 ``_SERVICE_REGISTRANT_MODULES`` 追加
+模块路径即可（见下方常量）。
 """
 
 from app.core.lifecycle.registry import (
@@ -30,23 +34,40 @@ __all__ = [
     "register_shutdown",
     "run_startup",
     "run_shutdown",
+    "ensure_registrants_loaded",
 ]
 
+# 基础设施注册点（core / database）：可在任意时刻 import
+_CORE_REGISTRANT_MODULES: tuple[str, ...] = (
+    "app.database",
+    "app.core.observability",
+    "app.core.redis_client",
+)
 
-def _import_registrants() -> None:
-    """显式 import 各启动 / 关闭任务的注册点模块，触发装饰器登记。
+# 业务域注册点（service）：仅在 run_startup/run_shutdown 时加载，
+# 保持 core.lifecycle 不在 import 期依赖 service 层。
+_SERVICE_REGISTRANT_MODULES: tuple[str, ...] = (
+    "app.services.rbac_init",
+    "app.services.exception_retention",
+    "app.services.token_gc",
+)
 
-    import 顺序与执行顺序无关（执行序由 priority 决定）；此处仅保证这些模块被
-    加载、装饰器被执行。显式 import（而非 entry_points 动态扫描）更可控、可追溯。
+_registrants_loaded: bool = False
 
-    main.py 自身注册的任务在 main 被 import 时自登记，无需在此导入。
+
+def ensure_registrants_loaded() -> None:
+    """懒加载各启动 / 关闭任务的注册点模块，触发装饰器登记。
+
+    幂等：多次调用只 import 一次。import 顺序与执行顺序无关（执行序由 priority 决定）。
+    ``main.py`` 自身注册的任务在 ``app.main`` 被 import 时自登记，无需在此列出。
     """
-    # 局部 import 规避循环导入（这些模块会反向 import app.core.lifecycle 装饰器）
-    from app import database  # noqa: F401  DB 初始化任务
-    from app.core import observability, redis_client  # noqa: F401  OTel/Redis 任务
-    from app.services import rbac_init  # noqa: F401  RBAC seed 任务
-    from app.services import exception_retention  # noqa: F401  异常日志保留期
-    from app.services import token_gc  # noqa: F401  refresh token GC
+    global _registrants_loaded
+    if _registrants_loaded:
+        return
 
+    import importlib
 
-_import_registrants()
+    for module_path in _CORE_REGISTRANT_MODULES + _SERVICE_REGISTRANT_MODULES:
+        importlib.import_module(module_path)
+
+    _registrants_loaded = True

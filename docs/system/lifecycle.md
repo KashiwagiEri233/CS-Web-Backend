@@ -37,7 +37,7 @@
 |---|---|---|---|---|---|
 | `database` | startup | 10 | **True** | `app/database.py` | 建库 + schema(Alembic upgrade/版本校验) + 连通性探测；失败拒绝启动 |
 | `rbac_seed` | startup | 20 | True | `app/services/rbac_init.py` | 权限/角色/默认管理员；集群锁串行，失败拒绝启动 |
-| `redis_probe` | startup | 30 | False | `app/core/redis_client.py` | 探测 Redis 连通性；未配置/故障都降级 |
+| `redis_probe` | startup | 30 | False* | `app/core/redis_client.py` | 探测 Redis；默认可降级。`REQUIRE_REDIS_FOR_SECURITY=True` 时失败 raise 拒绝启动 |
 | `refresh_token_gc` | startup/shutdown | 40/30 | False | `app/services/token_gc.py` | 清理过期/撤销 refresh token；集群锁避免重复执行 |
 | `exception_log_retention` | startup/shutdown | 45/25 | False | `app/services/exception_retention.py` | 按保留期清理异常日志；集群锁避免多 worker 重复执行 |
 | `log_status` | startup | 90 | False | `app/main.py` | 输出访问地址 / 文档路径 |
@@ -70,9 +70,10 @@
 - 被 `app/main.py` 的 `lifespan` 调用（`run_startup` / `run_shutdown`）。
 - 各注册点模块（database / rbac_init / redis_client / observability）反向 import
   `register_startup` / `register_shutdown` 装饰器。
-- **触发登记**：`app/core/lifecycle/__init__.py` 末尾的 `_import_registrants()` 显式 import
-  各注册点模块，使装饰器在导入期执行。`main.py` 自身注册的任务在 `app.main` 被 import 时
-  自登记（uvicorn 启动必 import main），无需在 `_import_registrants` 中列出。
+- **触发登记**：`ensure_registrants_loaded()` 在 `run_startup` / `run_shutdown` 入口懒加载
+  各注册点模块（core 基础设施 + service 业务任务列表分开放）。**core 不在 import 期
+  反向 import service**，避免分层倒置。`main.py` 自身注册的任务在 `app.main` 被 import 时
+  自登记，无需列入 registrant 列表。
 
 ## 降级与不变量
 

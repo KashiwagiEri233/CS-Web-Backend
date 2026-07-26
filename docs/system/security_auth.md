@@ -30,7 +30,10 @@
 - 黑名单 Redis 恢复后仍回查进程内存，覆盖降级窗口内本进程拉黑的 jti
   （`fallback="open"` 除外，恢复后只信 Redis）。
 - 多 worker 且要求即时撤销一致性时，必须配置 Redis 并开启
-  `REQUIRE_REDIS_FOR_SECURITY`。
+  `REQUIRE_REDIS_FOR_SECURITY`。开启后会：
+  1. 校验期强制要求 `REDIS_URL`；
+  2. 强制 `TOKEN_BLACKLIST_FALLBACK=closed`（禁止 memory/open 静默降级）；
+  3. 启动任务 `redis_probe` 在 Redis 不可用时 **拒绝启动**（fail-closed）。
 - bcrypt 输入限制为 72 UTF-8 字节，哈希操作不得阻塞事件循环。
 - inactive 用户和 inactive 角色都不能授予访问权限。
 

@@ -96,6 +96,8 @@ celerybeat.pid
 *.sage.py
 
 # Environments
+# 生产/本机密钥文件不入库；开发/测试模板与 .env.example 可跟踪（仅放非生产占位凭据）
+.env
 .env.local
 .env.*.local
 .venv

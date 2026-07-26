@@ -102,7 +102,15 @@ async def run_startup() -> None:
 
     critical 任务失败抛出 → 中止启动（后续任务不再执行）；非 critical 失败 → 记
     warning 继续下一个任务。任务执行顺序以 priority 为准（同 priority 保持注册序）。
+
+    入口先懒加载各注册点模块（见 ``ensure_registrants_loaded``），保证 service 层
+    任务在 core 不反向 import 的前提下仍被登记。
     """
+    # 延迟 import 避免 registry ↔ lifecycle 包循环
+    from app.core.lifecycle import ensure_registrants_loaded
+
+    ensure_registrants_loaded()
+
     for task in sorted(_STARTUP_TASKS, key=lambda t: (t.priority,)):
         try:
             logger.debug(f"启动任务开始: {task.name} (priority={task.priority})")
@@ -126,6 +134,10 @@ async def run_shutdown() -> None:
     关闭阶段绝不让异常向外抛——任何任务失败都只记 warning，避免掩盖启动 / 业务
     异常或干扰进程退出码。
     """
+    from app.core.lifecycle import ensure_registrants_loaded
+
+    ensure_registrants_loaded()
+
     for task in sorted(_SHUTDOWN_TASKS, key=lambda t: t.priority, reverse=True):
         try:
             logger.debug(f"关闭任务开始: {task.name} (priority={task.priority})")

@@ -85,7 +85,7 @@ class TokenBlacklist:
         return self._redis is not None and self._healthy
 
     async def add(self, jti: str, ttl_seconds: int) -> None:
-        """把 jti 加入黑名单。失败绝不抛出（黑名单是安全增强，不是强依赖）。"""
+        """把 jti 加入黑名单。写路径尽力而为，失败不抛（查询侧按 fallback 兜底）。"""
         # ttl<=0 的边界（exp 已过/竞态算出 0）直接跳过：对 Redis 发 setex(key, 0)
         # 会抛 ResponseError，把健康后端误标为故障进入冷却。
         if ttl_seconds <= 0:
@@ -101,7 +101,7 @@ class TokenBlacklist:
             self._mark_healthy()
             # Redis 与内存双写：降级期间及 Redis 恢复之后，内存都能命中本进程的登出
             self._memory.add(jti, ttl_seconds)
-        except Exception as e:  # noqa: BLE001 - 黑名单故障绝不阻塞业务
+        except Exception as e:  # noqa: BLE001 - 查询侧按 fallback 兜底
             self._mark_unhealthy(e)
             self._memory.add(jti, ttl_seconds)
 
