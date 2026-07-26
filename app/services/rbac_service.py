@@ -52,9 +52,10 @@ class RBACService(RBACAssignmentMixin):
         self.rbac_repo = RBACRepository(db)
 
     async def get_user_permissions(self, user_id: int) -> Set[str]:
-        """获取用户所有权限（带可降级缓存）。
+        """获取用户所有权限（带可降级缓存）。**鉴权与展示共用此入口。**
 
-        缓存键 rbac:user_perms:{user_id}，TTL 见 _USER_PERM_CACHE_TTL。
+        缓存键 rbac:user_perms:{user_id}，TTL 见 _USER_PERM_CACHE_TTL；
+        所有授权变更点（grant/revoke/update/delete）都做了显式失效。
         缓存故障（Redis 不可用等）不抛错，退回直接查库。
         """
         cache = get_cache()
@@ -66,17 +67,11 @@ class RBACService(RBACAssignmentMixin):
         except Exception:  # noqa: BLE001 - 缓存读取绝不应阻断鉴权
             logger.debug("权限缓存读取失败，回退到数据库", user_id=user_id)
 
-        user = await self.rbac_repo.get_user_with_roles(user_id)
-        if not user:
-            return set()
-
-        permissions: Set[str] = set()
-        for role in user.roles:
-            if not role.is_active:
-                continue
-            for permission in role.permissions:
-                # 格式化权限字符串: "resource:action" (例如: "user:create")
-                permissions.add(f"{permission.resource}:{permission.action}")
+        # 未命中走平铺 join：一次查询直接取回权限串集合。
+        # 对比 get_user_with_roles + 内存聚合的三次往返（user / roles / permissions）
+        # 且要实例化整棵关系树——这里只需要一组字符串。
+        # 两者语义等价（软删用户与未启用角色都不计入），已由集成测试锁死。
+        permissions = await self.rbac_repo.get_authorization_permissions(user_id)
 
         try:
             await cache.set(key, list(permissions), _USER_PERM_CACHE_TTL)
@@ -90,21 +85,13 @@ class RBACService(RBACAssignmentMixin):
         user = await self.rbac_repo.get_user_with_roles(user_id)
         return list(user.roles) if user else []
 
-    # ------------------------------------------------------------------ 鉴权热路径
-    # 与上面的展示/查询接口区分开：这两个方法只回答"能不能过"，直接查最小结果集，
-    # 不走缓存（避免撤权延迟）、不构建 ORM 关系树。每个受保护请求都会调用。
-
     async def get_authorization_permissions(self, user_id: int) -> Set[str]:
-        """鉴权用：一次查询取回用户的全部有效权限串，不经过缓存。
+        """一次查询取回用户的全部有效权限串（不经缓存）。
 
-        与 ``get_user_permissions`` 的区别：后者带缓存、供展示接口使用，
-        本方法始终读库，保证撤权立即生效（见 PermissionChecker 的注释）。
+        ``get_user_permissions`` 缓存未命中时的底层实现；也可单独用于需要
+        绕过缓存、确保读到最新授权的场景。
         """
         return await self.rbac_repo.get_authorization_permissions(user_id)
-
-    async def get_active_role_names(self, user_id: int) -> Set[str]:
-        """鉴权用：一次查询取回用户已启用的角色名集合。"""
-        return await self.rbac_repo.get_active_role_names(user_id)
 
     async def check_permission(self, user_id: int, resource: str, action: str) -> bool:
         """检查用户是否有特定权限。

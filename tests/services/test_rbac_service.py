@@ -144,12 +144,20 @@ async def test_check_permission_aggregates_roles(monkeypatch):
 
 
 async def test_inactive_role_does_not_grant_permissions(monkeypatch):
+    """未启用角色不得带来权限。
+
+    两条路径分别建模：check_permission 走 ORM 聚合（Python 侧过滤 is_active），
+    get_user_permissions 走平铺 join（SQL 侧过滤）。二者的等价性由
+    tests/integration/test_rbac_db.py 在真实数据库上锁定。
+    """
     svc = _make_service(monkeypatch)
     user = MagicMock(is_superuser=False)
     permission = MagicMock(resource="user", action="delete")
     role = MagicMock(is_active=False, permissions=[permission])
     user.roles = [role]
     svc.rbac_repo.get_user_with_roles.return_value = user
+    # 平铺查询在 SQL 里就过滤掉了未启用角色，因此返回空集
+    svc.rbac_repo.get_authorization_permissions.return_value = set()
 
     assert await svc.check_permission(1, "user", "delete") is False
     assert await svc.get_user_permissions(1) == set()
@@ -291,20 +299,15 @@ async def test_get_user_permissions_caches_result(monkeypatch):
     svc.db = MagicMock()
     svc.rbac_repo = AsyncMock()
 
-    user = MagicMock()
-    perm = MagicMock(resource="user", action="read")
-    role = MagicMock()
-    role.permissions = [perm]
-    user.roles = [role]
-    svc.rbac_repo.get_user_with_roles.return_value = user
+    svc.rbac_repo.get_authorization_permissions.return_value = {"user:read"}
 
     first = await svc.get_user_permissions(1)
     second = await svc.get_user_permissions(1)
 
     assert first == {"user:read"}
     assert second == {"user:read"}
-    # 命中缓存：底层只查了一次库
-    assert svc.rbac_repo.get_user_with_roles.await_count == 1
+    # 命中缓存：底层只查了一次库（未命中时是一条平铺 join，不再是三次往返）
+    assert svc.rbac_repo.get_authorization_permissions.await_count == 1
 
 
 async def test_grant_role_to_user_invalidates_cache(monkeypatch):

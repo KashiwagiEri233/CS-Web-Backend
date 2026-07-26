@@ -64,29 +64,29 @@ async def test_grant_role_then_aggregate_permissions(integration_db_ready):
             assert await svc.check_permission(uid, "itest", f"p_{sfx}") is True
             assert await svc.check_permission(uid, "itest", "nope") is False
 
-            # 5) 鉴权热路径（平铺 join）与展示路径（ORM 聚合）必须给出相同结果。
-            #    两条路径并存，语义漂移是最大风险，这里直接锁死。
+            # 5) 平铺 join（get_user_permissions 缓存未命中时的底层实现）与
+            #    ORM 聚合（check_permission 走的路径）必须给出相同结果。
+            #    两条实现并存，语义漂移是最大风险，这里直接锁死。
             assert await svc.get_authorization_permissions(uid) == perms
-            assert await svc.get_active_role_names(uid) == {rname}
 
             # 6) 角色停用 -> 平铺 join 的 Role.is_active 过滤必须与 ORM 路径的
             #    `if not role.is_active: continue` 行为一致（立即失效）
             await repo.update_role(role, {"is_active": False})
             await db.commit()
             assert await svc.get_authorization_permissions(uid) == set()
-            assert await svc.get_active_role_names(uid) == set()
+            assert await svc.check_permission(uid, "itest", f"p_{sfx}") is False
             await repo.update_role(role, {"is_active": True})
             await db.commit()
             assert await svc.get_authorization_permissions(uid) == perms
 
-            # 7) 软删用户 -> 两个鉴权查询都必须返回空（ORM 路径靠
-            #    get_user_with_roles 的 deleted_at 过滤，平铺 join 靠 users 连接）
+            # 7) 软删用户 -> 两条实现都必须返回空（ORM 路径靠 get_user_with_roles
+            #    的 deleted_at 过滤，平铺 join 靠 users 连接）
             await db.execute(
                 text("UPDATE users SET deleted_at = now() WHERE id=:i"), {"i": uid}
             )
             await db.commit()
             assert await svc.get_authorization_permissions(uid) == set()
-            assert await svc.get_active_role_names(uid) == set()
+            assert await svc.check_permission(uid, "itest", f"p_{sfx}") is False
         finally:
             # 清理（先关联表后主表）
             async with get_session() as db2:

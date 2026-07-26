@@ -41,23 +41,6 @@ class RBACRepository:
         result = await self.db.execute(stmt)
         return {f"{resource}:{action}" for resource, action in result.all()}
 
-    async def get_active_role_names(self, user_id: int) -> Set[str]:
-        """一次查询取出用户的全部已启用角色名（软删用户返回空集）。"""
-        stmt = (
-            select(Role.name)
-            .select_from(user_roles)
-            .join(User, User.id == user_roles.c.user_id)
-            .join(Role, Role.id == user_roles.c.role_id)
-            .where(
-                user_roles.c.user_id == user_id,
-                User.deleted_at.is_(None),
-                Role.is_active.is_(True),
-            )
-            .distinct()
-        )
-        result = await self.db.execute(stmt)
-        return {row[0] for row in result.all()}
-
     async def get_user_by_id(self, user_id: int) -> Optional[User]:
         """通过ID获取未软删用户。"""
         stmt = select(User).where(User.id == user_id, User.deleted_at.is_(None))
