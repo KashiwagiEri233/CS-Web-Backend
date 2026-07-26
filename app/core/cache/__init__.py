@@ -12,6 +12,13 @@
     @cached(ttl=60, key_prefix="profile")
     async def get_profile(user_id: int):
         ...
+
+    装饰实例方法时必须加 skip_first_arg=True，否则 self 的 repr（含内存地址）
+    会进入缓存键，导致永不命中：
+
+    @cached(ttl=60, key_prefix="profile", skip_first_arg=True)
+    async def get_profile(self, user_id: int):
+        ...
 """
 
 from app.core.cache.backends import InMemoryCacheBackend, RedisCacheBackend

@@ -53,7 +53,10 @@ class Settings(BaseSettings):
     #   未配置 Redis 时退回进程内内存黑名单（仅本进程可见，多实例部署会失效）
     #   配置 Redis 后跨实例一致；Redis 不可用时不阻断请求，回退内存
     TOKEN_BLACKLIST_FALLBACK: str = "memory"  # memory / open / closed
-    # 高安全生产部署可要求 Redis；用于保证多 worker 的登出/封禁状态一致。
+    # 高安全生产部署可要求 Redis：True 时
+    # 1) 必须配置 REDIS_URL，否则拒绝启动；
+    # 2) 启动探测 Redis 失败则拒绝启动（critical）；
+    # 3) 强制 TOKEN_BLACKLIST_FALLBACK=closed（Redis 故障时拒绝 access token，禁止静默降级）。
     REQUIRE_REDIS_FOR_SECURITY: bool = False
     # 过期/已撤销 refresh token 清理任务间隔（秒）；0=禁用周期 GC（仅依赖业务撤销）
     REFRESH_TOKEN_GC_INTERVAL_SECONDS: int = Field(3600, ge=0)
@@ -74,6 +77,10 @@ class Settings(BaseSettings):
     # 测试进程使用 NullPool，避免 pytest 每测试事件循环与 asyncpg 池连接交叉复用。
     TESTING: bool = False
     API_V1_STR: str = "/api/v1"
+    # 是否暴露 /docs、/redoc、/openapi.json。
+    # None（默认）= 跟随 DEBUG：生产（DEBUG=False）自动关闭，避免未认证用户
+    # 拿到完整 API 结构与全部 schema。需要在生产开放时显式置 True。
+    ENABLE_API_DOCS: Optional[bool] = None
     PROJECT_NAME: str = "FastAPI RBAC Framework"
     # 应用统一时区（IANA 名称，如 Asia/Shanghai、UTC、America/New_York）。
     # 影响：展示层（日志、错误响应 timestamp、ErrorResponse.timestamp）按此时区呈现。
@@ -83,10 +90,6 @@ class Settings(BaseSettings):
     # 一键开关鉴权：False 时所有接口视为超级用户放行（跳过 token 校验与权限检查）。
     # 仅限本地开发！只允许在 DEBUG=True 下关闭，生产（DEBUG=False）若置 False 会拒绝启动。
     AUTH_ENABLED: bool = True
-    # 【已废弃】历史开关：曾用 Base.metadata.create_all 自动建表。
-    # 现已全面改为 Alembic 管理 schema；启动路径**忽略**此字段（即使 True 也不 create_all）。
-    # 保留仅为兼容旧 .env，请从配置中删除，勿再开启。
-    DB_AUTO_CREATE: bool = False
     # 启动时若目标数据库不存在则自动创建（连接到维护库执行 CREATE DATABASE）。
     # 开发便利用 True；生产通常由 DBA/运维预建库，可置 False。
     DB_AUTO_CREATE_DATABASE: bool = True
@@ -117,12 +120,21 @@ class Settings(BaseSettings):
     # 成功登录也计入预算——真人登录频率远低于该阈值，撞库脚本则会迅速触顶。
     AUTH_ACCOUNT_RATE_LIMIT_CALLS: int = Field(10, gt=0)
     AUTH_ACCOUNT_RATE_LIMIT_PERIOD: int = Field(900, gt=0)
+    # 请求体大小上限（字节）。uvicorn 不限制请求体，缺少这道闸门时一个大 JSON
+    # 就会被完整读进内存再交给 pydantic。默认 1 MiB，够用于纯 JSON API。
+    MAX_REQUEST_BODY_BYTES: int = Field(1024 * 1024, gt=0)
 
     # Redis 配置（限流/缓存的分布式后端，可选）
     # 留空 = 纯内存模式（单实例，行为同旧版，不引入 Redis 依赖）
     # 配置后 = Redis 跨实例一致限流，且 Redis 不可用时自动降级
     REDIS_URL: Optional[str] = None  # 如 redis://:password@localhost:6379/0
     REDIS_SOCKET_TIMEOUT: float = Field(0.5, gt=0)
+    # 连接池上限。redis-py 默认不限（2^31），Redis 侧故障或慢响应时连接会无节制堆积，
+    # 直接把 Redis 的 maxclients 打满。按 worker 并发量设置一个明确上限更安全。
+    REDIS_MAX_CONNECTIONS: int = Field(50, ge=1)
+    # 空闲连接健康检查间隔（秒）：取用前若超过该时长未使用则先 PING，
+    # 剔除被防火墙/负载均衡静默掐断的连接。0 = 关闭。
+    REDIS_HEALTH_CHECK_INTERVAL: int = Field(30, ge=0)
     # 限流降级策略：Redis 不可用时的兜底行为
     #   memory = 降级到进程内内存限流（默认，仍保护单实例）
     #   open   = 直接放行（牺牲保护换可用性）
@@ -158,6 +170,9 @@ class Settings(BaseSettings):
     LOG_ENABLE_CONSOLE: Optional[bool] = None
     LOG_ENABLE_FILE: Optional[bool] = None
     LOG_ENABLE_ERROR_FILE: Optional[bool] = None
+    # 异步落盘：loguru 默认在调用线程同步写 sink，异步应用里等于事件循环上的阻塞磁盘 IO。
+    # None = 用 profile 默认（dev=False 便于调试不丢日志，prod=True 避免阻塞）。
+    LOG_ENQUEUE: Optional[bool] = None
 
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
@@ -290,18 +305,33 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _guard_distributed_security_state(self):
-        if self.REQUIRE_REDIS_FOR_SECURITY and not self.REDIS_URL:
-            raise ValueError(
-                "REQUIRE_REDIS_FOR_SECURITY=True 时必须配置 REDIS_URL，"
-                "否则多实例 access token 撤销状态无法保持一致"
-            )
-        # closed 语义是「Redis 故障时拒绝所有 token」；但未配置 REDIS_URL 时客户端
-        # 恒为 None，会永久走 closed 分支 → 全站 401。配置错误直接拒绝启动。
+        """分布式撤销状态的 fail-closed 配置校验。
+
+        两条检查相互独立，注意顺序：
+        1. closed 语义是「Redis 故障时拒绝所有 token」；未配置 REDIS_URL 时客户端
+           恒为 None，会永久走 closed 分支 → 全站 401。这条与
+           REQUIRE_REDIS_FOR_SECURITY 无关，必须先于下面的提前返回执行。
+        2. REQUIRE_REDIS_FOR_SECURITY=True 时还要求配置 REDIS_URL，并强制
+           fallback 为 closed（禁止 memory/open 静默降级）；连通性由启动任务
+           redis_probe(critical=REQUIRE_REDIS_FOR_SECURITY) 校验。
+        """
         if self.TOKEN_BLACKLIST_FALLBACK == "closed" and not self.REDIS_URL:
             raise ValueError(
                 "TOKEN_BLACKLIST_FALLBACK=closed 时必须配置 REDIS_URL，"
                 "否则黑名单后端恒不可用，所有请求都会被拒绝（401）"
             )
+
+        if not self.REQUIRE_REDIS_FOR_SECURITY:
+            return self
+        if not self.REDIS_URL:
+            raise ValueError(
+                "REQUIRE_REDIS_FOR_SECURITY=True 时必须配置 REDIS_URL，"
+                "否则多实例 access token 撤销状态无法保持一致"
+            )
+
+        # 强制 closed：Redis 故障时拒绝 access token，避免多 worker 静默降级到进程内存
+        if self.TOKEN_BLACKLIST_FALLBACK != "closed":
+            self.TOKEN_BLACKLIST_FALLBACK = "closed"
         return self
 
     @field_validator("ALGORITHM")
@@ -341,6 +371,13 @@ class Settings(BaseSettings):
     def tzinfo(self):
         """已校验的 ZoneInfo 实例，供展示层转换使用。"""
         return self._tzinfo
+
+    @property
+    def api_docs_enabled(self) -> bool:
+        """交互式文档是否开放。未显式配置时跟随 DEBUG。"""
+        if self.ENABLE_API_DOCS is None:
+            return self.DEBUG
+        return self.ENABLE_API_DOCS
 
     @property
     def database_url(self) -> str:

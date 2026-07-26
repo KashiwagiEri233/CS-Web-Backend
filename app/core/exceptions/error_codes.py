@@ -49,6 +49,12 @@ class ErrorCode:
 
         VALIDATION_FAILED = "VALIDATION_FAILED"
 
+    # ---------------- 请求本身不合法（HTTP 413 等） ----------------
+    class Request:
+        """请求层面的拒绝（与请求体内容无关，在解析前就被拦下）。"""
+
+        REQUEST_BODY_TOO_LARGE = "REQUEST_BODY_TOO_LARGE"
+
     # ---------------- 资源查找（HTTP 404） ----------------
     class NotFound:
         """资源未找到。"""

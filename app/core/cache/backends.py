@@ -10,7 +10,7 @@
 import json
 import time
 from collections import OrderedDict
-from typing import Any, Optional, Tuple
+from typing import Any, Optional, Sequence, Tuple
 
 # 内存缓存默认最大条目数。超过后触发清理（淘汰过期项 + 最旧未过期项），
 # 防止 Redis 长期故障降级时无界增长导致 OOM。
@@ -51,6 +51,10 @@ class InMemoryCacheBackend:
 
     async def delete(self, key: str) -> None:
         self._store.pop(key, None)
+
+    async def delete_many(self, keys: Sequence[str]) -> None:
+        for key in keys:
+            self._store.pop(key, None)
 
     def _evict_if_needed(self) -> None:
         """超容量时先清过期项，仍有余则淘汰最旧条目。"""
@@ -95,3 +99,8 @@ class RedisCacheBackend:
 
     async def delete(self, key: str) -> None:
         await self._client.delete(key)
+
+    async def delete_many(self, keys: Sequence[str]) -> None:
+        """一次 DEL 删除多个键：批量失效不应退化成 N 次串行往返。"""
+        if keys:
+            await self._client.delete(*keys)

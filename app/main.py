@@ -12,13 +12,14 @@ from app.core.lifecycle import (
     run_shutdown,
     run_startup,
 )
-from app.core.loguru_logger import get_logger, init_logging
+from app.core.loguru_logger import flush_logs, get_logger, init_logging
 from app.core.app_runtime import process_runtime_guard
 from app.middleware.monitoring import (
     SecurityHeadersMiddleware,
     MetricsMiddleware,
     LoggingMiddleware,
 )
+from app.middleware.body_limit import BodySizeLimitMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware, AuthRateLimitMiddleware
 from app.core.exceptions import setup_exception_handlers, ExceptionHandlerMiddleware
 from app.core.observability import setup_telemetry
@@ -53,6 +54,8 @@ async def startup_log_status() -> None:
     避免硬编码 host:port 与真实绑定不一致。
     """
     logger = get_logger("main")
+    if not settings.api_docs_enabled:
+        logger.info("API 文档已关闭 (ENABLE_API_DOCS=False / DEBUG=False)")
     host = os.environ.get("APP_HOST")
     port = os.environ.get("APP_PORT")
     if host and port:
@@ -60,9 +63,10 @@ async def startup_log_status() -> None:
         display_host = "localhost" if host in ("0.0.0.0", "::") else host
         base_url = f"http://{display_host}:{port}"
         logger.info(f"应用访问地址: {base_url}")
-        logger.info(f"API 文档（Swagger）: {base_url}{settings.API_V1_STR}/docs")
-        logger.info(f"OpenAPI: {base_url}{settings.API_V1_STR}/openapi.json")
-    else:
+        if settings.api_docs_enabled:
+            logger.info(f"API 文档（Swagger）: {base_url}{settings.API_V1_STR}/docs")
+            logger.info(f"OpenAPI: {base_url}{settings.API_V1_STR}/openapi.json")
+    elif settings.api_docs_enabled:
         logger.info(f"API 文档路径: {settings.API_V1_STR}/docs")
         logger.info(f"OpenAPI: {settings.API_V1_STR}/openapi.json")
 
@@ -106,6 +110,9 @@ async def lifespan(app: FastAPI):
             # —— 关闭任务：即使 lifespan 被取消/抛错，也必须释放后台任务与连接 ——
             await run_shutdown()
             logger.info(f"应用已安全关闭 - version: {__version__}")
+            # 排空异步日志队列（LOG_ENQUEUE=True 时日志由后台线程落盘）。
+            # 必须放在最后一条日志之后：否则关闭阶段的日志会随进程退出一起丢掉。
+            await flush_logs()
     finally:
         process_runtime_guard.release(app)
 
@@ -115,18 +122,25 @@ root_router = APIRouter()
 
 def create_app() -> FastAPI:
     """构造独立 FastAPI 实例，同时保留模块级 ``app`` 部署入口。"""
+    # 文档默认跟随 DEBUG：生产环境不把完整 API 结构暴露给未认证用户。
+    # 传 None 给 FastAPI 即彻底不注册这些路由（不是返回 404 的假关闭）。
+    docs_on = settings.api_docs_enabled
     application = FastAPI(
         title=settings.PROJECT_NAME,
         description="企业级FastAPI框架，包含RBAC权限管理系统",
         version=__version__,
-        openapi_url=f"{settings.API_V1_STR}/openapi.json",
+        openapi_url=f"{settings.API_V1_STR}/openapi.json" if docs_on else None,
         lifespan=lifespan,
-        docs_url=f"{settings.API_V1_STR}/docs",
-        redoc_url=f"{settings.API_V1_STR}/redoc",
+        docs_url=f"{settings.API_V1_STR}/docs" if docs_on else None,
+        redoc_url=f"{settings.API_V1_STR}/redoc" if docs_on else None,
     )
     setup_exception_handlers(application)
 
     # Starlette 后注册的中间件在更外层，故按内 → 外添加。
+    # 体积闸门放最内层：限流先于它执行（超频请求根本不该走到读 body 这步）。
+    application.add_middleware(
+        BodySizeLimitMiddleware, max_bytes=settings.MAX_REQUEST_BODY_BYTES
+    )
     application.add_middleware(
         AuthRateLimitMiddleware,
         calls=settings.AUTH_RATE_LIMIT_CALLS,
@@ -160,11 +174,11 @@ def create_app() -> FastAPI:
 # 根路径
 @root_router.get("/")
 async def root():
-    return {
-        "message": "欢迎使用企业级FastAPI RBAC框架",
-        "docs_url": f"{settings.API_V1_STR}/docs",
-        "redoc_url": f"{settings.API_V1_STR}/redoc",
-    }
+    payload = {"message": "欢迎使用企业级FastAPI RBAC框架"}
+    if settings.api_docs_enabled:
+        payload["docs_url"] = f"{settings.API_V1_STR}/docs"
+        payload["redoc_url"] = f"{settings.API_V1_STR}/redoc"
+    return payload
 
 
 # 健康检查端点（liveness：进程是否存活，浅检查，供 k8s livenessProbe）
@@ -177,12 +191,15 @@ async def health_check():
 # DB 不通时返回 503，避免把流量打到尚未就绪/依赖故障的实例。
 @root_router.get("/readyz")
 async def readiness_check():
-    from fastapi.responses import JSONResponse
-    from app.utils.status import check_application_status
+    """就绪判定只探 DB（Redis 可降级，不影响就绪）。
 
-    status_info = await check_application_status()
-    db_ok = status_info.get("database", {}).get("status") == "connected"
-    if db_ok:
+    这里刻意不复用 ``check_application_status``：那个函数还会跑 ``SELECT version()``
+    和 Redis ping，而就绪只需要一个布尔值——探针频率高，多余的往返要省掉。
+    """
+    from fastapi.responses import JSONResponse
+    from app.utils.status import ping_database
+
+    if await ping_database():
         return {"status": "ready"}
     return JSONResponse(status_code=503, content={"status": "not_ready"})
 

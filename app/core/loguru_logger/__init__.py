@@ -16,7 +16,7 @@ from .context import (
     reset_logging_context,
     set_logging_context,
 )
-from .init import init_logging
+from .init import flush_logs, init_logging
 from .intercept import InterceptHandler, setup_uvicorn_logging, suppress_library_logging
 
 __all__ = [
@@ -37,4 +37,5 @@ __all__ = [
     "InterceptHandler",
     "setup_uvicorn_logging",
     "init_logging",
+    "flush_logs",
 ]

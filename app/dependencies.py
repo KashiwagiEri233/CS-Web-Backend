@@ -10,6 +10,7 @@ from app.core.exceptions import (
     UserNotActiveException,
 )
 from app.core.loguru_logger import set_logging_context
+from app.core.security import verify_token
 from app.database import get_db
 from app.models.user import User
 from app.services.auth_service import AuthService
@@ -53,14 +54,19 @@ async def get_current_user(
     if token is None:
         raise AuthenticationException(message="无法验证凭据")
 
+    # 签名校验只做一次：解码结果同时供取用户与黑名单查询复用（鉴权是每请求热路径）。
+    payload = verify_token(token)
+    if payload is None:
+        raise AuthenticationException(message="无法验证凭据")
+
     auth_service = AuthService(db)
-    authenticated_user = await auth_service.get_current_user(token)
+    authenticated_user = await auth_service.get_current_user(token, payload=payload)
 
     if authenticated_user is None:
         raise AuthenticationException(message="无法验证凭据")
 
     # 黑名单检查：登出/改密后让未过期 access token 立即失效
-    if await auth_service.is_access_revoked(token):
+    if await auth_service.is_access_revoked(token, payload=payload):
         raise AuthenticationException(
             message="令牌已被撤销",
             details={"reason": "revoked"},

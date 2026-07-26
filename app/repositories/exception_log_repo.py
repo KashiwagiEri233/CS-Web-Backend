@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timezone import now_utc
 from app.models.exception_log import ExceptionLog
+from app.repositories.base import dml_rowcount
 from app.repositories.exception_log_stats import fetch_exception_statistics
 
 
@@ -161,7 +162,7 @@ class ExceptionLogRepository:
             delete(ExceptionLog).where(ExceptionLog.id == log_id)
         )
         await self.db.flush()
-        return result.rowcount > 0
+        return dml_rowcount(result) > 0
 
     async def delete_before(self, cutoff: datetime) -> int:
         """删除保留期以前的异常日志（flush，未 commit）。"""
@@ -169,7 +170,7 @@ class ExceptionLogRepository:
             delete(ExceptionLog).where(ExceptionLog.created_at < cutoff)
         )
         await self.db.flush()
-        return int(result.rowcount or 0)
+        return dml_rowcount(result)
 
     async def get_exception_statistics(
         self, time_window_hours: int = 24

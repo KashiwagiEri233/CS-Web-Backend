@@ -13,14 +13,16 @@ from app.core.lifecycle import registry as lc
 def _fresh_registries(monkeypatch):
     """替换全局注册表为空的副本，并返回它供断言；测试结束自动恢复。
 
-    项目各模块在 import 时已向 registry._STARTUP_TASKS 登记真实任务，这里用空列表
-    替换以隔离被测逻辑，避免真实任务（如建库）被 run_startup 误触发。
+    用空列表替换以隔离被测逻辑，避免真实任务（如建库）被 run_startup 误触发。
+    同时 no-op ``ensure_registrants_loaded``：run_startup/run_shutdown 入口会懒加载
+    真实注册点，否则会把 production 任务重新登记进本测试的空表。
     """
     startup, shutdown = [], []
     monkeypatch.setattr(lc, "_STARTUP_TASKS", startup)
     monkeypatch.setattr(lc, "_SHUTDOWN_TASKS", shutdown)
     monkeypatch.setattr(lc, "_STARTUP_NAMES", set())
     monkeypatch.setattr(lc, "_SHUTDOWN_NAMES", set())
+    monkeypatch.setattr("app.core.lifecycle.ensure_registrants_loaded", lambda: None)
     return startup, shutdown
 
 

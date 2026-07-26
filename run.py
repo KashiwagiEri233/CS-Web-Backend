@@ -85,6 +85,9 @@ def main():
     # reload 子进程独立 import 应用、拿不到这里的命令行参数，故经环境变量传递。
     os.environ["APP_HOST"] = args.host
     os.environ["APP_PORT"] = str(args.port)
+    # worker 数供启动时校验连接池总量（见 database._check_pool_capacity）：
+    # 每个 worker 是独立进程、各持一套连接池，总连接数是 worker 数的倍数。
+    os.environ["APP_WORKERS"] = str(args.workers if args.prod else 1)
 
     uvicorn.run(
         "app.main:app",

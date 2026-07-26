@@ -78,17 +78,30 @@ def _signing_key() -> str:
     return settings.SECRET_KEY or ""
 
 
+# 解析后的校验密钥缓存。键为 (当前密钥, 历史密钥原串)，配置变化（测试里 monkeypatch
+# settings）会自然失效；避免每次校验 token 都重新 split 一遍配置字符串——鉴权是热路径。
+_VERIFICATION_KEYS_CACHE: dict[tuple[str, str], List[str]] = {}
+
+
 def _verification_keys() -> List[str]:
     """校验用密钥列表：当前密钥优先，其后为历史密钥（轮换窗口）。"""
+    current = settings.SECRET_KEY or ""
+    prev = getattr(settings, "JWT_PREVIOUS_SECRET_KEYS", "") or ""
+
+    cached = _VERIFICATION_KEYS_CACHE.get((current, prev))
+    if cached is not None:
+        return cached
+
     keys: List[str] = []
-    current = settings.SECRET_KEY
     if current:
         keys.append(current)
-    prev = getattr(settings, "JWT_PREVIOUS_SECRET_KEYS", "") or ""
     for part in prev.split(","):
         k = part.strip()
         if k and k not in keys:
             keys.append(k)
+
+    # 密钥组合是有限集合（当前 + 一次轮换窗口），不会无界增长
+    _VERIFICATION_KEYS_CACHE[(current, prev)] = keys
     return keys
 
 

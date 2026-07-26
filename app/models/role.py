@@ -26,18 +26,26 @@ DateTime = _DateTime(timezone=True)
 # 角色权限关联表
 # 多对多关联表保持 Table + Column 写法（SQLAlchemy 2.0 推荐做法）；
 # mapped_column 只用于 ORM 类属性，不能传给 Table()。
+# permission_id 单独建索引：理由同 user_roles.role_id——复合主键无法加速反查
+# （get_role_ids_by_permission / 鉴权 join）。
 role_permissions = Table(
     "role_permissions",
     Base.metadata,
     Column("role_id", Integer, ForeignKey("roles.id"), primary_key=True),
-    Column("permission_id", Integer, ForeignKey("permissions.id"), primary_key=True),
+    Column(
+        "permission_id",
+        Integer,
+        ForeignKey("permissions.id"),
+        primary_key=True,
+        index=True,
+    ),
 )
 
 
 class Role(Base):
     __tablename__ = "roles"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(
         String(50), unique=True, index=True, nullable=False
     )

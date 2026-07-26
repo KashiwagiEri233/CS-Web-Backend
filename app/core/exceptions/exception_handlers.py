@@ -34,6 +34,7 @@ from .handler_utils import record_exception_to_db, safe_json_response
 
 logger = get_logger("exception_handler")
 
+
 # 对外 re-export，保持 ``from .exception_handlers import ExceptionHandlerMiddleware`` 可用
 __all__ = [
     "setup_exception_handlers",

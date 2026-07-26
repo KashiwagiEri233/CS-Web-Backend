@@ -15,7 +15,7 @@
 import functools
 import hashlib
 import time
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Sequence
 
 from app.core.config import settings
 from app.core.loguru_logger import get_logger
@@ -88,6 +88,25 @@ class DegradableCache:
         # 无论 Redis 是否成功，都清掉内存兜底里的同名键，避免脏读
         await self._memory.delete(key)
 
+    async def delete_many(self, keys: Sequence[str]) -> None:
+        """批量失效：整批走一次 Redis 往返。
+
+        语义与 ``delete`` 一致（内存兜底始终一并清理）。存在的意义是避免
+        「一个角色下几千个用户 -> 几千次串行 await」把一次授权变更拖成秒级。
+        """
+        batch = list(keys)
+        if not batch:
+            return
+        if self._redis is None:
+            await self._memory.delete_many(batch)
+            return
+        try:
+            await self._redis.delete_many(batch)
+            self._mark_healthy()
+        except Exception as e:  # noqa: BLE001
+            self._mark_unhealthy(e)
+        await self._memory.delete_many(batch)
+
     # ----------------------- 内部 -----------------------
 
     def _mark_healthy(self) -> None:
@@ -139,11 +158,19 @@ def get_cache() -> DegradableCache:
     return _cache
 
 
-def cached(ttl: Optional[int] = None, key_prefix: str = "") -> Callable:
+def cached(
+    ttl: Optional[int] = None,
+    key_prefix: str = "",
+    skip_first_arg: bool = False,
+) -> Callable:
     """缓存异步函数返回值的装饰器。
 
-    缓存键由 key_prefix + 函数限定名 + 位置/关键字参数派生。
-    仅适用于参数可 repr 且返回值 JSON 可序列化的场景。
+    缓存键由 key_prefix + 函数限定名 + 位置/关键字参数的 repr 派生，因此**只适用于
+    参数 repr 稳定**的场景（基本类型、具名元组等），且返回值必须 JSON 可序列化。
+
+    ⚠️ 装饰实例方法时必须传 ``skip_first_arg=True``：默认对象的 ``repr`` 含内存地址
+    （``<Svc object at 0x7f...>``），会让每个实例、甚至每次重建实例都算出不同的键，
+    缓存**永远不命中**且无限膨胀——而且不会报错，只表现为"缓存没生效"。
 
     注意：
     - 返回 None 的结果不会被缓存（None 与"未命中"同值，无法区分）；
@@ -153,13 +180,15 @@ def cached(ttl: Optional[int] = None, key_prefix: str = "") -> Callable:
     Args:
         ttl: 过期秒数，None 表示不过期。
         key_prefix: 键前缀（建议按业务域区分，便于排查与失效）。
+        skip_first_arg: 跳过第一个位置参数（``self`` / ``cls``）参与键计算。
     """
 
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):
             prefix = key_prefix or func.__qualname__
-            raw_key = f"{func.__qualname__}|{args!r}|{sorted(kwargs.items())!r}"
+            key_args = args[1:] if skip_first_arg else args
+            raw_key = f"{func.__qualname__}|{key_args!r}|{sorted(kwargs.items())!r}"
             digest = hashlib.md5(raw_key.encode("utf-8")).hexdigest()
             cache_key = f"cache:{prefix}:{digest}"
 

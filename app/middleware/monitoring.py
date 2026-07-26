@@ -1,84 +1,150 @@
-import asyncio
+"""监控 / 日志 / 安全头中间件。
+
+三者都是**纯 ASGI 中间件**（``async def __call__(scope, receive, send)``），
+而非 Starlette 的 ``BaseHTTPMiddleware``。原因：BaseHTTPMiddleware 每个请求都要
+额外开一个 anyio task group 并用内存对象流转发请求/响应体，本项目一次请求要穿过
+5 层中间件，这份固定开销会直接落在 p50 延迟上。这里只需要读 scope、改响应头、
+统计耗时，用原生 ASGI 协议实现即可，无需 Request/Response 对象往返。
+
+改响应头的统一手法：包一层 ``send``，拦截 ``http.response.start`` 消息后修改
+其 ``headers`` 列表（ASGI 里是 ``list[tuple[bytes, bytes]]``）再转发。
+"""
+
 import time
 from collections import Counter
-from typing import Callable
+from typing import Any, Awaitable, Callable, MutableMapping, Optional
 
-from fastapi import Request, Response
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.datastructures import Headers
 
 from app.core.loguru_logger import get_logger
-from app.core.request_context import get_client_ip
+from app.core.request_context import get_client_ip_from_scope
+
+Scope = MutableMapping[str, Any]
+Receive = Callable[[], Awaitable[MutableMapping[str, Any]]]
+Send = Callable[[MutableMapping[str, Any]], Awaitable[None]]
 
 
-class LoggingMiddleware(BaseHTTPMiddleware):
-    """日志记录中间件"""
+class LoggingMiddleware:
+    """请求日志中间件。
 
-    def __init__(self, app):
-        super().__init__(app)
+    探针路径（/health、/readyz）默认完全不记日志：k8s 每几秒探一次，prod profile
+    下是 JSON 序列化 + 文件轮转，这些噪声既淹没有效日志又白白消耗 IO。
+    请求开始记 DEBUG、请求结束记 INFO——正常运行只需要一条「结果」日志，
+    开始日志只在排查卡住的请求时才有价值。
+    """
+
+    SILENT_PATHS = frozenset({"/health", "/readyz"})
+
+    def __init__(self, app, silent_paths: Optional[frozenset] = None):
+        self.app = app
         self.logger = get_logger("middleware.logging")
+        self.silent_paths = (
+            self.SILENT_PATHS if silent_paths is None else frozenset(silent_paths)
+        )
 
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        # 记录请求开始时间
-        request.state.start_time = time.time()
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        path = str(scope.get("path", ""))
+        if path in self.silent_paths:
+            await self.app(scope, receive, send)
+            return
+
+        method = str(scope.get("method", ""))
+        start_time = time.time()
+        # 保留在 scope["state"] 里，供下游（如异常处理器）读取本次请求的起始时间
+        scope.setdefault("state", {})
+        state = scope["state"]
+        if isinstance(state, dict):
+            state["start_time"] = start_time
+
+        headers = Headers(scope=scope)
+        self.logger.debug(
+            "Request started",
+            method=method,
+            path=path,
+            client_ip=get_client_ip_from_scope(scope),
+            user_agent=headers.get("user-agent", ""),
+        )
+
+        status_code = 500
+
+        async def send_wrapper(message: MutableMapping[str, Any]) -> None:
+            nonlocal status_code
+            if message["type"] == "http.response.start":
+                status_code = int(message["status"])
+                raw = list(message.get("headers") or [])
+                process_time = time.time() - start_time
+                raw.append((b"x-process-time", f"{process_time}".encode("ascii")))
+                message = {**message, "headers": raw}
+            await send(message)
 
         try:
-            self.logger.info(
-                "Request started",
-                method=request.method,
-                path=request.url.path,
-                client_ip=get_client_ip(request),
-                user_agent=request.headers.get("user-agent", ""),
-            )
-
-            response = await call_next(request)
-
-            process_time = time.time() - request.state.start_time
-            response.headers["X-Process-Time"] = str(process_time)
-
-            self.logger.info(
-                "Request completed",
-                method=request.method,
-                path=request.url.path,
-                status_code=response.status_code,
-                process_time_ms=process_time * 1000,
-                user_id=getattr(request.state, "user_id", None),
-            )
-
-            return response
+            await self.app(scope, receive, send_wrapper)
         except Exception as exc:
             self.logger.error(
                 "Request failed",
-                method=request.method,
-                path=request.url.path,
-                user_id=getattr(request.state, "user_id", None),
+                method=method,
+                path=path,
+                user_id=_user_id_from_scope(scope),
                 error=str(exc),
                 exc_info=True,
             )
             raise
 
-
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    """安全头中间件"""
-
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        response = await call_next(request)
-
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["X-XSS-Protection"] = "1; mode=block"
-        response.headers["Strict-Transport-Security"] = (
-            "max-age=31536000; includeSubDomains"
+        process_time = time.time() - start_time
+        self.logger.info(
+            "Request completed",
+            method=method,
+            path=path,
+            status_code=status_code,
+            process_time_ms=process_time * 1000,
+            user_id=_user_id_from_scope(scope),
         )
 
-        return response
+
+class SecurityHeadersMiddleware:
+    """安全响应头中间件。"""
+
+    # 静态头预先编码成 ASGI 需要的 bytes，避免每个响应重复编码
+    _HEADERS = [
+        (b"x-content-type-options", b"nosniff"),
+        (b"x-frame-options", b"DENY"),
+        (b"x-xss-protection", b"1; mode=block"),
+        # HSTS 无条件下发：应用通常跑在 TLS 终结代理之后，scope["scheme"] 仍是 http
+        # （proxy_headers 被刻意关闭），按 scheme 判断反而会在真实生产环境漏发。
+        # 浏览器在纯 HTTP 下会忽略该头，无副作用。
+        (b"strict-transport-security", b"max-age=31536000; includeSubDomains"),
+        # 纯 JSON API 不需要 CSP，但要避免 URL（可能含资源 id）随跳转泄漏到第三方
+        (b"referrer-policy", b"no-referrer"),
+    ]
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def send_wrapper(message: MutableMapping[str, Any]) -> None:
+            if message["type"] == "http.response.start":
+                raw = list(message.get("headers") or [])
+                raw.extend(self._HEADERS)
+                message = {**message, "headers": raw}
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
 
 
-class MetricsMiddleware(BaseHTTPMiddleware):
-    """性能指标中间件。
+class MetricsMiddleware:
+    """性能指标中间件（进程内内存计数）。
 
-    使用 Counter + asyncio.Lock 保证并发下的计数一致性。asyncio 单线程模型下
-    Counter 本身已足够安全，Lock 主要为"读总响应时间 + 算平均 + 写回"这种
-    复合操作提供原子性，并防止 get_metrics 读到半更新状态。
+    并发安全性：asyncio 是单线程协作式调度，只有在 ``await`` 处才会切换协程。
+    下面所有计数更新都是不含 await 的纯同步代码段，因此天然原子——不需要锁。
+    （旧实现用 asyncio.Lock 保护这些代码段，每个请求要多两次加解锁，纯属浪费。）
     """
 
     # by_path 维度容量上限，防止路由数无限膨胀。实际路由是有限集合，
@@ -91,12 +157,9 @@ class MetricsMiddleware(BaseHTTPMiddleware):
     _instance: "MetricsMiddleware | None" = None
 
     def __init__(self, app):
-        super().__init__(app)
+        self.app = app
         MetricsMiddleware._instance = self
         self._start_time = time.time()
-        # 延迟创建 Lock：Python 3.9 在无 running loop 时 asyncio.Lock() 会
-        # RuntimeError；构造常发生在 import / 同步测试中，真正用时（dispatch）必有 loop。
-        self._lock: asyncio.Lock | None = None
         self._total_requests = 0
         self._total_errors = 0
         self._total_response_time = 0.0
@@ -104,44 +167,50 @@ class MetricsMiddleware(BaseHTTPMiddleware):
         self._by_method: Counter = Counter()
         self._by_path: Counter = Counter()
 
-    def _get_lock(self) -> asyncio.Lock:
-        """在已有事件循环的上下文中惰性创建锁。"""
-        if self._lock is None:
-            self._lock = asyncio.Lock()
-        return self._lock
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
 
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        request.app.state.metrics_middleware = self
+        app_obj = scope.get("app")
+        if app_obj is not None:
+            # /metrics/json 端点通过 app.state 拿到本实例（见 main.py）
+            app_obj.state.metrics_middleware = self
+
+        method = str(scope.get("method", ""))
+        path = str(scope.get("path", ""))
         start_time = time.time()
-        method = request.method
-        lock = self._get_lock()
 
-        async with lock:
-            self._total_requests += 1
-            self._by_method[method] += 1
+        self._total_requests += 1
+        self._by_method[method] += 1
+        request_count = self._total_requests
+
+        async def send_wrapper(message: MutableMapping[str, Any]) -> None:
+            if message["type"] == "http.response.start":
+                status_code = int(message["status"])
+                self._total_response_time += time.time() - start_time
+                self._by_status[str(status_code)] += 1
+                if status_code >= 500:
+                    self._total_errors += 1
+                # 用路由模板（/users/{user_id}）而非原始 path 做维度：含参路径
+                # （/users/123）会无限膨胀，撑爆上限后静默丢统计。
+                # scope["route"] 由 Starlette 路由器在进入下游后写入，故此处才可读。
+                route = scope.get("route")
+                dimension = getattr(route, "path", path)
+                if (
+                    len(self._by_path) < self._MAX_PATH_ENTRIES
+                    or dimension in self._by_path
+                ):
+                    self._by_path[dimension] += 1
+                raw = list(message.get("headers") or [])
+                raw.append((b"x-request-count", str(request_count).encode("ascii")))
+                message = {**message, "headers": raw}
+            await send(message)
 
         try:
-            response = await call_next(request)
-            process_time = time.time() - start_time
-
-            # 用路由模板（/users/{user_id}）而非原始 path 做维度：含参路径
-            # （/users/123）会无限膨胀，撑爆上限后静默丢统计。
-            route = request.scope.get("route")
-            path = getattr(route, "path", request.url.path)
-
-            async with lock:
-                self._total_response_time += process_time
-                self._by_status[str(response.status_code)] += 1
-                if len(self._by_path) < self._MAX_PATH_ENTRIES or path in self._by_path:
-                    self._by_path[path] += 1
-                if response.status_code >= 500:
-                    self._total_errors += 1
-
-            response.headers["X-Request-Count"] = str(self._total_requests)
-            return response
+            await self.app(scope, receive, send_wrapper)
         except Exception:
-            async with lock:
-                self._total_errors += 1
+            self._total_errors += 1
             raise
 
     def get_metrics(self) -> dict:
@@ -166,3 +235,13 @@ class MetricsMiddleware(BaseHTTPMiddleware):
             "error_rate": error_rate,
             "uptime_seconds": uptime,
         }
+
+
+def _user_id_from_scope(scope: Scope) -> Optional[int]:
+    """从 scope 状态里取当前用户 id（鉴权依赖写入），未鉴权时为 None。"""
+    state = scope.get("state")
+    if isinstance(state, dict):
+        value = state.get("user_id")
+        if isinstance(value, int):
+            return value
+    return None

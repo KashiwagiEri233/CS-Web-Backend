@@ -111,13 +111,19 @@ class AuthService:
         )
         return pair
 
-    async def get_current_user(self, token: str) -> Optional[User]:
+    async def get_current_user(
+        self, token: str, *, payload: Optional[dict] = None
+    ) -> Optional[User]:
         """通过 access token 获取当前用户。调用方需自行处理黑名单检查。
 
         若 token 含 ``pwd_at`` 且用户 ``password_changed_at`` 已更新（改密），
         视为 token 失效（返回 None → 上层 401）。
+
+        ``payload``：调用方已解码过的声明。鉴权链上同一个 token 会被多处使用
+        （取用户 + 查黑名单），传入可省掉重复的签名校验；不传则就地解码。
         """
-        payload = verify_token(token)
+        if payload is None:
+            payload = verify_token(token)
         if payload is None:
             return None
 
@@ -359,9 +365,15 @@ class AuthService:
         await get_blacklist().add(jti, remain)
         return True
 
-    async def is_access_revoked(self, token: str) -> bool:
-        """校验 access token 是否已被撤销（黑名单查询）。"""
-        payload = verify_token(token)
+    async def is_access_revoked(
+        self, token: str, *, payload: Optional[dict] = None
+    ) -> bool:
+        """校验 access token 是否已被撤销（黑名单查询）。
+
+        ``payload`` 同 ``get_current_user``：传入已解码声明可跳过重复签名校验。
+        """
+        if payload is None:
+            payload = verify_token(token)
         if payload is None:
             return False  # 无效 token 交给上层 401
         jti = payload.get("jti")

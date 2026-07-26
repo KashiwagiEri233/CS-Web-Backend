@@ -8,6 +8,21 @@ from app.core.config import settings
 from app.database import get_session
 
 
+async def ping_database() -> bool:
+    """就绪探针专用：只判断「数据库能否响应查询」，不取版本等展示信息。
+
+    与 ``check_database_connection`` 的区别是刻意的：readinessProbe 每几秒一次
+    × 副本数，不该为了一个布尔结果多跑一条 ``SELECT version()``。
+    """
+    try:
+        async with get_session() as session:
+            result = await session.execute(text("SELECT 1"))
+            row = result.fetchone()
+            return bool(row and row[0] == 1)
+    except Exception:
+        return False
+
+
 async def check_database_connection() -> Dict[str, Any]:
     """检查数据库连接状态。
 

@@ -1,6 +1,5 @@
-from typing import List, Optional, Set
+from typing import Iterable, List, Optional, Sequence, Set
 
-import asyncio
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,6 +29,21 @@ async def _invalidate_user_perm_cache(user_id: int) -> None:
         await get_cache().delete(_user_perm_cache_key(user_id))
     except Exception:  # noqa: BLE001 - 失效失败不应阻断业务变更
         logger.debug("权限缓存失效失败，忽略", user_id=user_id)
+
+
+async def _invalidate_user_perm_cache_many(user_ids: Iterable[int]) -> None:
+    """批量失效多个用户的权限缓存（整批一次往返）。
+
+    角色/权限层面的变更会波及该角色下的**全部**用户，逐个 await 删除会让一次
+    授权变更的耗时随用户数线性增长；这里合并成一次批量删除。
+    """
+    keys = [_user_perm_cache_key(uid) for uid in user_ids]
+    if not keys:
+        return
+    try:
+        await get_cache().delete_many(keys)
+    except Exception:  # noqa: BLE001 - 失效失败不应阻断业务变更
+        logger.debug("权限缓存批量失效失败，忽略", count=len(keys))
 
 
 class RBACService(RBACAssignmentMixin):
@@ -75,6 +89,22 @@ class RBACService(RBACAssignmentMixin):
         """获取用户的角色列表（含角色自身的权限，便于上层展示）。"""
         user = await self.rbac_repo.get_user_with_roles(user_id)
         return list(user.roles) if user else []
+
+    # ------------------------------------------------------------------ 鉴权热路径
+    # 与上面的展示/查询接口区分开：这两个方法只回答"能不能过"，直接查最小结果集，
+    # 不走缓存（避免撤权延迟）、不构建 ORM 关系树。每个受保护请求都会调用。
+
+    async def get_authorization_permissions(self, user_id: int) -> Set[str]:
+        """鉴权用：一次查询取回用户的全部有效权限串，不经过缓存。
+
+        与 ``get_user_permissions`` 的区别：后者带缓存、供展示接口使用，
+        本方法始终读库，保证撤权立即生效（见 PermissionChecker 的注释）。
+        """
+        return await self.rbac_repo.get_authorization_permissions(user_id)
+
+    async def get_active_role_names(self, user_id: int) -> Set[str]:
+        """鉴权用：一次查询取回用户已启用的角色名集合。"""
+        return await self.rbac_repo.get_active_role_names(user_id)
 
     async def check_permission(self, user_id: int, resource: str, action: str) -> bool:
         """检查用户是否有特定权限。
@@ -148,8 +178,7 @@ class RBACService(RBACAssignmentMixin):
         except IntegrityError as exc:
             await self.db.rollback()
             raise ConflictException(message="权限数据与现有记录冲突") from exc
-        for rid in role_ids:
-            await self._invalidate_role_users_perm_cache(rid)
+        await self._invalidate_roles_users_perm_cache(role_ids)
         return updated
 
     # ------------------------------------------------------------------ 角色 / 权限 CRUD
@@ -188,9 +217,7 @@ class RBACService(RBACAssignmentMixin):
         if ok:
             if commit:
                 await self.db.commit()
-            await asyncio.gather(
-                *(_invalidate_user_perm_cache(uid) for uid in user_ids)
-            )
+            await _invalidate_user_perm_cache_many(user_ids)
         return ok
 
     async def get_all_permissions(
@@ -227,8 +254,7 @@ class RBACService(RBACAssignmentMixin):
         if ok:
             if commit:
                 await self.db.commit()
-            for rid in role_ids:
-                await self._invalidate_role_users_perm_cache(rid)
+            await self._invalidate_roles_users_perm_cache(role_ids)
         return ok
 
     async def get_role_by_name(self, name: str) -> Optional[Role]:
@@ -258,4 +284,12 @@ class RBACService(RBACAssignmentMixin):
         并发失效：大角色下逐个串行 await 会堆积缓存 RTT。
         """
         user_ids = await self.rbac_repo.get_user_ids_by_role(role_id)
-        await asyncio.gather(*(_invalidate_user_perm_cache(uid) for uid in user_ids))
+        await _invalidate_user_perm_cache_many(user_ids)
+
+    async def _invalidate_roles_users_perm_cache(self, role_ids: Sequence[int]) -> None:
+        """失效这批角色下所有用户的权限缓存（权限定义变更时调用）。
+
+        一次 IN 查询取回受影响用户 + 一次批量删除，不随角色数线性增长往返次数。
+        """
+        user_ids = await self.rbac_repo.get_user_ids_by_roles(role_ids)
+        await _invalidate_user_perm_cache_many(user_ids)

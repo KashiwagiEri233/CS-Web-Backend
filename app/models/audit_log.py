@@ -5,11 +5,12 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from sqlalchemy import DateTime as _DateTime, Integer, JSON, String, Text
+from sqlalchemy import DateTime as _DateTime, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.timezone import now_utc
 from app.database import Base
+from app.models.types import JSONDict
 
 DateTime = _DateTime(timezone=True)
 
@@ -19,15 +20,23 @@ class AuditLog(Base):
 
     __tablename__ = "audit_logs"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    actor_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
-    actor_username: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    action: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
-    resource_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
-    resource_id: Mapped[Optional[str]] = mapped_column(
-        String(64), nullable=True, index=True
+    # 索引对齐 list_logs 的查询形态：「按某列过滤 + 恒定 ORDER BY created_at DESC」。
+    # 单列索引只能加速过滤，排序仍需回表重排；(过滤列, created_at) 复合索引可以同时
+    # 吃掉过滤与排序，索引数量还比原来的 5 个孤立单列索引更少。
+    __table_args__ = (
+        Index("idx_audit_action_created", "action", "created_at"),
+        Index("idx_audit_resource_type_created", "resource_type", "created_at"),
+        Index("idx_audit_resource_id_created", "resource_id", "created_at"),
+        Index("idx_audit_actor_created", "actor_id", "created_at"),
     )
-    detail: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    actor_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    actor_username: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    action: Mapped[str] = mapped_column(String(64), nullable=False)
+    resource_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    resource_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    detail: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONDict, nullable=True)
     ip_address: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
     user_agent: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

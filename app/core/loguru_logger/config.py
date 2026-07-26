@@ -13,7 +13,12 @@ from .adapter import LoguruAdapter, _adapter_cache
 
 # 日志 profile 预置配置
 # dev: 开发级（彩色控制台 + DEBUG + 完整回溯栈，无文件）
-# prod: 生产级（JSON 序列化 + 文件轮转 + 独立 error 日志 + INFO）
+# prod: 生产级（JSON 序列化 + 文件轮转 + 独立 error 日志 + INFO + 异步落盘）
+#
+# enqueue 说明：loguru 默认在调用线程里同步写 sink——对异步应用来说，每条日志都是
+# 事件循环里的一次阻塞磁盘 IO（轮转触发时还有 rename/压缩）。enqueue=True 改为投递到
+# 队列、由后台线程落盘，调用方只付一次入队开销。
+# dev 保持 False：进程异常退出时同步写入不会丢日志，调试更可靠。
 LOG_PROFILES: Dict[str, Dict[str, Any]] = {
     "dev": {
         "level": "DEBUG",
@@ -22,6 +27,7 @@ LOG_PROFILES: Dict[str, Dict[str, Any]] = {
         "enable_console": True,
         "enable_file": False,
         "enable_error_file": False,
+        "enqueue": False,
     },
     "prod": {
         "level": "INFO",
@@ -30,6 +36,7 @@ LOG_PROFILES: Dict[str, Dict[str, Any]] = {
         "enable_console": True,
         "enable_file": True,
         "enable_error_file": True,
+        "enqueue": True,
     },
 }
 
@@ -42,6 +49,7 @@ def resolve_log_config(
     enable_console: Optional[bool] = None,
     enable_file: Optional[bool] = None,
     enable_error_file: Optional[bool] = None,
+    enqueue: Optional[bool] = None,
     log_dir: str = "logs",
     rotation: str = "10 MB",
     retention: str = "30 days",
@@ -57,6 +65,7 @@ def resolve_log_config(
         enable_console: 是否控制台输出，None 用 profile 默认。
         enable_file: 是否文件输出，None 用 profile 默认。
         enable_error_file: 是否独立 error 文件，None 用 profile 默认。
+        enqueue: 是否异步落盘（后台线程写 sink），None 用 profile 默认。
         log_dir: 日志目录。
         rotation: 轮转大小。
         retention: 保留时间。
@@ -79,6 +88,8 @@ def resolve_log_config(
         base["enable_file"] = enable_file
     if enable_error_file is not None:
         base["enable_error_file"] = enable_error_file
+    if enqueue is not None:
+        base["enqueue"] = enqueue
 
     base["log_dir"] = log_dir
     base["rotation"] = rotation
@@ -97,6 +108,7 @@ def _add_file_sink(
     retention: str,
     serialize: bool,
     backtrace: bool,
+    enqueue: bool = False,
     **kwargs,
 ) -> None:
     """添加文件日志 sink；目录/文件不可写时降级（仅告警，不中断启动）。
@@ -117,6 +129,7 @@ def _add_file_sink(
             serialize=serialize,
             catch=True,
             backtrace=backtrace,
+            enqueue=enqueue,
             **kwargs,
         )
     except OSError as e:
@@ -139,6 +152,7 @@ def configure_logging(
     serialize: bool = False,
     enable_error_file: bool = False,
     backtrace: bool = False,
+    enqueue: bool = False,
     **kwargs,
 ):
     """配置 loguru 日志系统，支持开发级与线上级两种 profile。
@@ -155,6 +169,8 @@ def configure_logging(
         retention: 日志保留时间。
         serialize: 是否序列化为 JSON（线上推荐 True）。
         backtrace: 是否记录完整回溯栈（开发推荐 True）。
+        enqueue: 是否异步落盘。异步应用的生产环境应为 True，避免同步磁盘 IO
+            阻塞事件循环；关闭时须 await logger.complete() 排空队列（见 shutdown 钩子）。
         **kwargs: 其他 loguru 配置参数。
     """
     loguru_logger.remove()
@@ -190,6 +206,7 @@ def configure_logging(
             colorize=not serialize,
             catch=True,
             backtrace=backtrace,
+            enqueue=enqueue,
             **kwargs,
         )
 
@@ -203,6 +220,7 @@ def configure_logging(
             retention=retention,
             serialize=serialize,
             backtrace=backtrace,
+            enqueue=enqueue,
             **kwargs,
         )
 
@@ -216,5 +234,6 @@ def configure_logging(
             retention=retention,
             serialize=serialize,
             backtrace=True,  # error 日志始终记录完整栈
+            enqueue=enqueue,
             **kwargs,
         )

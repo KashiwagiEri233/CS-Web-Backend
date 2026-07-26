@@ -269,16 +269,17 @@ async def test_revoke_role_to_user_by_id(monkeypatch):
 
 
 def _real_memory_cache():
-    """用项目自带的内存后端构造一个隔离缓存，验证命中/失效。"""
+    """用项目自带的内存后端构造一个隔离缓存，验证命中/失效。
+
+    这里用真实的 DegradableCache（不接 Redis），而不是 MagicMock 逐方法打桩：
+    后者一旦生产代码新增缓存方法（如批量失效用的 delete_many），假对象会返回一个
+    MagicMock，await 时抛 TypeError 又被失效逻辑的 except 吞掉——于是"缓存没被清"
+    这种安全相关的回归会静默通过测试。用真对象则新方法天然可用。
+    """
     from app.core.cache.backends import InMemoryCacheBackend
+    from app.core.cache.cache import DegradableCache
 
-    backend = InMemoryCacheBackend()
-
-    cache = MagicMock()
-    cache.get = backend.get
-    cache.set = backend.set
-    cache.delete = backend.delete
-    return cache
+    return DegradableCache(None, InMemoryCacheBackend())
 
 
 async def test_get_user_permissions_caches_result(monkeypatch):

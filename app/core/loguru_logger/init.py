@@ -60,6 +60,7 @@ def init_logging(settings) -> None:
         enable_console=settings.LOG_ENABLE_CONSOLE,
         enable_file=settings.LOG_ENABLE_FILE,
         enable_error_file=settings.LOG_ENABLE_ERROR_FILE,
+        enqueue=settings.LOG_ENQUEUE,
         log_dir=settings.LOG_DIR,
         rotation=settings.LOG_ROTATION,
         retention=settings.LOG_RETENTION,
@@ -67,3 +68,13 @@ def init_logging(settings) -> None:
     configure_logging(**log_config)
     suppress_library_logging()
     setup_uvicorn_logging()
+
+
+async def flush_logs() -> None:
+    """排空 loguru 的异步日志队列（enqueue=True 时必需）。
+
+    开启 enqueue 后日志由后台线程落盘；进程退出前若不等待队列排空，最后一批日志
+    （往往正是关闭阶段最该保留的那几条）会直接丢失。``logger.complete()`` 会先同步
+    join 队列，再返回可 await 的对象以兼容异步 sink，两种情况都覆盖。
+    """
+    await loguru_logger.complete()

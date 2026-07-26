@@ -15,13 +15,13 @@ from sqlalchemy import (
     Boolean,
     ForeignKey,
     Index,
-    JSON,
     Float,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.timezone import now_utc, utc_to_local
 from app.database import Base
+from app.models.types import JSONDict
 
 DateTime = _DateTime(timezone=True)
 
@@ -31,23 +31,23 @@ class ExceptionLog(Base):
 
     __tablename__ = "exception_logs"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
     traceback_id: Mapped[str] = mapped_column(
         String(64), nullable=False, index=True, comment="异常跟踪ID"
     )
 
     exception_type: Mapped[str] = mapped_column(
-        String(100), nullable=False, index=True, comment="异常类型"
+        String(100), nullable=False, comment="异常类型"
     )
     error_code: Mapped[Optional[str]] = mapped_column(
-        String(100), nullable=True, index=True, comment="错误代码"
+        String(100), nullable=True, comment="错误代码"
     )
     exception_message: Mapped[str] = mapped_column(
         Text, nullable=False, comment="异常消息"
     )
 
     status_code: Mapped[Optional[int]] = mapped_column(
-        Integer, nullable=True, index=True, comment="HTTP状态码"
+        Integer, nullable=True, comment="HTTP状态码"
     )
     method: Mapped[Optional[str]] = mapped_column(
         String(10), nullable=True, comment="HTTP方法"
@@ -63,7 +63,7 @@ class ExceptionLog(Base):
         String(64), nullable=True, comment="请求ID"
     )
     user_id: Mapped[Optional[str]] = mapped_column(
-        String(64), nullable=True, index=True, comment="用户ID"
+        String(64), nullable=True, comment="用户ID"
     )
     ip_address: Mapped[Optional[str]] = mapped_column(
         String(45), nullable=True, comment="客户端IP地址"
@@ -73,13 +73,13 @@ class ExceptionLog(Base):
     )
 
     details: Mapped[Optional[Dict[str, Any]]] = mapped_column(
-        JSON, nullable=True, comment="异常详细信息"
+        JSONDict, nullable=True, comment="异常详细信息"
     )
     traceback: Mapped[Optional[str]] = mapped_column(
         Text, nullable=True, comment="异常堆栈"
     )
     context: Mapped[Optional[Dict[str, Any]]] = mapped_column(
-        JSON, nullable=True, comment="异常上下文信息"
+        JSONDict, nullable=True, comment="异常上下文信息"
     )
 
     created_at: Mapped[datetime] = mapped_column(

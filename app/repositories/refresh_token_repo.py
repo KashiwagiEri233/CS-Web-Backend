@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timezone import now_utc
 from app.models.refresh_token import RefreshToken
+from app.repositories.base import dml_rowcount
 
 
 def _now() -> datetime:
@@ -77,7 +78,7 @@ class RefreshTokenRepository:
             )
             .values(revoked_at=_now())
         )
-        return result.rowcount or 0
+        return dml_rowcount(result)
 
     async def revoke_all_for_user(self, user_id: int) -> int:
         """撤销该用户全部 refresh token（改密/封禁时使用）。"""
@@ -89,7 +90,7 @@ class RefreshTokenRepository:
             )
             .values(revoked_at=_now())
         )
-        return result.rowcount or 0
+        return dml_rowcount(result)
 
     async def purge_expired(self, *, batch_size: int = 1000) -> int:
         """分批物理删除已过期 refresh 行，返回删除行数。
@@ -105,4 +106,4 @@ class RefreshTokenRepository:
         )
         stmt = delete(RefreshToken).where(RefreshToken.id.in_(ids))
         result = await self.db.execute(stmt)
-        return result.rowcount or 0
+        return dml_rowcount(result)

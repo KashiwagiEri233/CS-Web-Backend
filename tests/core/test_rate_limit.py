@@ -17,10 +17,10 @@ from starlette.testclient import TestClient
 
 from app.core.rate_limit.backends import InMemoryBackend, RedisBackend
 from app.core.rate_limit.limiter import DegradableRateLimiter
+from app.core.request_context import get_client_ip
 from app.middleware.rate_limit import (
     AuthRateLimitMiddleware,
     RateLimitMiddleware,
-    get_client_ip,
 )
 from app.core.exceptions import setup_exception_handlers, ExceptionHandlerMiddleware
 

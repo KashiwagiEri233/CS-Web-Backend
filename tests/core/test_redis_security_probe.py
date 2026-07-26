@@ -12,11 +12,23 @@ async def test_redis_probe_allows_missing_url_when_not_required(monkeypatch):
     await startup_redis_probe()  # 不应抛错
 
 
-async def test_redis_probe_rejects_missing_url_when_required(monkeypatch):
-    monkeypatch.setattr(redis_module.settings, "REDIS_URL", None)
-    monkeypatch.setattr(redis_module.settings, "REQUIRE_REDIS_FOR_SECURITY", True)
-    with pytest.raises(RuntimeError, match="REDIS_URL"):
-        await startup_redis_probe()
+def test_missing_url_rejected_at_config_layer(monkeypatch):
+    """缺 REDIS_URL 的防护在**配置校验层**，而非启动探测层。
+
+    比放在 probe 里更早也更可靠：配置非法就拒绝构造 Settings，
+    根本走不到启动任务。这里断言防护所在的真实位置，避免测试与实现脱节。
+    """
+    from pydantic import ValidationError
+
+    from app.core.config import Settings
+
+    monkeypatch.setenv("SECRET_KEY", "x" * 32)
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@localhost/db")
+    monkeypatch.setenv("REQUIRE_REDIS_FOR_SECURITY", "True")
+    monkeypatch.delenv("REDIS_URL", raising=False)
+
+    with pytest.raises(ValidationError, match="REDIS_URL"):
+        Settings(_env_file=None)
 
 
 async def test_redis_probe_rejects_unreachable_redis_when_required(monkeypatch):

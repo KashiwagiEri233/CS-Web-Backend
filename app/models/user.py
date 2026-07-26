@@ -24,18 +24,22 @@ DateTime = _DateTime(timezone=True)
 # 用户角色关联表
 # 多对多关联表保持 Table + Column 写法（SQLAlchemy 2.0 推荐做法）；
 # mapped_column 只用于 ORM 类属性，不能传给 Table()。
+# role_id 单独建索引：复合主键 (user_id, role_id) 只能加速按 user_id 的查询，
+# 按 role_id 反查（get_user_ids_by_role / 鉴权 join）会退化成顺序扫描。
 user_roles = Table(
     "user_roles",
     Base.metadata,
     Column("user_id", Integer, ForeignKey("users.id"), primary_key=True),
-    Column("role_id", Integer, ForeignKey("roles.id"), primary_key=True),
+    Column("role_id", Integer, ForeignKey("roles.id"), primary_key=True, index=True),
 )
 
 
 class User(Base):
     __tablename__ = "users"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    # 主键不加 index=True：PostgreSQL 已为主键自动建唯一索引，再加会多出一个
+    # 完全冗余的 ix_users_id，只增加写放大和磁盘占用。（其余模型同理）
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
     username: Mapped[str] = mapped_column(
         String(50), unique=True, index=True, nullable=False
     )

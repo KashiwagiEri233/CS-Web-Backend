@@ -87,7 +87,11 @@ async def ensure_database_exists() -> bool:
 
 # 获取数据库会话的依赖注入函数（FastAPI 路由用）
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    # async with 退出时已含 close()，无需 finally 再关一次
+    """请求级会话：出异常回滚，退出时关闭；与路由外的 ``get_session`` 语义一致。
+
+    不自动提交——由 service 层显式 commit，保证跨多个仓储的业务在同一事务内完成。
+    （``async with`` 退出时本就会 close，无需再写一层 ``finally: close()``。）
+    """
     async with AsyncSessionLocal() as session:
         failed = False
         try:
@@ -138,6 +142,7 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 # @register_startup 自注册到 lifecycle 注册表（main.py 的 lifespan 只负责调用
 # run_startup()，不再持有任何 DB 初始化细节）。
 
+from sqlalchemy import text  # noqa: E402
 from sqlalchemy.engine import make_url  # noqa: E402
 
 from app.core.lifecycle import register_shutdown, register_startup  # noqa: E402
@@ -215,13 +220,9 @@ async def _init_schema() -> None:
     - DB_AUTO_MIGRATE=True  → 自动 ``alembic upgrade head``
     - DB_AUTO_MIGRATE=False → 仅校验版本一致性，不一致 fail fast
 
-    历史字段 ``DB_AUTO_CREATE`` 已废弃：即使为 True 也会被忽略并记 warning。
+    历史字段 ``DB_AUTO_CREATE`` 已彻底移除（Settings 配置了 extra="ignore"，
+    旧 .env 里残留该项不会导致启动失败）。
     """
-    if settings.DB_AUTO_CREATE:
-        _db_logger.warning(
-            "DB_AUTO_CREATE=True 已废弃（create_all 双轨已移除），将忽略并走 Alembic；"
-            "请从 .env 删除 DB_AUTO_CREATE 或置 False"
-        )
     _db_logger.info("schema 由 Alembic 管理")
     if settings.DB_AUTO_MIGRATE:
         await _run_alembic_upgrade()
@@ -242,6 +243,51 @@ async def _check_connection() -> None:
         msg = db_status.get("message", "Unknown error")
         _db_logger.error("数据库连接失败", message=msg)
         raise RuntimeError(f"Database connection failed: {msg}")
+
+
+async def _check_pool_capacity() -> None:
+    """校验「worker 数 × 单进程连接池上限」是否超出 PostgreSQL 的 max_connections。
+
+    每个 uvicorn worker 是独立进程、各自持有一套连接池，总连接需求是
+    ``workers × (DB_POOL_SIZE + DB_MAX_OVERFLOW)``。默认值 4 × (10 + 20) = 120，
+    已经超过 PostgreSQL 默认的 max_connections=100——压到峰值才会暴露，
+    而且报错形式是「连不上库」，很难第一时间联想到配置。启动时先算一遍并告警。
+
+    只告警不拒绝启动：真实上限还要扣掉 superuser 预留和其它服务的占用，
+    这里没有足够信息做硬判定，误杀启动的代价高于漏报。
+    """
+    import os
+
+    try:
+        workers = max(int(os.environ.get("APP_WORKERS", "1")), 1)
+    except ValueError:
+        workers = 1
+
+    per_worker = settings.DB_POOL_SIZE + settings.DB_MAX_OVERFLOW
+    required = workers * per_worker
+
+    try:
+        async with engine.connect() as conn:
+            result = await conn.execute(text("SHOW max_connections"))
+            max_connections = int(result.scalar_one())
+    except Exception:  # noqa: BLE001 - 容量校验是提示性的，探测失败不影响启动
+        _db_logger.debug("无法读取 max_connections，跳过连接池容量校验")
+        return
+
+    # 留出余量：superuser 预留连接 + 迁移/运维工具的临时连接
+    budget = int(max_connections * 0.8)
+    if required > budget:
+        _db_logger.warning(
+            "连接池总量可能超出数据库上限",
+            workers=workers,
+            per_worker=per_worker,
+            required=required,
+            max_connections=max_connections,
+            hint=(
+                "workers × (DB_POOL_SIZE + DB_MAX_OVERFLOW) 应留在 max_connections "
+                "的 80% 以内；请调小连接池或 worker 数，或调高 PostgreSQL max_connections"
+            ),
+        )
 
 
 async def _init_schema_under_lock() -> None:

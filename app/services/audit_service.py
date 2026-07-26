@@ -198,5 +198,7 @@ class AuditService:
         )
         if commit:
             await db.commit()
-            await db.refresh(row)
+            # 不做 refresh：会话是 expire_on_commit=False，提交后属性不会失效；
+            # 主键由 repo.create 的 flush 回填、created_at 是 Python 侧默认值，
+            # 没有任何服务端生成值需要回读。多一次 refresh 就是每条审计多一条 SELECT。
         return row

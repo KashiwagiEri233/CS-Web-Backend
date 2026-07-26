@@ -1,31 +1,41 @@
-from typing import List, Optional
+"""限流中间件（纯 ASGI）。
 
-from fastapi import Request, status
+与 monitoring 里的中间件同理，不用 ``BaseHTTPMiddleware``：限流只需要读 scope 里的
+path 和对端地址，走原生 ASGI 协议即可，省掉每请求一个 anyio task group 的开销。
+"""
+
+from typing import Any, Awaitable, Callable, List, MutableMapping, Optional
+
+from fastapi import status
 from fastapi.responses import JSONResponse
-from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core.exceptions import ErrorCode
 from app.core.config import settings
 from app.core.rate_limit import build_limiter
-from app.core.request_context import get_client_ip
+from app.core.request_context import get_client_ip_from_scope
+
+Scope = MutableMapping[str, Any]
+Receive = Callable[[], Awaitable[MutableMapping[str, Any]]]
+Send = Callable[[MutableMapping[str, Any]], Awaitable[None]]
 
 
-class RateLimitMiddleware(BaseHTTPMiddleware):
+class RateLimitMiddleware:
     """速率限制中间件
 
     后端由配置决定：配置 REDIS_URL 则跨实例一致限流（Redis 故障自动降级），
     否则使用进程内内存限流。
 
     Args:
-        app: FastAPI应用
+        app: 下游 ASGI 应用
         calls: 允许的请求数量
         period: 时间窗口（秒）
         limit_paths: 仅限制的路径列表（为 None 则限制所有路径）
+        exclude_paths: 豁免路径
         error_detail: 超限时的错误提示
     """
 
     # 限流键命名空间，子类可覆盖以区分不同限流域（如认证端点）
-    scope = "global"
+    scope_name = "global"
     DEFAULT_EXCLUDE_PATHS = frozenset({"/health", "/readyz"})
 
     def __init__(
@@ -37,33 +47,40 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         exclude_paths: Optional[List[str]] = None,
         error_detail: Optional[str] = None,
     ):
-        super().__init__(app)
+        self.app = app
         self.calls = calls
         self.period = period
-        self.limit_paths = limit_paths
-        self.exclude_paths = set(exclude_paths or self.DEFAULT_EXCLUDE_PATHS)
+        # 命中判断在每个请求上执行，预先转成 set/frozenset 而非逐次线性扫描
+        self.limit_paths = frozenset(limit_paths) if limit_paths else None
+        self.exclude_paths = frozenset(exclude_paths or self.DEFAULT_EXCLUDE_PATHS)
         self.error_detail = error_detail or (
             f"Rate limit exceeded. Maximum {calls} requests per {period} seconds."
         )
         self.limiter = build_limiter()
         self.trusted_proxies = settings.trusted_proxy_networks
 
-    async def dispatch(self, request: Request, call_next):
-        if request.url.path in self.exclude_paths:
-            return await call_next(request)
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        path = str(scope.get("path", ""))
+        if path in self.exclude_paths:
+            await self.app(scope, receive, send)
+            return
 
         # 如果指定了限制路径，则仅对匹配路径生效
-        if self.limit_paths and request.url.path not in self.limit_paths:
-            return await call_next(request)
+        if self.limit_paths is not None and path not in self.limit_paths:
+            await self.app(scope, receive, send)
+            return
 
-        client_ip = get_client_ip(request, self.trusted_proxies)
-        key = f"ratelimit:{self.scope}:{client_ip}"
+        client_ip = get_client_ip_from_scope(scope, self.trusted_proxies)
+        key = f"ratelimit:{self.scope_name}:{client_ip}"
 
-        allowed = await self.limiter.is_allowed(key, self.calls, self.period)
-        if not allowed:
+        if not await self.limiter.is_allowed(key, self.calls, self.period):
             # 直接返回 429。注意：不能在中间件中 raise HTTPException——
             # 它会被最外层 ExceptionHandlerMiddleware 当作未处理异常吞成 500。
-            return JSONResponse(
+            response = JSONResponse(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 content={
                     "success": False,
@@ -73,14 +90,16 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 },
                 headers={"Retry-After": str(self.period)},
             )
+            await response(scope, receive, send)
+            return
 
-        return await call_next(request)
+        await self.app(scope, receive, send)
 
 
 class AuthRateLimitMiddleware(RateLimitMiddleware):
     """针对认证端点的更严格的速率限制"""
 
-    scope = "auth"
+    scope_name = "auth"
 
     AUTH_PATHS = [
         f"{settings.API_V1_STR}/auth/login",
