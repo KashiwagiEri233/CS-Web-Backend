@@ -183,13 +183,30 @@ Redis（可选增强）── 限流 / 缓存 / 2FA 防重放 / 跨实例黑名�
 - ✅ 前端 BFF：公开 23 个路由 + 管理 14 个路由（共 37 个）转薄转发（含 6 个翻译助手）
 - ⏳ 待验证（Linux/PG）：`tests/integration/test_phase4_community.py`（5 个流程：版块+主题/回复+互动/审核/博客/成员+Feed）
 
-### Phase 5 — 工具集 tools（17 文件）
-- exam：CRUD / 组卷 / 答题自动判分（事务）/ 排名 / 我的成绩
-- resource：分类 / 提交审核 / 上传
-- task：发布 / 认领（UNIQUE(task_id, user_id)）/ 审核 / 积分联动
-- component-registry：组件注册表 + variants + guides
-- points：积分流水 + 排行榜；auxilio：学习助手规则引擎（薄弱标签 + 资源推荐，纯函数，易迁移）
-- 前端 `/api/tools/*`、`/api/admin/tools/*` 切转发
+### Phase 5 — 工具集 tools（✅ 后端 + 前端 BFF 完成 2026-08-01）
+
+- ✅ 考试：CRUD/发布/结束（状态机）+ 组卷（题目/选项/分数）+ 答题判分（单选题自动判分、
+  upsert 防重复、时间窗口校验）+ 我的成绩 + 排名（总分倒序）
+- ✅ 资源：提交（pending）/审核（approved/rejected）/浏览计数 + 文件上传（≤10MB，类型白名单）+ 静态服务
+- ✅ 任务：CRUD/发布/关闭 + 认领（限额 FULL/重复 409/取消/提交完成）+ 审核（approved → 积分联动）
+- ✅ 积分：流水（balance_after 对账）/余额/排行榜/7 级等级体系（与前端阈值对齐）
+- ✅ Auxilio：考试记录 → 标签正确率 → 薄弱点（<60%）→ 资源推荐（approved + 标签匹配 + 热度排序）
+- ✅ 组件注册表：item（slug 唯一）/variants（四元组唯一约束）/guide（use_cases/anti_patterns）
+- ✅ 权限点：exam:*/resource:review/task:*（exam_admin/task_publisher 角色补全）
+- ✅ 前端 BFF：`/api/tools/*`（12）+ `/api/admin/tools/*`（8）共 20 个路由转薄转发
+- ⏳ 待验证（Linux/PG）：`tests/integration/test_phase5_tools.py`（5 个流程：考试/资源/任务+积分/Auxilio/组件注册表）
+
+### Phase 6 — 数据迁移与下线（⏳ 待 Linux/PG 环境执行）
+
+- ⏳ 迁移脚本 `tools/scripts/migrate-sqlite-to-pg.mjs`（前端仓库）：按表导出 SQLite → PG，
+  日期 ISO→timestamp、自增 ID 重映射（用户 UUID → Integer）、JSON 文本 → JSONB
+- ⏳ 2FA 数据：TOTP secret 用 `app/core/totp_encryption.py` 解密（同算法）→ 重加密落新库；
+  备用码 scrypt 哈希由 `password_compat` 兼容验证（懒升级）
+- ⏳ 密码：scrypt 哈希直接搬移，登录懒升级 bcrypt（零停机）
+- ⏳ 灰度：模块级切流量（先只读模块，后写模块）；前端 server 层删除（`src/modules/*/server`、
+  `src/shared/db`、`src/shared/security/password.ts` 等），route handler 已全部薄转发
+- ⏳ 论坛搜索优化：关键词 ILIKE → PG GIN + tsvector（含中文分词评估，pg_trgm/zhparser）
+- ⏳ 事件总线跨实例：进程内 event_bus → Redis/arq（ADR-014 评估）
 
 ### Phase 6 — 数据迁移与下线
 - SQLite → PG 数据迁移脚本（按表导出、日期 ISO→timestamp、自增 ID 冲突处理）

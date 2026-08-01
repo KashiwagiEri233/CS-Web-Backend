@@ -17,14 +17,20 @@ from app.database import get_db
 from app.services.announcement_service import AnnouncementService
 from app.services.audit_service import AuditService
 from app.services.auth_service import AuthService
+from app.services.auxilio_service import AuxilioService
 from app.services.blog_service import BlogService
 from app.services.community_service import CommunityService
+from app.services.component_registry_service import ComponentRegistryService
 from app.services.event_service import EventService
+from app.services.exam_service import ExamService
 from app.services.exception_service import ExceptionService
 from app.services.forum_service import ForumService
 from app.services.join_service import JoinService
 from app.services.notification_service import NotificationService
+from app.services.points_service import PointsService
 from app.services.rbac_service import RBACService
+from app.services.resource_service import ResourceService
+from app.services.task_service import TaskService
 from app.services.user_service import UserService
 from app.services.verification_service import VerificationService
 
@@ -59,6 +65,32 @@ def get_blog_service(db: AsyncSession = Depends(get_db)) -> BlogService:
 
 def get_community_service(db: AsyncSession = Depends(get_db)) -> CommunityService:
     return CommunityService(db)
+
+
+def get_exam_service(db: AsyncSession = Depends(get_db)) -> ExamService:
+    return ExamService(db)
+
+
+def get_resource_service(db: AsyncSession = Depends(get_db)) -> ResourceService:
+    return ResourceService(db)
+
+
+def get_task_service(db: AsyncSession = Depends(get_db)) -> TaskService:
+    return TaskService(db)
+
+
+def get_points_service(db: AsyncSession = Depends(get_db)) -> PointsService:
+    return PointsService(db)
+
+
+def get_auxilio_service(db: AsyncSession = Depends(get_db)) -> AuxilioService:
+    return AuxilioService(db)
+
+
+def get_component_registry_service(
+    db: AsyncSession = Depends(get_db),
+) -> ComponentRegistryService:
+    return ComponentRegistryService(db)
 
 
 def get_auth_service(db: AsyncSession = Depends(get_db)) -> AuthService:

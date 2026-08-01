@@ -132,6 +132,16 @@ uv run python -m pytest tests/integration/test_phase4_community.py -v --no-cov
 审核（隐藏/恢复/置顶/加精/硬删除）、博客（slug 唯一/发布/归档/点赞/系列）、
 成员与 Feed 聚合（标签筛选/三源合并/统计）。
 
+### 3b6. Phase 5 集成测试（工具集模块）
+
+```bash
+uv run python -m pytest tests/integration/test_phase5_tools.py -v --no-cov
+```
+
+覆盖：考试（组卷/答题判分 upsert/排名/状态机）、资源（提交/审核/浏览）、
+任务+积分（认领限额/提交/审核→积分/流水/排行榜/等级）、Auxilio（薄弱标签+资源推荐）、
+组件注册表（slug 冲突/variants 四元组唯一/guide/toggle）。
+
 > 纯单元测试（TOTP RFC 6238 向量、加密交叉验证、scrypt 兼容）已在本机通过，
 > 无需 PG：`tests/core/test_totp*.py`、`tests/core/test_password_compat.py`。
 

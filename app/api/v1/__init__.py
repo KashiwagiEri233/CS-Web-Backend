@@ -16,6 +16,7 @@ from app.api.v1 import (
     password_resets,
     profile,
     rbac,
+    tools,
     users,
 )
 from app.core.config import settings
@@ -46,6 +47,7 @@ api_router.include_router(community.router, prefix="/community", tags=["社区"]
 api_router.include_router(
     admin_community.router, prefix="/admin/community", tags=["管理员-社区"]
 )
+api_router.include_router(tools.router, prefix="/tools", tags=["工具集"])
 
 if settings.DEBUG:
     from app.api.v1 import dev_exceptions

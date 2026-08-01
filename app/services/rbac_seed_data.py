@@ -328,6 +328,105 @@ DEFAULT_PERMISSIONS: List[Dict[str, str]] = [
         "action": "update",
         "description": "博客管理（发布/归档/删除任意文章）",
     },
+    # 考试（Phase 5 迁移）
+    {
+        "name": "exam:read",
+        "resource": "exam",
+        "action": "read",
+        "description": "查看考试（管理视图）",
+    },
+    {
+        "name": "exam:create",
+        "resource": "exam",
+        "action": "create",
+        "description": "创建考试",
+    },
+    {
+        "name": "exam:update",
+        "resource": "exam",
+        "action": "update",
+        "description": "编辑考试",
+    },
+    {
+        "name": "exam:delete",
+        "resource": "exam",
+        "action": "delete",
+        "description": "删除考试",
+    },
+    {
+        "name": "exam:publish",
+        "resource": "exam",
+        "action": "publish",
+        "description": "发布考试",
+    },
+    {
+        "name": "exam:end",
+        "resource": "exam",
+        "action": "end",
+        "description": "结束考试",
+    },
+    {
+        "name": "exam:question_create",
+        "resource": "exam",
+        "action": "question_create",
+        "description": "创建题目",
+    },
+    {
+        "name": "exam:question_update",
+        "resource": "exam",
+        "action": "question_update",
+        "description": "编辑题目",
+    },
+    {
+        "name": "exam:question_delete",
+        "resource": "exam",
+        "action": "question_delete",
+        "description": "删除题目",
+    },
+    # 资源（Phase 5 迁移）
+    {
+        "name": "resource:review",
+        "resource": "resource",
+        "action": "review",
+        "description": "审核资源",
+    },
+    # 任务（Phase 5 迁移）
+    {
+        "name": "task:create",
+        "resource": "task",
+        "action": "create",
+        "description": "创建任务",
+    },
+    {
+        "name": "task:update",
+        "resource": "task",
+        "action": "update",
+        "description": "编辑任务",
+    },
+    {
+        "name": "task:delete",
+        "resource": "task",
+        "action": "delete",
+        "description": "删除任务",
+    },
+    {
+        "name": "task:publish",
+        "resource": "task",
+        "action": "publish",
+        "description": "发布任务",
+    },
+    {
+        "name": "task:close",
+        "resource": "task",
+        "action": "close",
+        "description": "关闭任务",
+    },
+    {
+        "name": "task:claim_review",
+        "resource": "task",
+        "action": "claim_review",
+        "description": "审核任务认领",
+    },
 ]
 
 
@@ -409,12 +508,29 @@ def build_default_roles(all_permission_keys: List[str]) -> List[Dict[str, Any]]:
             "name": "exam_admin",
             "description": "考试管理员；考试管理权限随 Phase 5 迁移补充",
             "is_system": True,
-            "permissions": [],
+            "permissions": [
+                "exam:read",
+                "exam:create",
+                "exam:update",
+                "exam:delete",
+                "exam:publish",
+                "exam:end",
+                "exam:question_create",
+                "exam:question_update",
+                "exam:question_delete",
+            ],
         },
         {
             "name": "task_publisher",
             "description": "任务发布员；任务管理权限随 Phase 5 迁移补充",
             "is_system": True,
-            "permissions": [],
+            "permissions": [
+                "task:create",
+                "task:update",
+                "task:delete",
+                "task:publish",
+                "task:close",
+                "task:claim_review",
+            ],
         },
     ]
