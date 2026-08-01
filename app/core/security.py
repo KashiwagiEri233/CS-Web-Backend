@@ -179,3 +179,48 @@ def verify_token(token: str) -> Optional[dict]:
                 continue
             return payload
     return None
+
+
+def create_two_factor_token(user_id: int, expires_minutes: int) -> tuple[str, str]:
+    """签发 2FA 预认证 token（scope=2fa，短 TTL）。
+
+    登录输入密码后、完成 TOTP 前的短期凭证；jti 用于一次性消费（防重放，
+    见 auth_service.complete_two_factor_login 中的黑名单消费）。
+    返回 (token, jti)。
+    """
+    issued_at = now_utc()
+    expire = issued_at + timedelta(minutes=expires_minutes)
+    token_jti = generate_token_jti()
+    payload = {
+        "sub": str(user_id),
+        "scope": "2fa",
+        "exp": expire,
+        "iat": issued_at,
+        "jti": token_jti,
+        "iss": settings.JWT_ISSUER,
+        "aud": settings.JWT_AUDIENCE,
+        "token_type": "2fa",
+    }
+    encoded = jwt.encode(payload, _signing_key(), algorithm=settings.ALGORITHM)
+    return encoded, token_jti
+
+
+def verify_two_factor_token(token: str) -> Optional[dict]:
+    """校验 2FA 预认证 token（不要求 token_type=access）。"""
+    algorithms = [settings.ALGORITHM]
+    for key in _verification_keys():
+        try:
+            payload = jwt.decode(
+                token,
+                key,
+                algorithms=algorithms,
+                issuer=settings.JWT_ISSUER,
+                audience=settings.JWT_AUDIENCE,
+                options={"require": ["exp"]},
+            )
+            if payload.get("scope") != "2fa":
+                continue
+            return payload
+        except InvalidTokenError:
+            continue
+    return None

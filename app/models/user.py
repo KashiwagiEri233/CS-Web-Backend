@@ -12,11 +12,13 @@ from sqlalchemy import (
     Integer,
     String,
     Table,
+    Text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.timezone import now_utc
 from app.database import Base
+from app.models.types import JSONDict
 
 # 带时区的 DateTime（Postgres TIMESTAMP WITH TIME ZONE），与 UTC aware 约定对齐
 DateTime = _DateTime(timezone=True)
@@ -35,6 +37,8 @@ user_roles = Table(
 
 
 class User(Base):
+    """用户：认证字段（框架）+ 业务资料字段（前后端分离迁移合并）。"""
+
     __tablename__ = "users"
 
     # 主键不加 index=True：PostgreSQL 已为主键自动建唯一索引，再加会多出一个
@@ -63,6 +67,25 @@ class User(Base):
         DateTime,
         default=now_utc,
         onupdate=now_utc,
+    )
+
+    # ---- 业务资料字段（迁移自前端 users 表）----
+    # 展示名：前端 display_name；无值时回退 username
+    display_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    bio: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    avatar_url: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    # 头像类型：initial（预设初始头像）| custom（自定义上传）| github（OAuth 头像）
+    avatar_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="initial"
+    )
+    github_url: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    website_url: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    github_id: Mapped[Optional[str]] = mapped_column(
+        String(50), unique=True, index=True, nullable=True
+    )
+    # 技术方向标签（JSON 数组），如 ["web", "ai"]
+    tech_tags: Mapped[Optional[list]] = mapped_column(
+        JSONDict, nullable=True, default=list
     )
 
     # 关联关系

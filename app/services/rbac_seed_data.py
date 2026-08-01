@@ -141,6 +141,70 @@ DEFAULT_PERMISSIONS: List[Dict[str, str]] = [
         "action": "resolve",
         "description": "标记异常已解决",
     },
+    # 密码重置审批（Phase 1 迁移）
+    {
+        "name": "password_reset:read",
+        "resource": "password_reset",
+        "action": "read",
+        "description": "查看密码重置申请",
+    },
+    {
+        "name": "password_reset:approve",
+        "resource": "password_reset",
+        "action": "approve",
+        "description": "批准/拒绝密码重置申请",
+    },
+    # 公告（Phase 2 迁移）
+    {
+        "name": "announcement:read",
+        "resource": "announcement",
+        "action": "read",
+        "description": "查看公告（管理视图）",
+    },
+    {
+        "name": "announcement:create",
+        "resource": "announcement",
+        "action": "create",
+        "description": "创建公告",
+    },
+    {
+        "name": "announcement:update",
+        "resource": "announcement",
+        "action": "update",
+        "description": "更新公告",
+    },
+    {
+        "name": "announcement:delete",
+        "resource": "announcement",
+        "action": "delete",
+        "description": "删除公告",
+    },
+    # 通知（Phase 2 迁移）
+    {
+        "name": "notification:read",
+        "resource": "notification",
+        "action": "read",
+        "description": "查看群发记录",
+    },
+    {
+        "name": "notification:create",
+        "resource": "notification",
+        "action": "create",
+        "description": "发送全站/定向通知",
+    },
+    # 入社申请（Phase 2 迁移）
+    {
+        "name": "join:read",
+        "resource": "join",
+        "action": "read",
+        "description": "查看入社申请",
+    },
+    {
+        "name": "join:review",
+        "resource": "join",
+        "action": "review",
+        "description": "审批入社申请",
+    },
 ]
 
 
@@ -196,6 +260,22 @@ def build_default_roles(all_permission_keys: List[str]) -> List[Dict[str, Any]]:
         {
             "name": "guest",
             "description": "访客标签角色；默认不授予业务权限",
+            "permissions": [],
+        },
+        # 细粒度角色（前后端分离迁移 Phase 2 预建；权限随对应模块迁移补充）
+        {
+            "name": "content_moderator",
+            "description": "内容审核员；论坛审核权限随 Phase 4 迁移补充",
+            "permissions": [],
+        },
+        {
+            "name": "exam_admin",
+            "description": "考试管理员；考试管理权限随 Phase 5 迁移补充",
+            "permissions": [],
+        },
+        {
+            "name": "task_publisher",
+            "description": "任务发布员；任务管理权限随 Phase 5 迁移补充",
             "permissions": [],
         },
     ]

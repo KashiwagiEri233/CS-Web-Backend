@@ -48,6 +48,15 @@ class UserRepository(BaseRepository[User]):
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_by_github_id(self, github_id: str) -> Optional[User]:
+        """通过 GitHub id 获取未删除用户（OAuth 登录）。"""
+        stmt = select(User).where(
+            User.github_id == github_id,
+            User.deleted_at.is_(None),
+        )
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def get_user_with_roles(self, user_id: int) -> Optional[User]:
         """获取未删除用户及其角色。"""
         stmt = (

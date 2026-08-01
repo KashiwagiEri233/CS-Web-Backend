@@ -26,7 +26,6 @@ from app.core.observability import setup_telemetry
 from app.middleware.rbac import require_permission
 from app.models.user import User
 
-
 # 在产生任何应用日志前，于模块导入早期统一初始化日志。
 # 关键：uvicorn reload 子进程只 import 本模块、不执行 run.py，若不在此初始化，
 # import 阶段的日志（如 setup_telemetry 的 OTel 提示）会落到 loguru 默认 sink（写 stderr，
@@ -168,6 +167,11 @@ def create_app() -> FastAPI:
     setup_telemetry(application, engine)
     application.include_router(api_router, prefix=settings.API_V1_STR)
     application.include_router(root_router)
+
+    # 事件订阅注册（幂等；业务事件 → 站内通知等副作用）
+    from app.services.notification_events import register_notification_events
+
+    register_notification_events()
     return application
 
 

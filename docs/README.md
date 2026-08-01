@@ -100,6 +100,12 @@ docs/
 | [rbac.md](modules/rbac.md) | `app/api/v1/rbac/`、`app/services/rbac_service.py` | ✅ |
 | [audit.md](modules/audit.md) | `app/api/v1/audit.py`、`app/services/audit_service.py` | ✅ |
 
+### 迁移相关（前后端分离）
+| 文档 | 说明 |
+|---|---|
+| `../MIGRATION_PLAN.md` | 前后端分离整体迁移计划（根目录） |
+| [MIGRATION_VERIFICATION.md](MIGRATION_VERIFICATION.md) | `d1e2f3a4b5c6` 数据层迁移的 Linux/PG 环境验证指南 |
+
 ## 提交前检查清单
 - [ ] 新增 API 端点 → 对应 `docs/modules/<x>.md` 的接口表已更新
 - [ ] 新增/改名公共函数或配置项 → 对应文档已更新

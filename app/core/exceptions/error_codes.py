@@ -35,6 +35,22 @@ class ErrorCode:
         AUTHENTICATION_FAILED = "AUTHENTICATION_FAILED"
         INVALID_CREDENTIALS = "INVALID_CREDENTIALS"
         USER_NOT_ACTIVE = "USER_NOT_ACTIVE"
+        # 邮箱已注册（冲突场景由 Conflict 命名空间抛出，401 场景复用此码标识枚举）
+        TWO_FACTOR_REQUIRED = "TWO_FACTOR_REQUIRED"
+        TOTP_INVALID = "TOTP_INVALID"
+        # 2FA 状态异常：未初始化 / 已启用 / 已禁用
+        TWO_FACTOR_NOT_SETUP = "TWO_FACTOR_NOT_SETUP"
+        TWO_FACTOR_ALREADY_ENABLED = "TWO_FACTOR_ALREADY_ENABLED"
+        TWO_FACTOR_DISABLED = "TWO_FACTOR_DISABLED"
+        # 改密相关
+        INVALID_CURRENT_PASSWORD = "INVALID_CURRENT_PASSWORD"
+        PASSWORD_IN_HISTORY = "PASSWORD_IN_HISTORY"
+        # OAuth
+        OAUTH_NOT_CONFIGURED = "OAUTH_NOT_CONFIGURED"
+        OAUTH_ERROR = "OAUTH_ERROR"
+        OAUTH_STATE_INVALID = "OAUTH_STATE_INVALID"
+        OAUTH_STATE_EXPIRED = "OAUTH_STATE_EXPIRED"
+        GITHUB_EMAIL_CONFLICT = "GITHUB_EMAIL_CONFLICT"
 
     # ---------------- 授权（Authorization，HTTP 403） ----------------
     class Authorization:
@@ -42,12 +58,31 @@ class ErrorCode:
 
         AUTHORIZATION_FAILED = "AUTHORIZATION_FAILED"
         PERMISSION_DENIED = "PERMISSION_DENIED"
+        SELF_APPROVE = "SELF_APPROVE"
+        # 管理操作保护（与前端 admin 语义对齐）
+        FORBIDDEN = "FORBIDDEN"  # 普通管理员不可操作其他管理员
+        SELF_DEMOTE = "SELF_DEMOTE"  # 不能修改自己的角色
+        SELF_DISABLE = "SELF_DISABLE"  # 不能禁用自己
+        SELF_DELETE = "SELF_DELETE"  # 不能删除自己
+        ROOT_PROTECTED = "ROOT_PROTECTED"  # 超级管理员账号不可被修改/禁用/删除
+        LAST_ADMIN = "LAST_ADMIN"  # 不能降级/禁用/删除最后一个活跃管理员
 
     # ---------------- 数据校验（Validation，HTTP 422） ----------------
     class Validation:
         """数据校验失败。"""
 
         VALIDATION_FAILED = "VALIDATION_FAILED"
+        VERIFICATION_CODE_INVALID = "VERIFICATION_CODE_INVALID"
+        INVALID_PRESET = "INVALID_PRESET"
+        FILE_TOO_LARGE = "FILE_TOO_LARGE"
+        INVALID_FILE_TYPE = "INVALID_FILE_TYPE"
+        FILE_SAVE_FAILED = "FILE_SAVE_FAILED"
+        # 审批流：申请已被处理
+        ALREADY_PROCESSED = "ALREADY_PROCESSED"
+        ALREADY_REVIEWED = "ALREADY_REVIEWED"
+        NO_CHANGE = "NO_CHANGE"  # 状态无变化
+        # 默认重置密码未配置
+        PASSWORD_RESET_NOT_CONFIGURED = "PASSWORD_RESET_NOT_CONFIGURED"
 
     # ---------------- 请求本身不合法（HTTP 413 等） ----------------
     class Request:
@@ -68,6 +103,7 @@ class ErrorCode:
         RESOURCE_CONFLICT = "RESOURCE_CONFLICT"
         # 业务子类：用户已存在（未来随 UserAlreadyExistsException 迁到业务模块）
         USER_ALREADY_EXISTS = "USER_ALREADY_EXISTS"
+        EMAIL_EXISTS = "EMAIL_EXISTS"
 
     # ---------------- 数据库（HTTP 500） ----------------
     class Database:

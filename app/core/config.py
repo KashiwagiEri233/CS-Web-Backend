@@ -72,6 +72,44 @@ class Settings(BaseSettings):
     # 已有管理员时可留空；首次创建时必须配置。密码永不写入日志。
     ADMIN_PASSWORD: Optional[str] = None
 
+    # ---- 站点 / 业务配置（前后端分离迁移 Phase 1） ----
+    # 站点公网地址（BFF 域名），用于构造 OAuth 回调等默认 URL
+    SITE_URL: str = "http://localhost:2333"
+
+    # TOTP 2FA：secret 加密密钥（≥32 字节，必须从环境变量设置，与 SECRET_KEY 同标准）。
+    # 迁移兼容：密钥派生算法（HKDF-SHA256 + AES-256-GCM）与前端一致，见 app/core/totp_encryption.py。
+    TOTP_ENCRYPTION_KEY: Optional[str] = None
+    TOTP_ISSUER: str = "FZTBUCS"
+    # TOTP 时间步长（秒）与允许的时钟偏移窗口（步）
+    TOTP_STEP_SECONDS: int = Field(30, gt=0)
+    TOTP_WINDOW_STEPS: int = Field(1, ge=0)
+    # 2FA 预认证 token 有效期（分钟）：登录输入密码后、完成 TOTP 前的短期凭证
+    TOTP_PRE_AUTH_TTL_MINUTES: int = Field(5, gt=0)
+
+    # 邮箱验证码（注册/找回密码）
+    VERIFICATION_CODE_TTL_MINUTES: int = Field(10, gt=0)
+
+    # 密码历史复用检测（N 条；0 = 禁用）
+    PASSWORD_HISTORY_LIMIT: int = Field(5, ge=0)
+    # 管理员批准重置时使用的默认密码（运行时读取；未配置时审批接口拒绝执行）
+    PASSWORD_RESET_DEFAULT: Optional[str] = None
+
+    # SMTP 邮件（SMTP_HOST 为空时回退控制台输出，与前端行为一致）
+    SMTP_HOST: Optional[str] = None
+    SMTP_PORT: int = Field(587, gt=0)
+    SMTP_SECURE: bool = False  # true = 隐式 TLS（SMTPS），false = STARTTLS
+    SMTP_USER: Optional[str] = None
+    SMTP_PASS: Optional[str] = None
+    SMTP_FROM: str = "no-reply@fztbu.example"
+    SMTP_TLS_SKIP_VERIFY: bool = False  # 仅本地开发；生产请配置可信 CA
+
+    # GitHub OAuth（未配置 CLIENT_ID 时 OAuth 登录入口返回未启用）
+    GITHUB_CLIENT_ID: Optional[str] = None
+    GITHUB_CLIENT_SECRET: Optional[str] = None
+    GITHUB_CALLBACK_URL: Optional[str] = (
+        None  # 默认 {SITE_URL}/api/auth/oauth/github/callback
+    )
+
     # 应用配置
     DEBUG: bool = False
     # 测试进程使用 NullPool，避免 pytest 每测试事件循环与 asyncpg 池连接交叉复用。
@@ -224,6 +262,22 @@ class Settings(BaseSettings):
             )
         if len(v.encode("utf-8")) < 32:
             raise ValueError("SECRET_KEY must contain at least 32 UTF-8 bytes")
+        return v
+
+    @field_validator("TOTP_ENCRYPTION_KEY", mode="before")
+    @classmethod
+    def validate_totp_encryption_key(cls, v):
+        """TOTP secret 加密密钥：必须 ≥32 UTF-8 字节。
+
+        与 SECRET_KEY 同标准——开发期缺失会导致重启后已加密的 2FA secret 无法
+        解密（全部 2FA 失效），必须 fail-fast。
+        """
+        if v is None or v == "":
+            raise ValueError(
+                "TOTP_ENCRYPTION_KEY must be set from environment variables"
+            )
+        if len(v.encode("utf-8")) < 32:
+            raise ValueError("TOTP_ENCRYPTION_KEY must contain at least 32 UTF-8 bytes")
         return v
 
     @field_validator("TRUSTED_PROXY_CIDRS")

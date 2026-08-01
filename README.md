@@ -188,6 +188,7 @@ CORS → ExceptionHandler → SecurityHeaders → Logging → Metrics → RateLi
 | `AGENTS.md` | 扩展约定、中心注册点、Alembic 迁移管理、不变量 |
 | `ARCHITECTURE.md` | 系统设计与模块关系、分层架构、请求生命周期 |
 | `CONVENTIONS.md` | 编码规范、命名、质量红线、安全/错误处理约定 |
+| `MIGRATION_PLAN.md` | 前后端分离迁移计划（FastAPI 承接前端全部后端功能，含表/模块/阶段/决策清单） |
 | `tests/README.md` | 测试目录组织与运行方式 |
 | `docs/README.md` | 模块文档索引、系统级/业务模块级分类约定、文档模板 |
 | `docs/system/` | 系统级模块详解（异常体系、可观测性…） |

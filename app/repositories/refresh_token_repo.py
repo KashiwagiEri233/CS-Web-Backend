@@ -23,6 +23,8 @@ class RefreshTokenRepository:
         token_hash: str,
         family_id: str,
         expires_at: datetime,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
     ) -> RefreshToken:
         """持久化一条 refresh token 记录。调用方负责 commit。"""
         rt = RefreshToken(
@@ -30,6 +32,8 @@ class RefreshTokenRepository:
             token_hash=token_hash,
             family_id=family_id,
             expires_at=expires_at,
+            ip_address=ip_address,
+            user_agent=user_agent,
         )
         self.db.add(rt)
         await self.db.flush()
@@ -91,6 +95,34 @@ class RefreshTokenRepository:
             .values(revoked_at=_now())
         )
         return dml_rowcount(result)
+
+    async def list_active_for_user(self, user_id: int) -> list[RefreshToken]:
+        """列出该用户未撤销且未过期的 refresh token（设备列表，新→旧）。"""
+        now = _now()
+        stmt = (
+            select(RefreshToken)
+            .where(
+                RefreshToken.user_id == user_id,
+                RefreshToken.revoked_at.is_(None),
+                RefreshToken.expires_at > now,
+            )
+            .order_by(RefreshToken.created_at.desc())
+        )
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
+
+    async def revoke_by_id_for_user(self, token_id: int, user_id: int) -> bool:
+        """撤销指定 refresh token（须属于该用户）。返回是否命中。"""
+        result = await self.db.execute(
+            update(RefreshToken)
+            .where(
+                RefreshToken.id == token_id,
+                RefreshToken.user_id == user_id,
+                RefreshToken.revoked_at.is_(None),
+            )
+            .values(revoked_at=_now())
+        )
+        return dml_rowcount(result) > 0
 
     async def purge_expired(self, *, batch_size: int = 1000) -> int:
         """分批物理删除已过期 refresh 行，返回删除行数。

@@ -53,6 +53,7 @@ def _configure_test_environment() -> None:
 
     os.environ["DATABASE_URL"] = str(database_url)
     os.environ["SECRET_KEY"] = "test-secret-key-for-pytest-at-least-32-bytes"
+    os.environ["TOTP_ENCRYPTION_KEY"] = "test-totp-encryption-key-at-least-32-bytes"
     os.environ["TESTING"] = "True"
 
     if test_redis_url:

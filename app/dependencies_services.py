@@ -14,21 +14,41 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.services.announcement_service import AnnouncementService
 from app.services.audit_service import AuditService
 from app.services.auth_service import AuthService
 from app.services.exception_service import ExceptionService
+from app.services.join_service import JoinService
+from app.services.notification_service import NotificationService
 from app.services.rbac_service import RBACService
 from app.services.user_service import UserService
+from app.services.verification_service import VerificationService
 
 
 def get_user_service(db: AsyncSession = Depends(get_db)) -> UserService:
     return UserService(db)
 
 
+def get_announcement_service(db: AsyncSession = Depends(get_db)) -> AnnouncementService:
+    return AnnouncementService(db)
+
+
+def get_notification_service(db: AsyncSession = Depends(get_db)) -> NotificationService:
+    return NotificationService(db)
+
+
+def get_join_service(db: AsyncSession = Depends(get_db)) -> JoinService:
+    return JoinService(db)
+
+
 def get_auth_service(db: AsyncSession = Depends(get_db)) -> AuthService:
     # 注入共享会话的 AuditService：login 的成败审计走独立会话（record 默认行为），
     # create_user_with_audit 的原子审计（record_atomic）需要请求级会话。
     return AuthService(db, audit=AuditService(db))
+
+
+def get_verification_service(db: AsyncSession = Depends(get_db)) -> VerificationService:
+    return VerificationService(db)
 
 
 def get_rbac_service(db: AsyncSession = Depends(get_db)) -> RBACService:
