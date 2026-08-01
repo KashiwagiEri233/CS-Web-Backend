@@ -122,6 +122,16 @@ uv run python -m pytest tests/integration/test_phase3_events.py -v --no-cov
 覆盖：活动 CRUD + 自动归档、报名流（重复 409/名额满 409/取消重报）、签到码生成与核销
 （无效码/重复使用）、批量更新 + 统计、活动设置读写/重置。
 
+### 3b5. Phase 4 集成测试（社区模块）
+
+```bash
+uv run python -m pytest tests/integration/test_phase4_community.py -v --no-cov
+```
+
+覆盖：版块+主题（slug 冲突/反范式计数/浏览去重）、回复+互动（楼中楼/点赞收藏）、
+审核（隐藏/恢复/置顶/加精/硬删除）、博客（slug 唯一/发布/归档/点赞/系列）、
+成员与 Feed 聚合（标签筛选/三源合并/统计）。
+
 > 纯单元测试（TOTP RFC 6238 向量、加密交叉验证、scrypt 兼容）已在本机通过，
 > 无需 PG：`tests/core/test_totp*.py`、`tests/core/test_password_compat.py`。
 

@@ -169,12 +169,19 @@ Redis（可选增强）── 限流 / 缓存 / 2FA 防重放 / 跨实例黑名�
 - ✅ 前端 BFF：`/api/events*`（5）+ `/api/admin/events*`（10）共 15 个路由转薄转发（含事件翻译助手）
 - ⏳ 待验证（Linux/PG）：`tests/integration/test_phase3_events.py`（5 个流程：CRUD+归档/报名流/签到流/批量+统计/设置）
 
-### Phase 4 — 社区 community（最大模块，18 文件）
-- forum：categories / topics / replies（含楼中楼）/ reactions / moderation / mentions / uploads / user-data
-- blog：posts / series / likes；members；feed 聚合
-- **全文搜索**：FTS5 → PG GIN + tsvector，查询语句重写（前端已识别的最高风险点）
-- 图片上传（论坛图 5MB / 头像 2MB）：multipart + 魔数校验 + 磁盘/对象存储策略（OQ-6）
-- 前端 `/api/community/*`、`/api/admin/community/*` 切转发
+### Phase 4 — 社区 community（✅ 后端 + 前端 BFF 完成 2026-08-01）
+
+- ✅ 论坛：版块 CRUD（slug 唯一）、主题（列表筛选/详情含点赞收藏状态/创建/编辑/软删除 + 反范式计数）、
+  回复（楼中楼/编辑/软删除）、点赞/收藏切换（like_count/favorite_count 反范式）、浏览去重
+  （24h 窗口 + partial unique index + ON CONFLICT）、@提及（forum_mentions + 站内通知）
+- ✅ 审核：隐藏/恢复/置顶/加精/硬删除（主题与回复）+ content_moderator 角色权限 seed
+- ✅ 博客：文章 CRUD（slug 唯一/发布/归档/草稿）+ 点赞/浏览 + 系列 + Markdown TOC 提取
+- ✅ 成员名录（tech_tags 筛选 + 脱敏）+ Feed 聚合（主题/文章/成员三源合并、标签/搜索/分页）+ 聚合标签
+- ✅ 图片上传：论坛图 ≤5MB 魔数校验 + 静态服务（防路径遍历）
+- ✅ **搜索降级**：FTS5 → 关键词 AND 语义 ILIKE（标题+内容）；GIN tsvector 全文索引列入 Phase 6 优化项
+- ✅ 权限点：forum:read/update/delete/hide/restore/pin/feature/category_* + blog:update
+- ✅ 前端 BFF：公开 23 个路由 + 管理 14 个路由（共 37 个）转薄转发（含 6 个翻译助手）
+- ⏳ 待验证（Linux/PG）：`tests/integration/test_phase4_community.py`（5 个流程：版块+主题/回复+互动/审核/博客/成员+Feed）
 
 ### Phase 5 — 工具集 tools（17 文件）
 - exam：CRUD / 组卷 / 答题自动判分（事务）/ 排名 / 我的成绩

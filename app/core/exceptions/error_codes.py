@@ -108,6 +108,9 @@ class ErrorCode:
         ALREADY_REGISTERED = "ALREADY_REGISTERED"
         ALREADY_CANCELLED = "ALREADY_CANCELLED"
         FULL = "FULL"  # 活动名额已满
+        # 社区（Phase 4 迁移）
+        SLUG_EXISTS = "SLUG_EXISTS"  # slug 冲突
+        STATUS_CONFLICT = "STATUS_CONFLICT"  # 状态不允许该操作（如编辑已删除内容）
 
     # ---------------- 数据库（HTTP 500） ----------------
     class Database:

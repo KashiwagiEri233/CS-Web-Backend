@@ -260,6 +260,74 @@ DEFAULT_PERMISSIONS: List[Dict[str, str]] = [
         "action": "settings",
         "description": "管理活动设置",
     },
+    # 论坛（Phase 4 迁移）
+    {
+        "name": "forum:read",
+        "resource": "forum",
+        "action": "read",
+        "description": "查看论坛（管理视图）",
+    },
+    {
+        "name": "forum:update",
+        "resource": "forum",
+        "action": "update",
+        "description": "编辑任意主题/回复",
+    },
+    {
+        "name": "forum:delete",
+        "resource": "forum",
+        "action": "delete",
+        "description": "硬删除主题/回复",
+    },
+    {
+        "name": "forum:hide",
+        "resource": "forum",
+        "action": "hide",
+        "description": "隐藏主题/回复",
+    },
+    {
+        "name": "forum:restore",
+        "resource": "forum",
+        "action": "restore",
+        "description": "恢复主题/回复",
+    },
+    {
+        "name": "forum:pin",
+        "resource": "forum",
+        "action": "pin",
+        "description": "置顶主题",
+    },
+    {
+        "name": "forum:feature",
+        "resource": "forum",
+        "action": "feature",
+        "description": "加精主题",
+    },
+    {
+        "name": "forum:category_create",
+        "resource": "forum",
+        "action": "category_create",
+        "description": "创建版块",
+    },
+    {
+        "name": "forum:category_update",
+        "resource": "forum",
+        "action": "category_update",
+        "description": "编辑版块",
+    },
+    {
+        "name": "forum:category_delete",
+        "resource": "forum",
+        "action": "category_delete",
+        "description": "删除版块",
+    },
+    # 博客（Phase 4 迁移）
+    {
+        "name": "blog:update",
+        "resource": "blog",
+        "action": "update",
+        "description": "博客管理（发布/归档/删除任意文章）",
+    },
 ]
 
 
@@ -328,7 +396,14 @@ def build_default_roles(all_permission_keys: List[str]) -> List[Dict[str, Any]]:
             "name": "content_moderator",
             "description": "内容审核员；论坛审核权限随 Phase 4 迁移补充",
             "is_system": True,
-            "permissions": [],
+            "permissions": [
+                "forum:read",
+                "forum:update",
+                "forum:hide",
+                "forum:restore",
+                "forum:pin",
+                "forum:feature",
+            ],
         },
         {
             "name": "exam_admin",

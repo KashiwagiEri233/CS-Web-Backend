@@ -17,8 +17,11 @@ from app.database import get_db
 from app.services.announcement_service import AnnouncementService
 from app.services.audit_service import AuditService
 from app.services.auth_service import AuthService
+from app.services.blog_service import BlogService
+from app.services.community_service import CommunityService
 from app.services.event_service import EventService
 from app.services.exception_service import ExceptionService
+from app.services.forum_service import ForumService
 from app.services.join_service import JoinService
 from app.services.notification_service import NotificationService
 from app.services.rbac_service import RBACService
@@ -44,6 +47,18 @@ def get_join_service(db: AsyncSession = Depends(get_db)) -> JoinService:
 
 def get_event_service(db: AsyncSession = Depends(get_db)) -> EventService:
     return EventService(db)
+
+
+def get_forum_service(db: AsyncSession = Depends(get_db)) -> ForumService:
+    return ForumService(db)
+
+
+def get_blog_service(db: AsyncSession = Depends(get_db)) -> BlogService:
+    return BlogService(db)
+
+
+def get_community_service(db: AsyncSession = Depends(get_db)) -> CommunityService:
+    return CommunityService(db)
 
 
 def get_auth_service(db: AsyncSession = Depends(get_db)) -> AuthService:
