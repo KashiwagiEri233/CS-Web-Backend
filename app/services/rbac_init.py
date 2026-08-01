@@ -144,6 +144,8 @@ class RBACInitializer:
                 role = Role(
                     name=role_data["name"],
                     description=role_data["description"],
+                    display_name=role_data.get("display_name"),
+                    is_system=role_data.get("is_system", False),
                 )
                 for perm_key in role_data["permissions"]:
                     if perm_key in permission_map:

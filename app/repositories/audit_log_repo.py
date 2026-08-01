@@ -5,10 +5,11 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import and_, desc, func, select
+from sqlalchemy import and_, delete, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.audit_log import AuditLog
+from app.repositories.base import dml_rowcount
 
 
 class AuditLogRepository:
@@ -63,6 +64,17 @@ class AuditLogRepository:
         return list(result.scalars().all()), total
 
     async def get_by_id(self, log_id: int) -> Optional[AuditLog]:
-        """按主键查询审计日志。"""
+        """按 ID 查询单条审计日志。"""
         result = await self.db.execute(select(AuditLog).where(AuditLog.id == log_id))
         return result.scalar_one_or_none()
+
+    async def delete(self, log: AuditLog) -> None:
+        """删除单条日志。调用方负责 commit。"""
+        await self.db.delete(log)
+
+    async def delete_before(self, before: datetime) -> int:
+        """批量删除早于指定时间的日志，返回删除行数。"""
+        result = await self.db.execute(
+            delete(AuditLog).where(AuditLog.created_at < before)
+        )
+        return dml_rowcount(result)

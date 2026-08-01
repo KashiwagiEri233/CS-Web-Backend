@@ -43,12 +43,23 @@ role_permissions = Table(
 
 
 class Role(Base):
+    """角色：RBAC 核心实体。
+
+    display_name/is_system/sort_order 为前后端分离迁移（子阶段 2.5）新增字段，
+    对齐前端 admin 角色管理 UI 的展示需求。
+    """
+
     __tablename__ = "roles"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(
         String(50), unique=True, index=True, nullable=False
     )
+    # 角色展示名（如「内容审核员」）；为空时回退 name
+    display_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    # 系统内置角色（种子数据创建）：禁止删除
+    is_system: Mapped[bool] = mapped_column(Boolean, default=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)

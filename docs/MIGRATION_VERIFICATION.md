@@ -105,6 +105,23 @@ uv run python -m pytest tests/integration/test_phase2_modules.py -v --no-cov
 入社提交（游客+登录）与审批（含通知与重复审批拒绝）、管理员保护规则
 （SELF_DISABLE/ROOT_PROTECTED/FORBIDDEN/LAST_ADMIN/NO_CHANGE）、注册→欢迎通知事件。
 
+### 3b3. 子阶段 2.5 集成测试（管理员角色/审计删除）
+
+```bash
+uv run python -m pytest tests/integration/test_phase2_5_admin.py -v --no-cov
+```
+
+覆盖：角色 CRUD（权限自动创建/全量替换/用户数）、系统角色删除保护、审计日志删除（单条 + 批量）。
+
+### 3b4. Phase 3 集成测试（活动模块）
+
+```bash
+uv run python -m pytest tests/integration/test_phase3_events.py -v --no-cov
+```
+
+覆盖：活动 CRUD + 自动归档、报名流（重复 409/名额满 409/取消重报）、签到码生成与核销
+（无效码/重复使用）、批量更新 + 统计、活动设置读写/重置。
+
 > 纯单元测试（TOTP RFC 6238 向量、加密交叉验证、scrypt 兼容）已在本机通过，
 > 无需 PG：`tests/core/test_totp*.py`、`tests/core/test_password_compat.py`。
 

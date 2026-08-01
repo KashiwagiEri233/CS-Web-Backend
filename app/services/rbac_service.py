@@ -10,6 +10,7 @@ from app.core.loguru_logger import get_logger
 from app.models.role import Role
 from app.models.permission import Permission
 from app.repositories.rbac_repo import RBACRepository
+from app.schemas.rbac import AdminRoleCreate, AdminRoleUpdate
 from app.services.rbac_assignments import RBACAssignmentMixin
 
 logger = get_logger("rbac")
@@ -259,6 +260,125 @@ class RBACService(RBACAssignmentMixin):
         return await self.rbac_repo.get_permission_by_resource_and_action(
             resource, action
         )
+
+    # ------------------------------------------------------------------ 管理员视图（子阶段 2.5）
+
+    async def list_roles_admin(self) -> list[dict]:
+        """管理员角色列表：角色 + 权限名 + 用户数（对齐前端 admin 角色管理 UI）。"""
+        roles = await self.rbac_repo.get_all_roles(limit=None)
+        result: list[dict] = []
+        for role in roles:
+            user_count = len(await self.rbac_repo.get_user_ids_by_role(role.id))
+            result.append(
+                {
+                    "id": role.id,
+                    "name": role.name,
+                    "display_name": role.display_name or role.name,
+                    "description": role.description,
+                    "is_system": role.is_system,
+                    "is_protected": role.is_system,
+                    "sort_order": role.sort_order,
+                    "permissions": [p.name for p in role.permissions],
+                    "user_count": user_count,
+                    "created_at": role.created_at,
+                    "updated_at": role.updated_at,
+                }
+            )
+        return result
+
+    async def create_role_admin(
+        self, data: "AdminRoleCreate", commit: bool = True
+    ) -> Role:
+        """管理员创建角色：建角色 + 确保权限存在 + 批量授予（同一事务）。"""
+        if await self.rbac_repo.get_role_by_name(data.name):
+            raise ConflictException(
+                message="角色 key 已存在", details={"name": data.name}
+            )
+        role = await self.rbac_repo.create_role(
+            {
+                "name": data.name,
+                "display_name": data.display_name,
+                "description": data.description,
+                "is_system": False,
+                "is_active": True,
+            }
+        )
+        await self._grant_permission_names(role.id, data.permissions)
+        if commit:
+            await self.db.commit()
+        return role
+
+    async def update_role_admin(
+        self, role_id: int, data: "AdminRoleUpdate", commit: bool = True
+    ) -> Optional[Role]:
+        """管理员更新角色元数据（display_name/description）。"""
+        role = await self.rbac_repo.get_role_by_id(role_id)
+        if not role:
+            return None
+        await self.rbac_repo.update_role(
+            role,
+            {"display_name": data.display_name, "description": data.description},
+        )
+        if commit:
+            await self.db.commit()
+        return role
+
+    async def delete_role_admin(self, role_id: int, commit: bool = True) -> bool:
+        """管理员删除角色：系统内置角色（is_system）禁止删除。"""
+        role = await self.rbac_repo.get_role_by_id(role_id)
+        if not role:
+            return False
+        if role.is_system:
+            raise ConflictException(
+                message="系统内置角色不可删除",
+                details={"role": role.name},
+            )
+        ok = await self.rbac_repo.delete_role(role_id)
+        if ok and commit:
+            await self.db.commit()
+        if ok:
+            await self._invalidate_role_users_perm_cache(role_id)
+        return ok
+
+    async def replace_role_permissions(
+        self, role_id: int, permission_names: list[str], commit: bool = True
+    ) -> Optional[Role]:
+        """全量替换角色权限：权限名（resource:action）不存在则自动创建。"""
+        role = await self.rbac_repo.get_role_by_id(role_id)
+        if not role:
+            return None
+        permission_ids: list[int] = []
+        for name in permission_names:
+            permission = await self.rbac_repo.get_permission_by_name(name)
+            if permission is None:
+                resource, sep, action = name.partition(":")
+                if not sep or not resource or not action:
+                    raise ConflictException(
+                        message=f"权限名 {name} 格式应为 resource:action",
+                        details={"permission": name},
+                    )
+                permission = await self.rbac_repo.create_permission(
+                    {
+                        "name": name,
+                        "resource": resource,
+                        "action": action,
+                        "description": f"自动创建：{name}",
+                    }
+                )
+            permission_ids.append(permission.id)
+        await self.rbac_repo.replace_role_permissions(role_id, permission_ids)
+        if commit:
+            await self.db.commit()
+        await self._invalidate_role_users_perm_cache(role_id)
+        return role
+
+    async def list_permissions_admin(self) -> list[Permission]:
+        """管理员权限点列表（全部，不分页）。"""
+        return await self.rbac_repo.get_all_permissions(limit=None)
+
+    async def _grant_permission_names(self, role_id: int, names: list[str]) -> None:
+        """建角色时的权限授予（复用 replace 语义，未 commit）。"""
+        await self.replace_role_permissions(role_id, names, commit=False)
 
     # ------------------------------------------------------------------ 权限缓存失效
 

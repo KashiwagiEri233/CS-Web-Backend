@@ -205,6 +205,61 @@ DEFAULT_PERMISSIONS: List[Dict[str, str]] = [
         "action": "review",
         "description": "审批入社申请",
     },
+    # 活动（Phase 3 迁移）
+    {
+        "name": "event:read",
+        "resource": "event",
+        "action": "read",
+        "description": "查看活动（管理视图）",
+    },
+    {
+        "name": "event:create",
+        "resource": "event",
+        "action": "create",
+        "description": "创建活动",
+    },
+    {
+        "name": "event:update",
+        "resource": "event",
+        "action": "update",
+        "description": "编辑活动",
+    },
+    {
+        "name": "event:delete",
+        "resource": "event",
+        "action": "delete",
+        "description": "删除活动",
+    },
+    {
+        "name": "event:batch_update",
+        "resource": "event",
+        "action": "batch_update",
+        "description": "批量更新活动状态",
+    },
+    {
+        "name": "event:registration_manage",
+        "resource": "event",
+        "action": "registration_manage",
+        "description": "管理活动报名",
+    },
+    {
+        "name": "event:checkin_generate",
+        "resource": "event",
+        "action": "checkin_generate",
+        "description": "生成签到码",
+    },
+    {
+        "name": "event:checkin_verify",
+        "resource": "event",
+        "action": "checkin_verify",
+        "description": "现场签到核销",
+    },
+    {
+        "name": "event:settings",
+        "resource": "event",
+        "action": "settings",
+        "description": "管理活动设置",
+    },
 ]
 
 
@@ -215,17 +270,20 @@ def build_default_roles(all_permission_keys: List[str]) -> List[Dict[str, Any]]:
         all_permission_keys: 形如 ``resource:action`` 的权限键列表（通常为全部权限）。
 
     Returns:
-        角色定义列表，每项含 name / description / permissions。
+        角色定义列表，每项含 name / description / is_system / permissions。
+        种子角色均为系统内置（is_system=True，禁止删除）。
     """
     return [
         {
             "name": ADMIN_ROLE_NAME,
             "description": "系统管理员，拥有所有权限",
+            "is_system": True,
             "permissions": list(all_permission_keys),
         },
         {
             "name": "user_manager",
             "description": "用户管理员，负责管理用户",
+            "is_system": True,
             "permissions": [
                 "user:create",
                 "user:read",
@@ -241,6 +299,7 @@ def build_default_roles(all_permission_keys: List[str]) -> List[Dict[str, Any]]:
         {
             "name": "developer",
             "description": "开发者，可以查看系统信息和API文档",
+            "is_system": True,
             "permissions": [
                 "user:read",
                 "user:list",
@@ -255,27 +314,32 @@ def build_default_roles(all_permission_keys: List[str]) -> List[Dict[str, Any]]:
         {
             "name": "user",
             "description": "普通用户；仅可使用所有已认证用户共有的接口",
+            "is_system": True,
             "permissions": [],
         },
         {
             "name": "guest",
             "description": "访客标签角色；默认不授予业务权限",
+            "is_system": True,
             "permissions": [],
         },
         # 细粒度角色（前后端分离迁移 Phase 2 预建；权限随对应模块迁移补充）
         {
             "name": "content_moderator",
             "description": "内容审核员；论坛审核权限随 Phase 4 迁移补充",
+            "is_system": True,
             "permissions": [],
         },
         {
             "name": "exam_admin",
             "description": "考试管理员；考试管理权限随 Phase 5 迁移补充",
+            "is_system": True,
             "permissions": [],
         },
         {
             "name": "task_publisher",
             "description": "任务发布员；任务管理权限随 Phase 5 迁移补充",
+            "is_system": True,
             "permissions": [],
         },
     ]

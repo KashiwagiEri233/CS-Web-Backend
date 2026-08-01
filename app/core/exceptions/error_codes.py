@@ -104,6 +104,10 @@ class ErrorCode:
         # 业务子类：用户已存在（未来随 UserAlreadyExistsException 迁到业务模块）
         USER_ALREADY_EXISTS = "USER_ALREADY_EXISTS"
         EMAIL_EXISTS = "EMAIL_EXISTS"
+        # 活动报名（Phase 3 迁移）
+        ALREADY_REGISTERED = "ALREADY_REGISTERED"
+        ALREADY_CANCELLED = "ALREADY_CANCELLED"
+        FULL = "FULL"  # 活动名额已满
 
     # ---------------- 数据库（HTTP 500） ----------------
     class Database:

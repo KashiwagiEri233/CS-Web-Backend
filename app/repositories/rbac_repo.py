@@ -253,7 +253,7 @@ class RBACRepository:
         return True
 
     async def assign_permission_to_role(self, role_id: int, permission_id: int) -> bool:
-        """为角色分配权限（flush，未 commit）。"""
+        """为角色授予权限，flush（未 commit）。"""
         role = await self.get_role_with_permissions(role_id)
         permission = await self.get_permission_by_id(permission_id)
 
@@ -265,3 +265,26 @@ class RBACRepository:
             await self.db.flush()
 
         return True
+
+    async def replace_role_permissions(
+        self, role_id: int, permission_ids: Sequence[int]
+    ) -> None:
+        """全量替换角色权限（清空后批量授予），flush（未 commit）。"""
+        role = await self.get_role_with_permissions(role_id)
+        if role is None:
+            return
+        role.permissions = [p for p in role.permissions if p.id in permission_ids]
+        if permission_ids:
+            stmt = select(Permission).where(Permission.id.in_(permission_ids))
+            result = await self.db.execute(stmt)
+            existing = {p.id: p for p in result.scalars().all()}
+            missing = [
+                pid
+                for pid in permission_ids
+                if pid not in {p.id for p in role.permissions}
+            ]
+            for pid in missing:
+                permission = existing.get(pid)
+                if permission is not None:
+                    role.permissions.append(permission)
+        await self.db.flush()

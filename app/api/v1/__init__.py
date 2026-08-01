@@ -1,10 +1,13 @@
 from fastapi import APIRouter
 
 from app.api.v1 import (
+    admin_events,
+    admin_roles,
     admin_users,
     announcements,
     audit,
     auth,
+    events,
     exceptions,
     join,
     notifications,
@@ -31,6 +34,11 @@ api_router.include_router(notifications.router, prefix="/notifications", tags=["
 api_router.include_router(join.router, prefix="/join", tags=["入社申请"])
 api_router.include_router(
     admin_users.router, prefix="/admin/users", tags=["管理员-用户管理"]
+)
+api_router.include_router(admin_roles.router, prefix="/admin", tags=["管理员-角色权限"])
+api_router.include_router(events.router, prefix="/events", tags=["活动"])
+api_router.include_router(
+    admin_events.router, prefix="/admin/events", tags=["管理员-活动"]
 )
 
 if settings.DEBUG:

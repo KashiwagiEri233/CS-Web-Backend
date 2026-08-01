@@ -147,13 +147,27 @@ Redis（可选增强）── 限流 / 缓存 / 2FA 防重放 / 跨实例黑名�
   `/api/admin/notifications` `/api/admin/join` `/api/admin/users*` 全部转薄转发（16 个路由）
 - ⏳ 待验证（Linux/PG）：`tests/integration/test_phase2_modules.py`（5 个流程：公告生命周期/
   通知广播/入社审批/管理员保护规则/注册欢迎事件）
-- ⏳ 子阶段 2.5（admin 聚合翻译）：`/api/admin/roles*` `/api/admin/permissions` `/api/admin/actions`
+- ⏳ 子阶段 2.5（admin 聚合翻译）：~~`/api/admin/roles*` `/api/admin/permissions` `/api/admin/actions`
   → 后端 rbac/audit 已有等价 API；需后端 roles 表扩展（display_name/is_system/sort_order 列 +
-  迁移）后做 BFF 翻译，单独迭代
+  迁移）后做 BFF 翻译，单独迭代~~ → ✅ 已完成 2026-08-01：
+  - roles 表扩展 display_name/is_system/sort_order（迁移 `h2i3j4k5l6m7`），种子角色标记 is_system
+  - 后端 `/admin/roles` CRUD + 权限全量替换（权限名自动创建）+ `/admin/permissions` 列表
+  - 审计删除：`DELETE /audit/logs/{id}` + `DELETE /audit/logs?before=`（仅 root）
+  - 前端 BFF：roles/roles[key]/roles[key]/permissions/permissions/actions/actions[id] 7 个路由
+    （权限 key 双向映射 module.resource.action ↔ resource:action）
+  - 集成测试 `tests/integration/test_phase2_5_admin.py`（Linux 跑）
 
-### Phase 3 — 活动 events（8 文件）
-- 活动 CRUD / 报名（限额、唯一约束 UNIQUE(user_id, event_id)）/ 签到核销 / 归档 / 设置 / 批量 / 统计
-- 前端 `/api/events/*`、`/api/admin/events/*` 切转发
+### Phase 3 — 活动 events（✅ 后端 + 前端 BFF 完成 2026-08-01）
+
+- ✅ 活动 CRUD：列表（status/search/tag 筛选 + 报名人数）、详情、创建（广播通知）、编辑、删除、批量状态更新
+- ✅ 报名：限额校验（FULL 409）、重复报名 409、取消/重新报名、管理员代报名/改状态、报名统计
+- ✅ 签到：批量生成签到码（幂等 skip）、现场核销（无效码/重复使用）、签到统计
+- ✅ 自动归档：日期已过 → ended（date 自由格式归一化比较，前端 R17 修复语义对齐）
+- ✅ 活动设置：settings 表（module=events）读写/重置，默认值对齐前端 DEFAULT_EVENT_SETTINGS
+- ✅ 事件通知：event.created → 全站广播 / event.registered / event.cancelled → 站内通知（event_bus）
+- ✅ 权限点：event:read/create/update/delete/batch_update/registration_manage/checkin_generate/checkin_verify/settings
+- ✅ 前端 BFF：`/api/events*`（5）+ `/api/admin/events*`（10）共 15 个路由转薄转发（含事件翻译助手）
+- ⏳ 待验证（Linux/PG）：`tests/integration/test_phase3_events.py`（5 个流程：CRUD+归档/报名流/签到流/批量+统计/设置）
 
 ### Phase 4 — 社区 community（最大模块，18 文件）
 - forum：categories / topics / replies（含楼中楼）/ reactions / moderation / mentions / uploads / user-data

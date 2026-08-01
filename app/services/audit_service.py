@@ -146,6 +146,29 @@ class AuditService:
         """按 ID 获取审计日志。"""
         return await self._require_repo().get_by_id(log_id)
 
+    async def delete_log(self, log_id: int) -> bool:
+        """删除单条审计日志（仅 root 调用）。返回是否命中。"""
+        repo = self._require_repo()
+        log = await repo.get_by_id(log_id)
+        if log is None:
+            return False
+        await repo.delete(log)
+        await self._commit()
+        return True
+
+    async def delete_logs_before(self, before: datetime) -> int:
+        """批量删除早于指定时间的审计日志（仅 root 调用）。返回删除条数。"""
+        repo = self._require_repo()
+        count = await repo.delete_before(before)
+        await self._commit()
+        return count
+
+    async def _commit(self) -> None:
+        """提交当前会话（写操作需要请求级 db）。"""
+        if self.db is None:
+            raise RuntimeError("AuditService 写操作需要注入 AsyncSession")
+        await self.db.commit()
+
     @staticmethod
     def to_item_dict(row: AuditLog) -> Dict[str, Any]:
         """序列化为 API 字典（时间转本地展示）。"""
