@@ -34,15 +34,25 @@ def _strong_password() -> str:
 async def _cleanup_user(db, user_id: int) -> None:
     from sqlalchemy import text
 
+    email = (
+        await db.execute(text("SELECT email FROM users WHERE id=:i"), {"i": user_id})
+    ).scalar_one_or_none()
     for table in (
         "refresh_tokens",
         "login_history",
         "password_history",
-        "verification_codes",
-        "password_reset_requests",
         "two_factor_auth",
+        "notifications",
+        "user_roles",
     ):
         await db.execute(text(f"DELETE FROM {table} WHERE user_id=:i"), {"i": user_id})
+    if email:
+        await db.execute(
+            text("DELETE FROM verification_codes WHERE email=:e"), {"e": email}
+        )
+        await db.execute(
+            text("DELETE FROM password_reset_requests WHERE email=:e"), {"e": email}
+        )
     await db.execute(text("DELETE FROM users WHERE id=:i"), {"i": user_id})
     await db.commit()
 
@@ -220,9 +230,12 @@ async def test_login_history_and_sessions(integration_db_ready):
             user = await svc.user_repo.get_by_email(email)
 
             # 失败登录记录（user_id 为空 + attempted_email）
-            await svc.login_by_email(
-                email, "wrong-pass", {"ip_address": "9.9.9.9", "user_agent": "ua-2"}
-            )
+            from app.core.exceptions import InvalidCredentialsException
+
+            with pytest.raises(InvalidCredentialsException):
+                await svc.login_by_email(
+                    email, "wrong-pass", {"ip_address": "9.9.9.9", "user_agent": "ua-2"}
+                )
 
             # 会话列表
             sessions = await svc.list_sessions(user.id)

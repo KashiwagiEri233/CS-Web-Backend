@@ -1,4 +1,4 @@
-﻿"""社区 v2 仓储：categories / posts / comments / reactions / favorites / views / mentions /
+"""社区 v2 仓储：categories / posts / comments / reactions / favorites / views / mentions /
 follows / reports / series。搜索为关键词 AND 语义 ILIKE（FTS5 降级实现），GIN 列入 Phase 6。
 """
 
@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Any, Optional, Sequence
 
-from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timezone import now_utc
@@ -187,66 +187,57 @@ class CommunityPostRepository:
             setattr(post, key, value)
 
     async def set_status(self, post_id: int, status: str) -> None:
-        await self.db.execute(
-            update(CommunityPost)
-            .where(CommunityPost.id == post_id)
-            .values(status=status, updated_at=now_utc())
-        )
+        post = await self.get_by_id(post_id)
+        if post is None:
+            return
+        post.status = status
+        post.updated_at = now_utc()
 
     async def toggle_pinned(self, post_id: int, pinned: bool) -> None:
-        await self.db.execute(
-            update(CommunityPost)
-            .where(CommunityPost.id == post_id)
-            .values(is_pinned=pinned)
-        )
+        post = await self.get_by_id(post_id)
+        if post is None:
+            return
+        post.is_pinned = pinned
 
     async def toggle_featured(self, post_id: int, featured: bool) -> None:
-        await self.db.execute(
-            update(CommunityPost)
-            .where(CommunityPost.id == post_id)
-            .values(is_featured=featured)
-        )
+        post = await self.get_by_id(post_id)
+        if post is None:
+            return
+        post.is_featured = featured
 
     async def increment_view(self, post_id: int) -> None:
-        await self.db.execute(
-            update(CommunityPost)
-            .where(CommunityPost.id == post_id)
-            .values(view_count=CommunityPost.view_count + 1)
-        )
+        post = await self.get_by_id(post_id)
+        if post is None:
+            return
+        post.view_count += 1
 
     async def adjust_count(
         self, post_id: int, *, reply_delta: int = 0, favorite_delta: int = 0
     ) -> None:
-        values: dict = {}
+        post = await self.get_by_id(post_id)
+        if post is None:
+            return
         if reply_delta:
-            values["reply_count"] = func.max(CommunityPost.reply_count + reply_delta, 0)
+            post.reply_count = max(post.reply_count + reply_delta, 0)
         if favorite_delta:
-            values["favorite_count"] = func.max(
-                CommunityPost.favorite_count + favorite_delta, 0
-            )
-        if values:
-            values["updated_at"] = now_utc()
-            await self.db.execute(
-                update(CommunityPost)
-                .where(CommunityPost.id == post_id)
-                .values(**values)
-            )
+            post.favorite_count = max(post.favorite_count + favorite_delta, 0)
+        if reply_delta or favorite_delta:
+            post.updated_at = now_utc()
 
     async def set_last_reply(self, post_id: int, comment_id: int) -> None:
-        await self.db.execute(
-            update(CommunityPost)
-            .where(CommunityPost.id == post_id)
-            .values(last_reply_id=comment_id, last_reply_at=now_utc())
-        )
+        post = await self.get_by_id(post_id)
+        if post is None:
+            return
+        post.last_reply_id = comment_id
+        post.last_reply_at = now_utc()
 
     async def adjust_category_count(self, category_id: int, delta: int) -> None:
         if category_id is None:
             return
-        await self.db.execute(
-            update(CommunityCategory)
-            .where(CommunityCategory.id == category_id)
-            .values(post_count=func.max(CommunityCategory.post_count + delta, 0))
-        )
+        category = await self.db.get(CommunityCategory, category_id)
+        if category is None:
+            return
+        category.post_count = max(category.post_count + delta, 0)
 
 
 class CommunityCommentRepository:
@@ -332,11 +323,11 @@ class CommunityCommentRepository:
         comment.updated_at = now_utc()
 
     async def set_status(self, comment_id: int, status: str) -> None:
-        await self.db.execute(
-            update(CommunityComment)
-            .where(CommunityComment.id == comment_id)
-            .values(status=status, updated_at=now_utc())
-        )
+        comment = await self.get_by_id(comment_id)
+        if comment is None:
+            return
+        comment.status = status
+        comment.updated_at = now_utc()
 
 
 class CommunityInteractionRepository:

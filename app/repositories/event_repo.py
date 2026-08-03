@@ -58,7 +58,15 @@ class EventRepository:
         return list(rows.scalars().all())
 
     async def get_by_id(self, event_id: int) -> Optional[Event]:
-        return await self.db.get(Event, event_id)
+        # populate_existing：即便对象已在 identity map（含批量更新后的过期状态）
+        # 也强制从 DB 刷新，保证返回最新状态
+        stmt = (
+            select(Event)
+            .where(Event.id == event_id)
+            .execution_options(populate_existing=True)
+        )
+        rows = await self.db.execute(stmt)
+        return rows.scalar_one_or_none()
 
     async def create(self, data: dict) -> Event:
         obj = Event(**data)

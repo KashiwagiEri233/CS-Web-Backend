@@ -52,7 +52,10 @@ async def _make_user(
             r = Role(name=role, description=f"test role {role}")
             db.add(r)
             await db.flush()
-        user.roles = [r]
+        from app.models.user import user_roles
+        from sqlalchemy import insert
+
+        await db.execute(insert(user_roles).values(user_id=user.id, role_id=r.id))
     await db.commit()
     return user
 
@@ -68,11 +71,13 @@ async def _cleanup_users(db, *user_ids: int) -> None:
             "verification_codes",
             "notifications",
             "join_applications",
+            "user_roles",
         ):
             try:
-                await db.execute(
-                    text(f"DELETE FROM {table} WHERE user_id=:i"), {"i": uid}
-                )
+                async with db.begin_nested():
+                    await db.execute(
+                        text(f"DELETE FROM {table} WHERE user_id=:i"), {"i": uid}
+                    )
             except Exception:
                 pass
         await db.execute(text("DELETE FROM users WHERE id=:i"), {"i": uid})
@@ -252,10 +257,6 @@ async def test_admin_user_protections(integration_db_ready):
         normal = await _make_user(db, f"usr_{_sfx()}@t.com")
         svc = UserService(db)
         try:
-            # 普通管理员不可禁用其他管理员
-            with pytest.raises(AuthorizationException):
-                await svc.set_user_active_admin(admin, normal.id, active=False)
-
             # 禁用普通用户（管理员）
             await svc.set_user_active_admin(admin, normal.id, active=False)
             assert (await svc.get_user(normal.id)).is_active is False
@@ -282,6 +283,7 @@ async def test_admin_user_protections(integration_db_ready):
             import app.core.config as cfg
 
             cfg.settings.PASSWORD_RESET_DEFAULT = "DefaultReset123!"
+            await svc.set_user_active_admin(admin, normal.id, active=True)
             await svc.reset_password_admin(admin, normal.id, default_password=True)
             auth = AuthService(db)
             result = await auth.login_by_email(

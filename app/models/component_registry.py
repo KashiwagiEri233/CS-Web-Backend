@@ -86,7 +86,7 @@ class ComponentRegistryGuide(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     item_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("component_registry_items.id"),
+        ForeignKey("component_registry_items.id", ondelete="CASCADE"),
         nullable=False,
         unique=True,
         index=True,

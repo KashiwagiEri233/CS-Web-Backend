@@ -200,7 +200,7 @@ class RBACRepository:
 
         仅写入 update_data 中非 None 的字段。
         """
-        for field in ("name", "description", "is_active"):
+        for field in ("name", "display_name", "description", "is_active"):
             value = update_data.get(field)
             if value is not None:
                 setattr(role, field, value)

@@ -47,7 +47,7 @@ python run.py --env 1
 - `TOTP_ENCRYPTION_KEY`（2FA 加密）、`FORUM_IP_HASH_SECRET`（浏览去重 IP 哈希）、`PASSWORD_RESET_DEFAULT`（默认重置密码）
 - `BACKEND_URL` 是前端侧配置（BFF 指向本仓库，默认 `http://localhost:9000`）
 
-## 模块清单（Phase 0–5 全部完成，共 167 条 API 路由）
+## 模块清单
 
 | 模块 | 能力 | 路由前缀 |
 |---|---|---|

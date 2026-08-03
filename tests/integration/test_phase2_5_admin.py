@@ -25,10 +25,18 @@ def _sfx() -> str:
 
 
 async def _cleanup_role(db, name: str) -> None:
+    from sqlalchemy import text
+
     role = (
         await db.execute(select(Role).where(Role.name == name))
     ).scalar_one_or_none()
     if role is not None:
+        await db.execute(
+            text("DELETE FROM user_roles WHERE role_id=:r"), {"r": role.id}
+        )
+        await db.execute(
+            text("DELETE FROM role_permissions WHERE role_id=:r"), {"r": role.id}
+        )
         await db.delete(role)
         await db.commit()
 
@@ -107,7 +115,7 @@ async def test_audit_log_delete_flow(integration_db_ready):
             resource_type="test",
             detail={"marker": _sfx()},
         )
-        logs = await svc.list_logs(action="test.phase2_5", limit=10)
+        logs, _total = await svc.list_logs(action="test.phase2_5", limit=10)
         assert len(logs) >= 2
 
         first_id = logs[0].id
@@ -118,5 +126,5 @@ async def test_audit_log_delete_flow(integration_db_ready):
 
         count = await svc.delete_logs_before(now_utc())
         assert count >= 1
-        remaining = await svc.list_logs(action="test.phase2_5", limit=10)
+        remaining, _total2 = await svc.list_logs(action="test.phase2_5", limit=10)
         assert all(r.id != first_id for r in remaining)

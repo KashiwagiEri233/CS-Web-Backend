@@ -39,8 +39,9 @@ async def test_http_auth_user_and_revocation_flow(integration_db_ready):
 
     application = create_app()
     try:
+        transport = httpx.ASGITransport(app=application)
         async with httpx.AsyncClient(
-            app=application, base_url="http://testserver"
+            transport=transport, base_url="http://testserver"
         ) as client:
             admin_login = await client.post(
                 "/api/v1/auth/login-json",
@@ -48,6 +49,13 @@ async def test_http_auth_user_and_revocation_flow(integration_db_ready):
             )
             assert admin_login.status_code == 200, admin_login.text
             admin_token = admin_login.json()["access_token"]
+
+            # 注册需要邮箱验证码：直接用服务生成并取明文
+            from app.services.verification_service import VerificationService
+
+            async with get_session() as db:
+                verification = VerificationService(db)
+                code = await verification.generate(f"{user_name}@example.com")
 
             created = await client.post(
                 "/api/v1/auth/register",
@@ -57,10 +65,10 @@ async def test_http_auth_user_and_revocation_flow(integration_db_ready):
                     "email": f"{user_name}@example.com",
                     "password": _PASSWORD,
                     "full_name": "Integration User",
+                    "code": code,
                 },
             )
             assert created.status_code == 200, created.text
-            user_id = created.json()["id"]
 
             login = await client.post(
                 "/api/v1/auth/login-json",
@@ -72,7 +80,9 @@ async def test_http_auth_user_and_revocation_flow(integration_db_ready):
 
             profile = await client.get("/api/v1/auth/me", headers=user_headers)
             assert profile.status_code == 200
-            assert profile.json()["username"] == user_name
+            me_user = profile.json()["user"]
+            assert me_user["username"] == user_name
+            user_id = me_user["id"]
 
             updated = await client.put(
                 "/api/v1/users/me",
@@ -95,10 +105,23 @@ async def test_http_auth_user_and_revocation_flow(integration_db_ready):
         ids = [value for value in (admin_id, user_id) if value is not None]
         if ids:
             async with get_session() as db:
-                await db.execute(
-                    text("DELETE FROM refresh_tokens WHERE user_id = ANY(:ids)"),
-                    {"ids": ids},
-                )
+                for table in (
+                    "refresh_tokens",
+                    "login_history",
+                    "password_history",
+                    "notifications",
+                    "two_factor_auth",
+                    "verification_codes",
+                    "password_reset_requests",
+                ):
+                    try:
+                        async with db.begin_nested():
+                            await db.execute(
+                                text(f"DELETE FROM {table} WHERE user_id = ANY(:ids)"),
+                                {"ids": ids},
+                            )
+                    except Exception:
+                        pass
                 await db.execute(
                     text("DELETE FROM user_roles WHERE user_id = ANY(:ids)"),
                     {"ids": ids},

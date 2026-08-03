@@ -88,9 +88,12 @@ class User(Base):
         JSONDict, nullable=True, default=list
     )
 
-    # 关联关系
+    # 关联关系（selectin：async 会话下避免 lazy load MissingGreenlet）
     roles: Mapped[List["Role"]] = relationship(
-        "Role", secondary=user_roles, back_populates="users"
+        "Role",
+        secondary=user_roles,
+        back_populates="users",
+        lazy="selectin",
     )
 
     def __repr__(self):

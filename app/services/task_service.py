@@ -80,7 +80,7 @@ class TaskService:
     # ------------------------------------------------------------------ 认领
 
     async def claim_task(
-        self, user_id: int, task_id: int, note: Optional[str]
+        self, user_id: int, task_id: int, note: Optional[str] = None
     ) -> TaskClaim:
         task = await self.get_task(task_id)
         if task.status != "published":

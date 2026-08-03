@@ -42,13 +42,26 @@ async def _cleanup(db, *user_ids: int) -> None:
     from sqlalchemy import text
 
     for uid in user_ids:
-        for table in ("event_checkins", "event_registrations", "notifications"):
+        for table in (
+            "event_checkins",
+            "event_registrations",
+            "notifications",
+            "user_roles",
+        ):
             try:
-                await db.execute(
-                    text(f"DELETE FROM {table} WHERE user_id=:i"), {"i": uid}
-                )
+                async with db.begin_nested():
+                    await db.execute(
+                        text(f"DELETE FROM {table} WHERE user_id=:i"), {"i": uid}
+                    )
             except Exception:
                 pass
+        try:
+            async with db.begin_nested():
+                await db.execute(
+                    text("DELETE FROM events WHERE created_by=:i"), {"i": uid}
+                )
+        except Exception:
+            pass
         await db.execute(text("DELETE FROM users WHERE id=:i"), {"i": uid})
     await db.commit()
 

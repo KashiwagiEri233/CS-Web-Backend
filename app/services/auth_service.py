@@ -123,15 +123,14 @@ class AuthService:
         self,
         *,
         user_id: Optional[int],
-        ip: Optional[str],
-        user_agent: Optional[str],
         success: bool,
         attempted_email: Optional[str] = None,
+        **meta: str,
     ) -> None:
         await self.login_history_repo.create(
             user_id=user_id,
-            ip=ip,
-            user_agent=user_agent,
+            ip=meta.get("ip_address"),
+            user_agent=meta.get("user_agent"),
             success=success,
             attempted_email=attempted_email,
         )

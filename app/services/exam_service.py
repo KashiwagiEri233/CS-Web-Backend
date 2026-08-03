@@ -104,6 +104,7 @@ class ExamService:
     async def create_question(self, exam_id: int, data: QuestionInput) -> ExamQuestion:
         await self.get_exam(exam_id)
         payload = data.model_dump(exclude={"options"})
+        payload["exam_id"] = exam_id
         question = await self.repo.create_question(payload)
         if data.options:
             await self.repo.replace_options(question.id, data.options)

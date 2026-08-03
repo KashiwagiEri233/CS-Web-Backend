@@ -57,8 +57,11 @@ class EventService:
         return settings
 
     async def update_settings(self, data: EventSettingsIn) -> dict:
-        """批量更新设置项。"""
-        for key, value in data.model_dump(exclude_unset=True).items():
+        """批量更新设置项（支持 dict 或属性访问对象）。"""
+        for key in EVENT_LIMITS:
+            value = (
+                data.get(key) if isinstance(data, dict) else getattr(data, key, None)
+            )
             if value is not None:
                 await self.setting_repo.upsert(key, str(value))
         await self.db.commit()
@@ -426,10 +429,15 @@ class EventService:
         from app.models.user import User
 
         user = await self.db.get(User, actor_id)
+        resource_id = (
+            str(target.id)
+            if hasattr(target, "id")
+            else (str(target) if target is not None else None)
+        )
         await self.audit.record(
             action=action,
             resource_type="event",
-            resource_id=str(target.id) if target is not None else None,
+            resource_id=resource_id,
             actor_id=actor_id,
             actor_username=user.username if user else None,
             detail=detail,

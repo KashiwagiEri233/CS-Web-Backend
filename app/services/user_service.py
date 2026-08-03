@@ -153,6 +153,7 @@ class UserService:
     # -------------------------------------------------------- 管理员操作（Phase 2）
 
     async def _admin_role_names(self, user: User) -> set[str]:
+        await self.db.refresh(user, ["roles"])
         return {r.name for r in user.roles}
 
     async def list_users_admin(
@@ -529,6 +530,7 @@ class UserService:
                 resource_type="role",
                 resource_id=role_name,
             )
+        await self.db.refresh(user, ["roles"])
         user.roles = [role]
 
     async def _audit_admin(

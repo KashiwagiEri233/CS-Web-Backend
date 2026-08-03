@@ -55,6 +55,52 @@ async def _make_user(db, email: str) -> User:
     return user
 
 
+async def _cleanup_user(db, user_id: int) -> None:
+    from sqlalchemy import text
+
+    for table in (
+        "user_roles",
+        "refresh_tokens",
+        "login_history",
+        "password_history",
+        "notifications",
+        "points_transactions",
+        "task_claims",
+        "exam_attempts",
+        "event_registrations",
+        "event_checkins",
+        "join_applications",
+        "two_factor_auth",
+        "activity_participations",
+        "verification_codes",
+        "password_reset_requests",
+    ):
+        try:
+            async with db.begin_nested():
+                await db.execute(
+                    text(f"DELETE FROM {table} WHERE user_id=:i"), {"i": user_id}
+                )
+        except Exception:
+            pass
+    for table in ("exams", "tasks", "announcements", "events"):
+        try:
+            async with db.begin_nested():
+                await db.execute(
+                    text(f"DELETE FROM {table} WHERE created_by=:i"), {"i": user_id}
+                )
+        except Exception:
+            pass
+    try:
+        async with db.begin_nested():
+            await db.execute(
+                text("DELETE FROM resources WHERE submitted_by=:i"), {"i": user_id}
+            )
+    except Exception:
+        pass
+    await db.execute(text("DELETE FROM users WHERE id=:i"), {"i": user_id})
+    await db.commit()
+
+
 @pytest.mark.integration
 async def test_exam_flow(integration_db_ready):
     sfx = _sfx()
@@ -63,7 +109,7 @@ async def test_exam_flow(integration_db_ready):
         u = await _make_user(db, f"ex_{sfx}@t.com")
         try:
             exam = await svc.create_exam(
-                1,
+                u.id,
                 ExamInput(title=f"考试-{sfx}", tech_tags=["web", "js"], status="draft"),
             )
             q1 = await svc.create_question(
@@ -102,9 +148,7 @@ async def test_exam_flow(integration_db_ready):
             with pytest.raises(NotFoundException):
                 await svc.get_exam(exam.id)
         finally:
-            from sqlalchemy import text
-
-            await db.execute(text("DELETE FROM users WHERE id=:i"), {"i": u.id})
+            await _cleanup_user(db, u.id)
             await db.execute(delete(Exam).where(Exam.title.like(f"%{sfx}%")))
             await db.commit()
 
@@ -136,9 +180,7 @@ async def test_resource_flow(integration_db_ready):
             rejected = await svc.review_resource(1, resource.id, False, "no")
             assert rejected.status == "rejected"
         finally:
-            from sqlalchemy import text
-
-            await db.execute(text("DELETE FROM users WHERE id=:i"), {"i": u.id})
+            await _cleanup_user(db, u.id)
             await db.execute(delete(Resource).where(Resource.title.like(f"%{sfx}%")))
             await db.commit()
 
@@ -153,7 +195,7 @@ async def test_task_and_points_flow(integration_db_ready):
         u2 = await _make_user(db, f"tk2_{sfx}@t.com")
         try:
             task = await task_svc.create_task(
-                1,
+                u.id,
                 TaskInput(
                     title=f"任务-{sfx}",
                     description="写篇文章",
@@ -196,7 +238,7 @@ async def test_task_and_points_flow(integration_db_ready):
                 await db.execute(
                     text("DELETE FROM points_transactions WHERE user_id=:i"), {"i": uid}
                 )
-                await db.execute(text("DELETE FROM users WHERE id=:i"), {"i": uid})
+            await _cleanup_user(db, uid)
             await db.execute(delete(Task).where(Task.title.like(f"%{sfx}%")))
             await db.commit()
 
@@ -212,7 +254,8 @@ async def test_auxilio(integration_db_ready):
         try:
             # 造数据：web 标签考试 + 错题 + 一个 web 资源
             exam = await exam_svc.create_exam(
-                1, ExamInput(title=f"aux-{sfx}", tech_tags=["web"], status="published")
+                u.id,
+                ExamInput(title=f"aux-{sfx}", tech_tags=["web"], status="published"),
             )
             q = await exam_svc.create_question(
                 exam.id,
@@ -242,9 +285,7 @@ async def test_auxilio(integration_db_ready):
             assert any(t["tag"] == "web" for t in analysis["weak_tags"])
             assert len(analysis["recommended_resources"]) >= 1
         finally:
-            from sqlalchemy import text
-
-            await db.execute(text("DELETE FROM users WHERE id=:i"), {"i": u.id})
+            await _cleanup_user(db, u.id)
             await db.execute(delete(Exam).where(Exam.title.like(f"%{sfx}%")))
             await db.execute(delete(Resource).where(Resource.title.like(f"%aux{sfx}%")))
             await db.commit()

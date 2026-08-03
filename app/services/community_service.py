@@ -336,9 +336,9 @@ class CommunityService:
             )
         if post.status == "deleted":
             return
-        await self.post_repo.set_status(post_id, "deleted")
         if post.status in ("published", "hidden") and post.category_id:
             await self.post_repo.adjust_category_count(post.category_id, -1)
+        await self.post_repo.set_status(post_id, "deleted")
         await self.db.commit()
 
     async def hard_delete_post(self, admin_id: int, post_id: int) -> None:

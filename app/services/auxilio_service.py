@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from sqlalchemy import select
+from sqlalchemy import ARRAY, String, cast, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.exam import Exam, ExamAttempt, ExamQuestion
@@ -65,7 +65,9 @@ class AuxilioService:
                         select(Resource)
                         .where(
                             Resource.status == "approved",
-                            Resource.tech_tags.overlap(weak_tag_names),
+                            Resource.tech_tags.op("?|")(
+                                cast(weak_tag_names, ARRAY(String))
+                            ),
                         )
                         .order_by(
                             Resource.view_count.desc(), Resource.like_count.desc()

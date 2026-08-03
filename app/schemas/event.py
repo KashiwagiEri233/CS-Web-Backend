@@ -61,7 +61,7 @@ class EventInput(BaseModel):
     date: Optional[str] = None
     title: str
     description: Optional[str] = None
-    status: Optional[str] = None
+    status: Optional[str] = "upcoming"
     year: Optional[str] = None
     topics: Optional[List[str]] = None
     tags: Optional[List[str]] = None
