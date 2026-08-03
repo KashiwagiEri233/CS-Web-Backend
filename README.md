@@ -1,195 +1,127 @@
-# FastAPI WitchCat Framework
+# CS-Web-Backend
 
-> 女巫猫框架 — 企业级 FastAPI 权限管理脚手架（纯后端）
+> 计算机社团官网后端 — FastAPI + PostgreSQL
+>
+> 由原 Next.js 全栈单体（CS-Web-Frontend）按模块分离而来：前端降级为「UI + BFF 薄转发」，
+> 认证、数据、业务逻辑全部由本仓库接管。分离计划与 ADR 见 [MIGRATION_PLAN.md](MIGRATION_PLAN.md)。
 
-提供 RBAC 权限控制、JWT 双 Token 认证、结构化异常处理、环境感知日志系统、可降级 Redis 限流/缓存。
+## 技术栈
 
-## 快速启动
+| 层 | 选型 |
+|---|---|
+| 框架 | FastAPI 0.139 + Starlette，async 全链路 |
+| ORM / 迁移 | SQLAlchemy 2.0 async + Alembic（Schema 唯一来源） |
+| 数据库 | PostgreSQL（asyncpg，专属库 `domefff`） |
+| 认证 | JWT 双 Token（access 15min / refresh 7day，refresh 轮换 + 黑名单）、TOTP 2FA（RFC 6238 + HKDF/AES-256-GCM 加密）、GitHub OAuth、邮箱验证码 |
+| 密码 | bcrypt（scrypt 登录懒升级兼容） |
+| 工具链 | uv（`uv sync` 安装全部依赖） |
+
+## 快速开始
 
 ```bash
-# 按环境编号启动（通过 --env 指定配置文件）
-python run.py --env 1            # 开发环境（.env.development），热重载
-python run.py --env 2            # 测试环境（.env.test）
-python run.py --prod             # 生产环境（.env）+ 4 workers
-python run.py --env 3 --prod     # 等价的显式写法
-python run.py --port 9000        # 自定义端口
-```
+# 1. 配置环境（先复制模板并改 SECRET_KEY / DATABASE_PASSWORD）
+cp .env.development .env    # 开发；生产用 .env.example 模板
 
-ASGI 部署入口保持为 `app.main:app`；测试或嵌入式使用可调用
-`app.main.create_app()` 构造独立的路由/中间件实例。数据库、Redis 和生命周期资源按
-“一进程一个应用”模型共享；不要在同一进程并发运行不同配置的应用。
+# 2. 安装依赖（Python 3.13+）
+uv sync
+
+# 3. 建库 + 迁移（开发环境启动时 DB_AUTO_MIGRATE=True 会自动 upgrade）
+alembic upgrade head
+
+# 4. 启动（--env 1 开发热重载 / --prod 生产 4 workers）
+python run.py --env 1
+# 或直接：uvicorn app.main:app --reload --port 9000
+```
 
 | --env | 配置文件 | 说明 |
 |-------|---------|------|
-| 1 | `.env.development` | 开发：DEBUG 日志 + 彩色控制台 + Alembic 自动迁移 |
-| 2 | `.env.test` | 测试：独立测试数据库 + DEBUG 日志 |
-| 3 | `.env` | 生产：INFO 日志 + JSON 序列化 + 文件轮转 + error 日志 |
+| 1 | `.env.development` | 开发：DEBUG 日志 + 热重载 + 自动迁移 |
+| 2 | `.env.test` | 测试：独立测试库 |
+| 3 | `.env` | 生产：INFO + JSON 日志 + 多 worker |
 
-## 环境配置
+启动后访问 `http://localhost:9000/docs`（Swagger）/ `/redoc` 查看全部 API。
 
-本仓库跟踪 `.env.development` / `.env.test` / `.env.example` 作为模板（仅占位凭据）。
-**`.env` 不入库**（见 `.gitignore`）；生产密钥请用部署平台 Secret 注入，个人差异放
-`.env.local` 或 `.env.*.local`。若历史提交曾含真实密钥，请轮换后清理历史。
+**关键环境变量**（遗漏会启动失败或功能降级）：
 
-1. 使用 **Python 3.13+**（与 `pyproject.toml` / `mypy.ini` / CI 一致），并复制对应环境的模板文件为 `.env`，或直接通过 `--env` 参数指定：
+- `SECRET_KEY`（≥32 字节）、`DATABASE_PASSWORD`、`ALLOWED_ORIGINS`（前端地址，如 `http://localhost:2333`）
+- `TOTP_ENCRYPTION_KEY`（2FA 加密）、`FORUM_IP_HASH_SECRET`（浏览去重 IP 哈希）、`PASSWORD_RESET_DEFAULT`（默认重置密码）
+- `BACKEND_URL` 是前端侧配置（BFF 指向本仓库，默认 `http://localhost:9000`）
+
+## 模块清单（Phase 0–5 全部完成，共 167 条 API 路由）
+
+| 模块 | 能力 | 路由前缀 |
+|---|---|---|
+| 认证 / 用户 | 邮箱登录（防枚举）、注册验证码、TOTP 2FA、GitHub OAuth、JWT 刷新/登出、个人资料/头像、设备会话管理、公开主页 | `/api/v1/auth` `/users` |
+| 公告 / 通知 | 公告公开列表 + 管理 CRUD、通知分页/已读/广播（like/reply/favorite/follow/mention 自动触发） | `/announcements` `/notifications` |
+| 入社申请 | 游客+登录提交、管理员审批（→ 通知） | `/join` `/admin/join` |
+| 管理员 | 用户管理（禁用/启封/重置密码，含 SELF/ROOT/LAST_ADMIN 保护）、角色/权限/操作审计、密码重置审批 | `/admin/*` |
+| 活动 | CRUD + 筛选、报名（限额/去重）、签到核销、自动归档、批量/统计、设置 | `/events` |
+| 社区 v2 | 统一内容（topic/post 一表）、评论/楼中楼、多态点赞收藏、浏览去重、@提及、审核（隐藏/恢复/置顶/加精/硬删）、关注流、举报处理、博客系列、草稿、上传、搜索（ILIKE 降级，GIN 优化见 Phase 6） | `/community/*` |
+| 工具集 | 考试（组卷/自动判分/排名）、资源（提交/审核/上传）、任务（认领限额/审核 + 积分联动）、积分（流水/排行榜/7 级等级）、Auxilio 学习助手（薄弱标签→资源推荐）、组件注册表（item/variants/guide） | `/tools/*` `/admin/tools/*` |
+| 系统 | 健康检查、异常日志、RBAC（角色-权限）、审计日志 | `/health` `/exceptions` `/admin/*` |
+
+权限模型：`require_permission("resource", "action")` 细粒度控制，预置 root/admin/content_moderator/exam_admin/task_publisher 角色，权限名与前端权限 key 双向映射。
+
+## 与前端的分工
+
+```
+浏览器 ──> Next.js (CS-Web-Frontend) ──proxy──> FastAPI (本仓库)
+           · UI + 页面 + 客户端状态        · 全部业务 API（/api/v1）
+           · BFF 薄转发（src/app/api/**）   · PostgreSQL + 迁移
+           · JWT 存 HttpOnly Cookie        · JWT 签发/校验/轮换
+```
+
+- 前端 `backend-client.ts` 负责：Cookie 注入 Authorization、401 静默刷新重试、snake_case → camelCase 翻译
+- 本地联调：前端 `BACKEND_URL=http://localhost:9000`，前端地址加入后端 `ALLOWED_ORIGINS`
+- 生产 Cookie 用 `__Host-` 前缀（Secure + Path=/）
+
+## 数据库与迁移
+
+- 全环境仅用 Alembic（禁止 `create_all`），启动任务在 `DB_AUTO_MIGRATE=True` 时自动 `upgrade head`
+- 迁移链：`d1e2f3a4b5c6`（业务基线 36 表）→ `f6a7b8c9d0e1`（refresh token 扩展）→ `h2i3j4k5l6m7`（roles 表扩展）→ `c8d9e0f1a2b3`（community v2 统一表，论坛+博客合并 + 关注/举报）
+- 旧表（forum_* / blog_*）保留作数据迁移源，Phase 6 清理
+
+## 测试与质量门
+
 ```bash
-cp .env.development .env    # 开发（再改成本机密码与 SECRET_KEY）
-cp .env.example .env        # 生产模板（务必替换全部 CHANGE_ME）
+# 代码风格 / 类型
+uv run flake8 app tests
+uv run mypy app
+
+# 单元测试（268 个，本机即可全跑）
+uv run python -m pytest -q --no-cov -m "not integration and not queue_integration"
+
+# PG 集成测试（需 Linux + PostgreSQL，验证流程见 docs/MIGRATION_VERIFICATION.md）
+uv run python -m pytest tests/integration -v --no-cov
 ```
 
-安装依赖（推荐 uv，或 pip + lock）：
+集成测试按 Phase 组织：`test_auth_phase1.py` / `test_phase2_modules.py` / `test_phase2_5_admin.py` /
+`test_phase3_events.py` / `test_phase4_community.py`（v2）/ `test_phase5_tools.py`。
 
-```bash
-uv sync                     # 或：pip install --require-hashes -r requirements.lock
-pip install --require-hashes -r requirements-dev.lock  # 开发/CI/队列（若仍用 pip-tools 锁）
-```
-
-修改顶层依赖后，用 Python 3.13 重新生成锁文件（uv 或 pip-tools 均可，输出均为 pip 兼容格式）：
-
-```bash
-uv pip compile requirements.txt -o requirements.lock --generate-hashes --python 3.13
-uv pip compile requirements-dev.txt -o requirements-dev.lock --generate-hashes --python 3.13
-```
-
-应用版本单一事实源：`app/__init__.py` 的 `__version__`（当前与 `pyproject.toml` 对齐为 1.0.0）。
-
-2. 修改配置文件中的 `SECRET_KEY`（至少 32 个 UTF-8 字节）和数据库连接信息（`DATABASE_PASSWORD` 必填，禁止写死默认密码）。多 worker 生产建议 `REQUIRE_REDIS_FOR_SECURITY=True` 并配置可达的 `REDIS_URL`。部署在反向代理后时还要精确配置 `TRUSTED_PROXY_CIDRS`。
-
-## 日志系统
-
-通过 `LOG_PROFILE` 一键切换日志风格，`.env` 中各字段可覆盖 profile 默认值。
-
-| LOG_PROFILE | 级别 | 序列化 | 控制台 | 文件 | Error文件 | 回溯栈 |
-|-------------|------|--------|--------|------|-----------|--------|
-| `dev` | DEBUG | False(彩色) | True | False | False | True |
-| `prod` | INFO | True(JSON) | True | True | True | False |
-
-在 `.env` 中设置：
-```bash
-LOG_PROFILE=dev   # 开发：DEBUG + 彩色控制台 + 完整回溯栈
-LOG_PROFILE=prod  # 生产：INFO + JSON + 文件轮转 + 独立 error 日志
-```
-
-可选覆盖字段（取消注释即生效）：
-```bash
-# LOG_LEVEL=WARNING       # 覆盖级别
-# LOG_ENABLE_FILE=True    # 开发环境也开文件日志
-# LOG_SERIALIZE=False     # 强制彩色输出
-```
-
-## 功能特性
-
-- **RBAC 权限管理**：基于角色的细粒度访问控制，支持权限/角色/用户的完整 CRUD
-- **JWT 双 Token 认证**：短期 access token（15分钟）+ 长期 refresh token（7天），支持 token 刷新与黑名单失效
-- **Token 黑名单**：登出/改密后让未过期 access token 立即失效（Redis 跨实例 / 内存单实例）
-- **结构化异常处理**：统一响应格式、错误码注册表、异常日志持久化到数据库
-- **环境感知日志系统**：开发级/线上级独立可配，支持 JSON 序列化与文件轮转
-- **可降级限流**：Redis 分布式限流（多实例一致）或内存限流（单实例），Redis 故障自动降级
-- **通用缓存**：可降级 Redis/内存缓存后端，支持 TTL 与命名空间
-- **性能监控中间件**：请求耗时、QPS、错误率实时统计
-- **安全头中间件**：CSP、HSTS、X-Frame-Options 等安全响应头
-- **一键鉴权开关**：`AUTH_ENABLED=False` 时全局放行（仅限 DEBUG 模式本地开发）
-- **完整的 API 文档**：Swagger / ReDoc 自动生成交互式文档
-
-## 项目结构
+## 目录结构
 
 ```
-FastAPI-foundation-framework/
-├── app/
-│   ├── api/v1/              # 路由层
-│   │   ├── auth.py          # 认证（登录/注册/刷新/登出）
-│   │   ├── users.py         # 用户管理
-│   │   ├── rbac/            # RBAC 权限/角色管理（roles/permissions/assignments/queries）
-│   │   ├── exceptions.py    # 异常日志查询
-│   │   └── dev_exceptions.py # 异常联调端点（仅 DEBUG 挂载）
-│   ├── core/                # 基础设施层
-│   │   ├── config.py        # pydantic-settings 配置（.env 映射）
-│   │   ├── loguru_logger/   # 环境感知日志封装（adapter/config/context/init）
-│   │   ├── security.py      # JWT 签发/校验
-│   │   ├── security_blacklist.py  # Token 黑名单（Redis/内存）
-│   │   ├── redis_client.py  # Redis 连接（可降级）
-│   │   ├── validators.py    # 通用校验器
-│   │   ├── cache/           # 通用缓存（Redis/内存后端）
-│   │   ├── rate_limit/      # 限流后端（Redis/内存后端）
-│   │   └── exceptions/      # 业务异常体系
-│   │       ├── base_exceptions.py   # 异常基类
-│   │       ├── error_codes.py       # 错误码注册表（命名空间）
-│   │       ├── error_builders.py    # 错误响应体构造
-│   │       ├── exception_handlers.py  # 全局异常处理器注册
-│   │       ├── exception_middleware.py  # 异常处理中间件
-│   │       ├── exception_logging.py   # 异常落日志（DB 持久化）
-│   │       └── response_models.py     # 统一错误响应体
-│   ├── middleware/          # HTTP 中间件
-│   │   ├── monitoring.py    # 安全头 + 指标采集 + 请求日志
-│   │   ├── rate_limit.py    # 通用限流 + 认证端点限流
-│   │   └── rbac.py          # 权限校验依赖（require_permission）
-│   ├── models/              # SQLAlchemy 2.0 ORM 模型
-│   │   ├── user.py
-│   │   ├── role.py
-│   │   ├── permission.py
-│   │   ├── refresh_token.py
-│   │   └── exception_log.py
-│   ├── repositories/        # 数据访问层（纯 CRUD）
-│   │   ├── user_repo.py
-│   │   ├── rbac_repo.py
-│   │   ├── refresh_token_repo.py
-│   │   └── exception_log_repo.py
-│   ├── schemas/             # Pydantic v2 入参/出参
-│   │   ├── auth.py
-│   │   ├── user.py
-│   │   └── rbac.py
-│   ├── services/            # 业务逻辑层
-│   │   ├── auth_service.py
-│   │   ├── rbac_service.py
-│   │   ├── rbac_init.py     # 系统初始化（权限/角色/管理员）
-│   │   └── exception_service.py
-│   ├── utils/               # 跨层纯工具函数
-│   │   ├── status.py        # 数据库/应用状态检查
-│   │   └── db_initializer.py
-│   ├── database.py          # 异步引擎 + get_db / get_session
-│   ├── dependencies.py      # 全局依赖
-│   └── main.py              # 应用入口（lifespan + 中间件注册）
-├── alembic/                 # 数据库迁移（全环境 Schema 唯一来源）
-├── tests/                   # 测试代码（目录镜像 app/ 结构）
-│   ├── core/                # 核心模块测试
-│   ├── integration/         # 集成测试
-│   └── middleware/          # 中间件测试
-├── docs/                    # 项目文档（按 系统级/业务模块级 分类，见 docs/README.md）
-│   ├── README.md            # 文档索引 + 分类约定 + 模板
-│   ├── system/              # 系统级（框架/基础设施）
-│   └── modules/             # 业务模块级（auth / users / rbac）
-├── scripts/                 # 运维脚本
-│   └── init_database.py
-├── .env.development         # 开发环境模板
-├── .env.test                # 测试环境模板
-├── .env.example             # 生产环境模板
-├── run.py                   # 启动入口（支持 --env 环境切换）
-├── requirements.txt         # 运行时顶层依赖
-├── requirements.lock        # 运行时传递依赖锁
-├── requirements-dev.txt     # 开发/测试/供应链工具顶层依赖
-├── requirements-dev.lock    # CI 完整依赖锁（含 hash）
-├── pytest.ini               # 测试配置
-└── alembic.ini              # 迁移配置
-```
-
-## 中间件执行顺序
-
-Starlette 后注册的在更外层，实际执行顺序（外 → 内）：
-
-```
-CORS → ExceptionHandler → SecurityHeaders → Logging → Metrics → RateLimit → AuthRateLimit → 路由
+app/
+├── api/v1/            # 路由层（auth / users / admin_* / events / community / admin_community / tools / admin_tools / …）
+├── core/              # 配置、JWT、异常体系、限流/缓存、事件总线、日志
+├── middleware/        # CORS / 安全头 / 指标 / 限流 / RBAC 依赖
+├── models/            # SQLAlchemy 2.0 模型（41+ 张表，含 community v2）
+├── repositories/      # 数据访问层（只 flush，不 commit）
+├── schemas/           # Pydantic v2 入参/出参
+├── services/          # 业务逻辑（auth / community / events / exam / resource / task / points / …）
+├── utils/             # 纯工具（掩码、图片校验…）
+├── database.py        # 异步引擎 + get_db / get_session
+└── main.py            # 应用入口（lifespan + 中间件）
+alembic/               # 迁移（单一 head 链）
+tests/                 # 单元测试 + integration/（PG 集成）
+docs/                  # 验证指南（MIGRATION_VERIFICATION.md）等
 ```
 
 ## 参考文档
 
 | 文档 | 内容 |
-|------|------|
-| `CLAUDE.md` | 项目定位、技术栈、硬性禁止项、启动速查 |
-| `AGENTS.md` | 扩展约定、中心注册点、Alembic 迁移管理、不变量 |
-| `ARCHITECTURE.md` | 系统设计与模块关系、分层架构、请求生命周期 |
-| `CONVENTIONS.md` | 编码规范、命名、质量红线、安全/错误处理约定 |
-| `MIGRATION_PLAN.md` | 前后端分离迁移计划（FastAPI 承接前端全部后端功能，含表/模块/阶段/决策清单） |
-| `tests/README.md` | 测试目录组织与运行方式 |
-| `docs/README.md` | 模块文档索引、系统级/业务模块级分类约定、文档模板 |
-| `docs/system/` | 系统级模块详解（异常体系、可观测性…） |
-| `docs/modules/` | 业务模块详解（认证、用户管理、RBAC） |
+|---|---|
+| `MIGRATION_PLAN.md` | 前后端分离迁移计划：模块/阶段/决策/重建记录（社区 v2 适配） |
+| `docs/MIGRATION_VERIFICATION.md` | Linux/PG 环境验证指引（各 Phase 集成测试、2FA/密码兼容检查清单） |
+| `CLAUDE.md` / `AGENTS.md` | 项目定位、扩展约定、Alembic 管理、不变量 |
+| `CONVENTIONS.md` | 编码规范与质量红线 |
