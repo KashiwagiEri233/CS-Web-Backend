@@ -1,36 +1,26 @@
-"""Phase 4 集成测试：论坛/博客/成员/Feed（需要 PostgreSQL）。
+"""Phase 4 集成测试（社区 v2 统一表）：posts / comments / reactions / follows / reports / series。
 
 覆盖：
-1. 版块 CRUD + slug 冲突；
-2. 主题：创建/列表筛选/详情/编辑/软删除 + 反范式计数 + 浏览去重；
-3. 回复：创建（含楼中楼）/编辑/删除 + reply_count 反范式；
-4. 点赞/收藏切换与计数；
-5. 审核：隐藏/恢复/置顶/加精/硬删除；
-6. 博客：创建/slug 唯一/发布/归档/点赞/系列；
-7. 成员与 Feed 聚合；
+1. 分类 CRUD + slug 冲突 + 反范式计数；
+2. posts（topic|post 统一）：创建/列表筛选/详情/草稿/编辑/软删除 + 浏览去重；
+3. comments：创建（楼中楼）/编辑/删除 + reply_count 反范式；
+4. reactions/favorites 切换与计数；
+5. follows：关注/取关/列表/计数；
+6. reports：提交/处理；
+7. series 创建；
 8. 搜索（关键词 AND 语义）。
 """
 
 import uuid
 
 import pytest
-from sqlalchemy import delete
+from sqlalchemy import delete, text
 
 from app.core.exceptions import ConflictException
 from app.database import get_session
-from app.models.blog import BlogPost
-from app.models.forum import ForumCategory
+from app.models.community import CommunityCategory, CommunityPost
 from app.models.user import User
-from app.schemas.community import (
-    BlogPostInput,
-    CategoryInput,
-    ReplyInput,
-    TopicInput,
-    TopicUpdate,
-)
-from app.services.blog_service import BlogService
 from app.services.community_service import CommunityService
-from app.services.forum_service import ForumService
 
 
 def _sfx() -> str:
@@ -50,15 +40,15 @@ async def _make_user(db, email: str) -> User:
     return user
 
 
-async def _cleanup(db, *user_ids: int) -> None:
-    from sqlalchemy import text
-
+async def _cleanup_users(db, *user_ids: int) -> None:
     for uid in user_ids:
         for table in (
-            "forum_mentions",
-            "forum_topic_views",
-            "forum_likes",
-            "forum_favorites",
+            "community_mentions",
+            "community_post_views",
+            "community_reactions",
+            "community_favorites",
+            "community_follows",
+            "community_reports",
             "notifications",
         ):
             try:
@@ -72,265 +62,253 @@ async def _cleanup(db, *user_ids: int) -> None:
 
 
 @pytest.mark.integration
-async def test_forum_category_and_topic_flow(integration_db_ready):
-    sfx = _sfx()
-    async with get_session() as db:
-        svc = ForumService(db)
-        user = await _make_user(db, f"ft_{sfx}@t.com")
-        try:
-            # 版块
-            cat = await svc.create_category(
-                1, CategoryInput(slug=f"cat-{sfx}", name="测试版块", sort_order=1)
-            )
-            assert cat.topic_count == 0
-            with pytest.raises(ConflictException):
-                await svc.create_category(
-                    1, CategoryInput(slug=f"cat-{sfx}", name="重复")
-                )
-
-            # 主题
-            topic = await svc.create_topic(
-                user.id,
-                TopicInput(
-                    category_id=cat.id, title=f"主题-{sfx}", content_markdown="内容 abc"
-                ),
-            )
-            assert topic.reply_count == 0
-
-            # 反范式计数
-            refreshed = await svc.get_category(cat.id)
-            assert refreshed.topic_count == 1
-
-            # 列表 + 搜索
-            items, total = await svc.list_topics(search="abc")
-            assert total >= 1
-            items2, _ = await svc.list_topics(category_id=cat.id)
-            assert any(t.id == topic.id for t in items2)
-
-            # 详情 + 点赞状态
-            detail = await svc.get_topic(topic.id, current_user_id=user.id)
-            assert detail is not None
-
-            # 浏览去重
-            assert await svc.record_topic_view(topic.id, user_id=user.id) is True
-            assert await svc.record_topic_view(topic.id, user_id=user.id) is False
-            detail2 = await svc.get_topic(topic.id)
-            assert detail2.view_count == 1
-
-            # 编辑 + 软删除
-            updated = await svc.update_topic(
-                user.id,
-                False,
-                topic.id,
-                TopicUpdate(title=f"改名-{sfx}", content_markdown="新内容"),
-            )
-            assert updated.title == f"改名-{sfx}"
-            await svc.delete_topic(user.id, False, topic.id)
-            assert (await svc.get_category(cat.id)).topic_count == 0
-        finally:
-            await _cleanup(db, user.id)
-            await db.execute(
-                delete(ForumCategory).where(ForumCategory.slug.like(f"%{sfx}%"))
-            )
-            await db.commit()
-
-
-@pytest.mark.integration
-async def test_forum_reply_like_favorite(integration_db_ready):
-    sfx = _sfx()
-    async with get_session() as db:
-        svc = ForumService(db)
-        u1 = await _make_user(db, f"fr1_{sfx}@t.com")
-        u2 = await _make_user(db, f"fr2_{sfx}@t.com")
-        try:
-            cat = await svc.create_category(
-                1, CategoryInput(slug=f"rc-{sfx}", name="版块")
-            )
-            topic = await svc.create_topic(
-                u1.id,
-                TopicInput(
-                    category_id=cat.id, title=f"回复主题-{sfx}", content_markdown="正文"
-                ),
-            )
-
-            # 回复 + 楼中楼
-            reply = await svc.create_reply(
-                u2.id, topic.id, ReplyInput(content_markdown="回复1")
-            )
-            nested = await svc.create_reply(
-                u1.id,
-                topic.id,
-                ReplyInput(content_markdown="楼中楼", parent_reply_id=reply.id),
-            )
-            assert nested.parent_reply_id == reply.id
-            topic2 = await svc.get_topic(topic.id)
-            assert topic2.reply_count == 2
-            nested_list = await svc.list_nested_replies(reply.id)
-            assert len(nested_list) == 1
-
-            # 编辑/删除回复
-            await svc.update_reply(u2.id, False, reply.id, "改过的回复")
-            await svc.delete_reply(u2.id, False, reply.id)
-            assert (await svc.reply_repo.get_by_id(reply.id)).status == "deleted"
-
-            # 点赞/收藏
-            like1 = await svc.toggle_like(u1.id, "topic", topic.id)
-            assert like1["liked"] is True and like1["like_count"] == 1
-            like2 = await svc.toggle_like(u1.id, "topic", topic.id)
-            assert like2["liked"] is False and like2["like_count"] == 0
-
-            fav = await svc.toggle_favorite(u1.id, topic.id)
-            assert fav["favorited"] is True
-            favorites, total = await svc.list_user_favorites(u1.id)
-            assert total == 1 and favorites[0].id == topic.id
-        finally:
-            await _cleanup(db, u1.id, u2.id)
-            await db.execute(
-                delete(ForumCategory).where(ForumCategory.slug.like(f"%{sfx}%"))
-            )
-            await db.commit()
-
-
-@pytest.mark.integration
-async def test_forum_moderation(integration_db_ready):
-    sfx = _sfx()
-    async with get_session() as db:
-        svc = ForumService(db)
-        u = await _make_user(db, f"fm_{sfx}@t.com")
-        try:
-            cat = await svc.create_category(
-                1, CategoryInput(slug=f"mc-{sfx}", name="版块")
-            )
-            topic = await svc.create_topic(
-                u.id,
-                TopicInput(
-                    category_id=cat.id, title=f"审核主题-{sfx}", content_markdown="x"
-                ),
-            )
-            await svc.hide_topic(1, topic.id, "违规")
-            assert (await svc.get_topic(topic.id)).status == "hidden"
-            await svc.restore_topic(1, topic.id)
-            assert (await svc.get_topic(topic.id)).status == "published"
-            await svc.set_topic_pinned(1, topic.id, True)
-            assert (await svc.get_topic(topic.id)).is_pinned is True
-            await svc.set_topic_featured(1, topic.id, True)
-            assert (await svc.get_topic(topic.id)).is_featured is True
-
-            reply = await svc.create_reply(
-                u.id, topic.id, ReplyInput(content_markdown="r")
-            )
-            await svc.hide_reply(1, reply.id, "spam")
-            assert (await svc.reply_repo.get_by_id(reply.id)).status == "hidden"
-            await svc.restore_reply(1, reply.id)
-
-            await svc.hard_delete_topic(1, topic.id)
-            assert (await svc.topic_repo.get_by_id(topic.id)).status == "deleted"
-        finally:
-            await _cleanup(db, u.id)
-            await db.execute(
-                delete(ForumCategory).where(ForumCategory.slug.like(f"%{sfx}%"))
-            )
-            await db.commit()
-
-
-@pytest.mark.integration
-async def test_blog_flow(integration_db_ready):
-    sfx = _sfx()
-    async with get_session() as db:
-        svc = BlogService(db)
-        u = await _make_user(db, f"bg_{sfx}@t.com")
-        try:
-            post = await svc.create_post(
-                u.id,
-                BlogPostInput(
-                    title=f"博客标题-{sfx}",
-                    content_markdown="## 章节一 内容",
-                    excerpt="摘要",
-                    tags=["web"],
-                ),
-            )
-            assert post.slug == f"博客标题-{sfx}".lower().replace("-", "")
-            assert post.status == "draft"
-
-            # slug 唯一
-            post2 = await svc.create_post(
-                u.id,
-                BlogPostInput(title=f"博客标题-{sfx}", content_markdown="重复"),
-            )
-            assert post2.slug != post.slug
-
-            # 发布 → 列表
-            await svc.publish_post(post.id)
-            posts, total = await svc.list_posts(status="published")
-            assert any(p.id == post.id for p in posts)
-
-            # 详情 + 浏览 + 点赞
-            fetched = await svc.get_post_by_slug(post.slug, current_user_id=u.id)
-            assert fetched.slug == post.slug
-            await svc.increment_view(post.id)
-            like = await svc.toggle_like(post.id, u.id)
-            assert like["liked"] is True and like["like_count"] == 1
-
-            # 归档
-            await svc.archive_post(post.id)
-            assert (await svc.get_post(post.id)).status == "archived"
-
-            # 系列
-            series = await svc.create_series(
-                u.id, type("S", (), {"title": f"系列-{sfx}", "description": None})()
-            )
-            assert series.slug.startswith("系列")
-        finally:
-            await _cleanup(db, u.id)
-            await db.execute(delete(BlogPost).where(BlogPost.title.like(f"%{sfx}%")))
-            await db.commit()
-
-
-@pytest.mark.integration
-async def test_members_and_feed(integration_db_ready):
+async def test_category_and_posts_flow(integration_db_ready):
     sfx = _sfx()
     async with get_session() as db:
         svc = CommunityService(db)
-        forum = ForumService(db)
-        u = await _make_user(db, f"mf_{sfx}@t.com")
+        u = await _make_user(db, f"cp_{sfx}@t.com")
         try:
-            from sqlalchemy import update as sa_update
+            # 分类
+            cat = await svc.create_category(1, f"cat-{sfx}", "测试版块", sort_order=1)
+            assert cat.post_count == 0
+            with pytest.raises(ConflictException):
+                await svc.create_category(1, f"cat-{sfx}", "重复")
 
+            # 帖子（topic）
+            topic = await svc.create_post(
+                u.id,
+                "topic",
+                title=f"主题-{sfx}",
+                content_markdown="内容 abc",
+                category_id=cat.id,
+            )
+            assert topic.kind == "topic"
+            assert (await svc.get_category(cat.id)).post_count == 1
+
+            # 帖子（post，自动 slug）
+            post = await svc.create_post(
+                u.id,
+                "post",
+                title=f"文章-{sfx}",
+                content_markdown="正文",
+                status="published",
+                tags=["web"],
+            )
+            assert post.kind == "post" and post.slug
+
+            # 草稿
+            draft = await svc.create_post(
+                u.id,
+                "post",
+                title=f"草稿-{sfx}",
+                content_markdown="draft",
+                status="draft",
+            )
+            drafts, _ = await svc.user_drafts(u.id)
+            assert any(p.id == draft.id for p in drafts)
+
+            # 列表 + 筛选 + 搜索
+            items, total = await svc.list_posts(kind="topic", search="abc")
+            assert any(p.id == topic.id for p in items)
+            posts, _ = await svc.list_posts(kind="post", status="published")
+            assert any(p.id == post.id for p in posts)
+
+            # 详情 + 浏览去重
+            detail = await svc.get_post(topic.id, current_user_id=u.id)
+            assert detail is not None
+            assert await svc.increment_view(topic.id, user_id=u.id) is True
+            assert await svc.increment_view(topic.id, user_id=u.id) is False
+            assert (await svc.get_post(topic.id)).view_count == 1
+
+            # 编辑 + 软删除
+            updated = await svc.update_post(
+                u.id, topic.id, {"title": f"改名-{sfx}"}, is_admin=False
+            )
+            assert updated.title == f"改名-{sfx}"
+            await svc.delete_post(u.id, topic.id, is_admin=False)
+            assert (await svc.get_post(topic.id)).status == "deleted"
+            assert (await svc.get_category(cat.id)).post_count == 0
+        finally:
+            await _cleanup_users(db, u.id)
             await db.execute(
-                sa_update(User)
-                .where(User.id == u.id)
-                .values(display_name=f"成员{sfx}", tech_tags=["web", "ai"])
+                delete(CommunityCategory).where(CommunityCategory.slug.like(f"%{sfx}%"))
+            )
+            await db.execute(
+                delete(CommunityPost).where(CommunityPost.title.like(f"%{sfx}%"))
             )
             await db.commit()
 
-            members = await svc.list_members()
-            assert any(m["id"] == u.id and "web" in m["tech_tags"] for m in members)
-            members_web = await svc.list_members(tag="web")
-            assert any(m["id"] == u.id for m in members_web)
-            tags = await svc.list_all_tech_tags()
-            assert "web" in tags
 
-            cat = await forum.create_category(
-                1, CategoryInput(slug=f"fd-{sfx}", name="版块")
+@pytest.mark.integration
+async def test_comments_reactions_favorites(integration_db_ready):
+    sfx = _sfx()
+    async with get_session() as db:
+        svc = CommunityService(db)
+        u1 = await _make_user(db, f"cc1_{sfx}@t.com")
+        u2 = await _make_user(db, f"cc2_{sfx}@t.com")
+        try:
+            cat = await svc.create_category(1, f"rc-{sfx}", "版块")
+            post = await svc.create_post(
+                u1.id,
+                "topic",
+                title=f"互动主题-{sfx}",
+                content_markdown="正文",
+                category_id=cat.id,
             )
-            await forum.create_topic(
-                u.id,
-                TopicInput(
-                    category_id=cat.id, title=f"feed主题-{sfx}", content_markdown="x"
-                ),
-            )
-            feed = await svc.get_feed()
-            assert feed["total"] >= 1
-            kinds = {i["kind"] for i in feed["items"]}
-            assert "member" in kinds
-            feed_no_member = await svc.get_feed(exclude_members=True)
-            assert all(i["kind"] != "member" for i in feed_no_member["items"])
 
-            stats = await svc.get_feed_stats()
-            assert stats["topic_count"] >= 1
+            # 评论 + 楼中楼
+            comment = await svc.create_comment(u2.id, post.id, "评论1")
+            nested = await svc.create_comment(
+                u1.id, post.id, "楼中楼", parent_comment_id=comment.id
+            )
+            assert nested.parent_comment_id == comment.id
+            assert (await svc.get_post(post.id)).reply_count == 2
+            nested_list = await svc.list_nested_comments(comment.id)
+            assert len(nested_list) == 1
+
+            # 编辑/删除评论
+            await svc.update_comment(u2.id, False, comment.id, "改过的评论")
+            assert (
+                await svc.comment_repo.get_by_id(comment.id)
+            ).content_markdown == "改过的评论"
+            await svc.delete_comment(u2.id, False, comment.id)
+            assert (await svc.comment_repo.get_by_id(comment.id)).status == "deleted"
+
+            # 点赞/收藏
+            like1 = await svc.toggle_like(u1.id, "post", post.id)
+            assert like1["liked"] is True and like1["like_count"] == 1
+            like2 = await svc.toggle_like(u1.id, "post", post.id)
+            assert like2["liked"] is False and like2["like_count"] == 0
+
+            fav = await svc.toggle_favorite(u1.id, post.id)
+            assert fav["favorited"] is True
+            favorites, total = await svc.list_user_favorites(u1.id)
+            assert total == 1 and favorites[0].id == post.id
+
+            status = await svc.get_reaction_status(u1.id, "post", post.id)
+            assert status["favorited"] is True
         finally:
-            await _cleanup(db, u.id)
+            await _cleanup_users(db, u1.id, u2.id)
             await db.execute(
-                delete(ForumCategory).where(ForumCategory.slug.like(f"%{sfx}%"))
+                delete(CommunityCategory).where(CommunityCategory.slug.like(f"%{sfx}%"))
+            )
+            await db.execute(
+                delete(CommunityPost).where(CommunityPost.title.like(f"%{sfx}%"))
+            )
+            await db.commit()
+
+
+@pytest.mark.integration
+async def test_follows_and_reports(integration_db_ready):
+    sfx = _sfx()
+    async with get_session() as db:
+        svc = CommunityService(db)
+        u1 = await _make_user(db, f"fl1_{sfx}@t.com")
+        u2 = await _make_user(db, f"fl2_{sfx}@t.com")
+        u3 = await _make_user(db, f"fl3_{sfx}@t.com")
+        try:
+            # 关注
+            result = await svc.toggle_follow(u1.id, u2.id)
+            assert result["following"] is True
+            assert await svc.is_following(u1.id, u2.id) is True
+            assert await svc.is_following(u2.id, u1.id) is False
+
+            # 关注列表
+            following, _ = await svc.list_following(u1.id, current_user_id=u1.id)
+            assert len(following["items"]) == 1
+            followers, _ = await svc.list_followers(u2.id, current_user_id=u1.id)
+            assert len(followers["items"]) == 1
+
+            # 关注流列表
+            cat = await svc.create_category(1, f"fc-{sfx}", "版块")
+            await svc.create_post(
+                u2.id,
+                "topic",
+                title=f"关注流-{sfx}",
+                content_markdown="x",
+                category_id=cat.id,
+            )
+            feed_posts, feed_total = await svc.list_posts(
+                following_only=True, current_user_id=u1.id
+            )
+            assert feed_total >= 1 and all(p.author_id == u2.id for p in feed_posts)
+
+            # 取关
+            result2 = await svc.toggle_follow(u1.id, u2.id)
+            assert result2["following"] is False
+
+            # 举报
+            post = await svc.create_post(
+                u2.id,
+                "topic",
+                title=f"举报-{sfx}",
+                content_markdown="bad",
+                category_id=cat.id,
+            )
+            report = await svc.submit_report(u3.id, "post", post.id, "违规", "测试")
+            assert report.status == "pending"
+            reports, total = await svc.list_reports(status="pending")
+            assert total >= 1
+            await svc.resolve_report(u1.id, report.id, "resolved")
+            assert (await svc.report_repo.get_by_id(report.id)).status == "resolved"
+        finally:
+            await _cleanup_users(db, u1.id, u2.id, u3.id)
+            await db.execute(
+                delete(CommunityCategory).where(CommunityCategory.slug.like(f"%{sfx}%"))
+            )
+            await db.execute(
+                delete(CommunityPost).where(CommunityPost.title.like(f"%{sfx}%"))
+            )
+            await db.commit()
+
+
+@pytest.mark.integration
+async def test_series_and_moderation(integration_db_ready):
+    sfx = _sfx()
+    async with get_session() as db:
+        svc = CommunityService(db)
+        u = await _make_user(db, f"md_{sfx}@t.com")
+        try:
+            # 系列
+            series = await svc.create_series(u.id, f"系列-{sfx}", "描述")
+            assert series.slug.startswith("系列")
+            post = await svc.create_post(
+                u.id,
+                "post",
+                title=f"系列文-{sfx}",
+                content_markdown="x",
+                status="published",
+                series_id=series.id,
+            )
+            posts, _ = await svc.list_posts(
+                kind="post", status="published", series_id=series.id
+            )
+            assert any(p.id == post.id for p in posts)
+
+            # 审核：隐藏/恢复/置顶/加精/硬删除
+            topic = await svc.create_post(
+                u.id,
+                "topic",
+                title=f"审核-{sfx}",
+                content_markdown="x",
+                category_id=(await svc.create_category(1, f"mc-{sfx}", "版块")).id,
+            )
+            await svc.hide_post(1, topic.id, "违规")
+            assert (await svc.get_post(topic.id)).status == "hidden"
+            await svc.restore_post(1, topic.id)
+            assert (await svc.get_post(topic.id)).status == "published"
+            await svc.set_post_pinned(1, topic.id, True)
+            assert (await svc.get_post(topic.id)).is_pinned is True
+            await svc.set_post_featured(1, topic.id, True)
+            assert (await svc.get_post(topic.id)).is_featured is True
+            await svc.hard_delete_post(1, topic.id)
+            assert (await svc.get_post(topic.id)).status == "deleted"
+        finally:
+            await _cleanup_users(db, u.id)
+            await db.execute(
+                delete(CommunityCategory).where(CommunityCategory.slug.like(f"%{sfx}%"))
+            )
+            await db.execute(
+                delete(CommunityPost).where(CommunityPost.title.like(f"%{sfx}%"))
             )
             await db.commit()

@@ -1,4 +1,4 @@
-﻿"""社区 API（公开/用户）：论坛 / 博客 / 成员 / Feed / 上传。"""
+﻿"""社区 v2 API（公开/用户）：posts / comments / reactions / follows / reports / drafts。"""
 
 from __future__ import annotations
 
@@ -12,29 +12,10 @@ from fastapi.responses import FileResponse
 from app.core.exceptions import NotFoundException, ValidationException
 from app.core.request_context import get_client_meta
 from app.dependencies import get_current_active_user, get_current_user
-from app.dependencies_services import (
-    get_blog_service,
-    get_community_service,
-    get_forum_service,
-)
+from app.dependencies_services import get_community_service
 from app.models.user import User
-from app.schemas.community import (
-    BlogPostInput,
-    BlogPostOut as BlogPostOutLike,
-    BlogSeriesInput,
-    CategoryOut,
-    FavoriteToggleRequest,
-    LikeToggleRequest,
-    ReplyInput,
-    ReplyOut,
-    TopicInput,
-    TopicOut,
-    TopicUpdate,
-)
 from app.schemas.pagination import PaginatedResponse, PaginationParams
-from app.services.blog_service import BlogService
 from app.services.community_service import CommunityService
-from app.services.forum_service import ForumService
 from app.utils.image_validate import is_valid_image_mime
 
 router = APIRouter()
@@ -48,291 +29,503 @@ FORUM_IMAGE_FILENAME_RE = re.compile(
 
 _IMAGES_DIR = Path("data") / "forum-images"
 
-
-# ------------------------------------------------------------------ 序列化
-
-
-def _topic_out(topic) -> dict:
-    data = TopicOut.model_validate(topic).model_dump()
-    data["author"] = getattr(topic, "author", None)
-    data["category"] = getattr(topic, "category", None)
-    data["is_liked_by_me"] = getattr(topic, "is_liked_by_me", False)
-    data["is_favorited_by_me"] = getattr(topic, "is_favorited_by_me", False)
-    return data
-
-
-def _reply_out(reply) -> dict:
-    data = ReplyOut.model_validate(reply).model_dump()
-    data["author"] = getattr(reply, "author", None)
-    data["is_liked_by_me"] = getattr(reply, "is_liked_by_me", False)
-    return data
+POST_KINDS = {"topic", "post"}
 
 
 def _post_out(post) -> dict:
-    data = BlogPostOutLike.model_validate(post).model_dump()
-    data["author_name"] = getattr(post, "author_name", None)
-    data["is_liked_by_me"] = getattr(post, "is_liked_by_me", False)
-    return data
-
-
-# ------------------------------------------------------------------ 论坛
-
-
-@router.get("/forum/categories", response_model=list[CategoryOut])
-async def list_categories(
-    service: ForumService = Depends(get_forum_service),
-) -> Any:
-    return await service.list_categories()
-
-
-@router.get("/forum/overview")
-async def forum_overview(
-    service: ForumService = Depends(get_forum_service),
-) -> Any:
-    """论坛概览：版块 + 各版块最新主题 + 热门主题。"""
-    categories = await service.list_categories()
-    hot_topics, _ = await service.list_topics(sort="hot", limit=8)
-    category_previews = []
-    for cat in categories:
-        latest, _ = await service.list_topics(
-            category_id=cat.id, sort="latest", limit=3
-        )
-        category_previews.append(
-            {**_cat_out(cat), "latestTopics": [_topic_out(t) for t in latest]}
-        )
     return {
-        "categories": category_previews,
-        "hotTopics": [_topic_out(t) for t in hot_topics],
+        "id": post.id,
+        "kind": post.kind,
+        "category_id": post.category_id,
+        "author_id": post.author_id,
+        "title": post.title,
+        "content_markdown": post.content_markdown,
+        "status": post.status,
+        "is_pinned": post.is_pinned,
+        "is_featured": post.is_featured,
+        "reply_count": post.reply_count,
+        "favorite_count": post.favorite_count,
+        "last_reply_at": post.last_reply_at,
+        "last_reply_id": post.last_reply_id,
+        "hidden_by": post.hidden_by,
+        "hidden_at": post.hidden_at,
+        "hidden_reason": post.hidden_reason,
+        "slug": post.slug,
+        "excerpt": post.excerpt,
+        "cover_image": post.cover_image,
+        "tags": post.tags or [],
+        "series_id": post.series_id,
+        "series_order": post.series_order,
+        "published_at": post.published_at,
+        "view_count": post.view_count,
+        "like_count": post.like_count,
+        "author": getattr(post, "author", None),
+        "category": getattr(post, "category", None),
+        "is_liked_by_me": getattr(post, "is_liked_by_me", False),
+        "is_favorited_by_me": getattr(post, "is_favorited_by_me", False),
+        "created_at": post.created_at,
+        "updated_at": post.updated_at,
     }
 
 
-@router.get("/forum/topics", response_model=PaginatedResponse[TopicOut])
-async def list_topics(
-    pagination: PaginationParams = Depends(),
-    category_id: Optional[int] = None,
-    search: Optional[str] = None,
-    status: Optional[str] = None,
-    author_id: Optional[int] = None,
-    sort: str = "latest",
-    service: ForumService = Depends(get_forum_service),
+def _comment_out(comment) -> dict:
+    return {
+        "id": comment.id,
+        "post_id": comment.post_id,
+        "author_id": comment.author_id,
+        "parent_comment_id": comment.parent_comment_id,
+        "content_markdown": comment.content_markdown,
+        "status": comment.status,
+        "like_count": comment.like_count,
+        "reply_count": comment.reply_count,
+        "hidden_by": comment.hidden_by,
+        "hidden_at": comment.hidden_at,
+        "hidden_reason": comment.hidden_reason,
+        "author": getattr(comment, "author", None),
+        "created_at": comment.created_at,
+        "updated_at": comment.updated_at,
+    }
+
+
+def _category_out(cat) -> dict:
+    return {
+        "id": cat.id,
+        "slug": cat.slug,
+        "name": cat.name,
+        "description": cat.description,
+        "icon": cat.icon,
+        "sort_order": cat.sort_order,
+        "post_count": cat.post_count,
+        "created_by": cat.created_by,
+        "created_at": cat.created_at,
+        "updated_at": cat.updated_at,
+    }
+
+
+# ------------------------------------------------------------------ 分类
+
+
+@router.get("/forum/categories")
+async def list_categories(
+    service: CommunityService = Depends(get_community_service),
 ) -> Any:
-    topics, total = await service.list_topics(
-        category_id=category_id,
-        search=search,
-        status=status,
-        author_id=author_id,
-        sort=sort,
-        skip=pagination.skip,
-        limit=pagination.limit,
-    )
-    return PaginatedResponse(
-        items=[_topic_out(t) for t in topics],
-        total=total,
-        skip=pagination.skip,
-        limit=pagination.limit,
-    )
+    return [_category_out(c) for c in await service.list_categories()]
 
 
-@router.get("/forum/topics/{topic_id}", response_model=TopicOut)
-async def get_topic(
-    topic_id: int,
-    request: Request,
-    service: ForumService = Depends(get_forum_service),
+# ------------------------------------------------------------------ 统一内容（posts）
+
+
+@router.get("/posts", response_model=PaginatedResponse[dict])
+async def list_posts(
+    pagination: PaginationParams = Depends(),
+    kind: Optional[str] = None,
+    status: Optional[str] = None,
+    category: Optional[str] = None,
+    category_id: Optional[int] = None,
+    tag: Optional[str] = None,
+    series_id: Optional[int] = None,
+    author_id: Optional[int] = None,
+    search: Optional[str] = None,
+    sort: str = "latest",
+    following: bool = False,
+    service: CommunityService = Depends(get_community_service),
     current_user: Optional[User] = Depends(get_current_user),
 ) -> Any:
-    """主题详情（含点赞/收藏状态 + 浏览计数）。"""
-    topic = await service.get_topic(topic_id, current_user.id if current_user else None)
-    ip_hash = None
-    client_ip = get_client_meta(request).get("ip_address")
-    if client_ip:
-        from app.services.forum_service import hash_ip_for_view
-
-        ip_hash = hash_ip_for_view(client_ip)
-    await service.record_topic_view(
-        topic_id, current_user.id if current_user else None, ip_hash
-    )
-    return _topic_out(topic)
-
-
-@router.post("/forum/topics", response_model=TopicOut, status_code=201)
-async def create_topic(
-    body: TopicInput,
-    service: ForumService = Depends(get_forum_service),
-    current_user: User = Depends(get_current_active_user),
-) -> Any:
-    topic = await service.create_topic(current_user.id, body)
-    return _topic_out(topic)
-
-
-@router.put("/forum/topics/{topic_id}", response_model=TopicOut)
-async def update_topic(
-    topic_id: int,
-    body: TopicUpdate,
-    request: Request,
-    service: ForumService = Depends(get_forum_service),
-    current_user: User = Depends(get_current_active_user),
-) -> Any:
-    is_admin = await _is_admin(service.db, current_user)
-    topic = await service.update_topic(current_user.id, is_admin, topic_id, body)
-    return _topic_out(topic)
-
-
-@router.delete("/forum/topics/{topic_id}")
-async def delete_topic(
-    topic_id: int,
-    service: ForumService = Depends(get_forum_service),
-    current_user: User = Depends(get_current_active_user),
-) -> Any:
-    """作者软删除自己的主题（管理员用硬删除接口）。"""
-    is_admin = await _is_admin(service.db, current_user)
-    await service.delete_topic(current_user.id, is_admin, topic_id)
-    return {"ok": True}
-
-
-@router.get(
-    "/forum/topics/{topic_id}/replies", response_model=PaginatedResponse[ReplyOut]
-)
-async def list_replies(
-    topic_id: int,
-    pagination: PaginationParams = Depends(),
-    service: ForumService = Depends(get_forum_service),
-) -> Any:
-    replies, total = await service.list_replies(
-        topic_id, skip=pagination.skip, limit=pagination.limit
+    posts, total = await service.list_posts(
+        kind=kind,
+        status=status,
+        category_slug=category,
+        category_id=category_id,
+        tag=tag,
+        series_id=series_id,
+        author_id=author_id,
+        search=search,
+        sort=sort,
+        following_only=following,
+        current_user_id=current_user.id if current_user else None,
+        skip=pagination.skip,
+        limit=pagination.limit,
     )
     return PaginatedResponse(
-        items=[_reply_out(r) for r in replies],
+        items=[_post_out(p) for p in posts],
         total=total,
         skip=pagination.skip,
         limit=pagination.limit,
     )
 
 
-@router.post(
-    "/forum/topics/{topic_id}/replies", response_model=ReplyOut, status_code=201
-)
-async def create_reply(
-    topic_id: int,
-    body: ReplyInput,
-    service: ForumService = Depends(get_forum_service),
-    current_user: User = Depends(get_current_active_user),
+@router.get("/posts/{post_id}", response_model=dict)
+async def get_post(
+    post_id: int,
+    request: Request,
+    service: CommunityService = Depends(get_community_service),
+    current_user: Optional[User] = Depends(get_current_user),
 ) -> Any:
-    reply = await service.create_reply(current_user.id, topic_id, body)
-    return _reply_out(reply)
+    post = await service.get_post(post_id, current_user.id if current_user else None)
+    client_ip = get_client_meta(request).get("ip_address")
+    from app.services.community_service import hash_ip_for_view
 
-
-@router.get("/forum/replies/{reply_id}/nested", response_model=list[ReplyOut])
-async def list_nested_replies(
-    reply_id: int,
-    service: ForumService = Depends(get_forum_service),
-) -> Any:
-    replies = await service.list_nested_replies(reply_id)
-    return [_reply_out(r) for r in replies]
-
-
-@router.put("/forum/replies/{reply_id}", response_model=ReplyOut)
-async def update_reply(
-    reply_id: int,
-    body: ReplyInput,
-    service: ForumService = Depends(get_forum_service),
-    current_user: User = Depends(get_current_active_user),
-) -> Any:
-    is_admin = await _is_admin(service.db, current_user)
-    reply = await service.update_reply(
-        current_user.id, is_admin, reply_id, body.content_markdown
+    await service.increment_view(
+        post_id,
+        current_user.id if current_user else None,
+        hash_ip_for_view(client_ip) if client_ip else None,
     )
-    return _reply_out(reply)
+    return _post_out(post)
 
 
-@router.delete("/forum/replies/{reply_id}")
-async def delete_reply(
-    reply_id: int,
-    service: ForumService = Depends(get_forum_service),
+@router.get("/posts/slug/{slug}", response_model=dict)
+async def get_post_by_slug(
+    slug: str,
+    request: Request,
+    service: CommunityService = Depends(get_community_service),
+    current_user: Optional[User] = Depends(get_current_user),
+) -> Any:
+    post = await service.get_post_by_slug(
+        slug, current_user.id if current_user else None
+    )
+    client_ip = get_client_meta(request).get("ip_address")
+    from app.services.community_service import hash_ip_for_view
+
+    await service.increment_view(
+        post.id,
+        current_user.id if current_user else None,
+        hash_ip_for_view(client_ip) if client_ip else None,
+    )
+    return _post_out(post)
+
+
+@router.post("/posts", response_model=dict, status_code=201)
+async def create_post(
+    body: dict,
+    service: CommunityService = Depends(get_community_service),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
-    is_admin = await _is_admin(service.db, current_user)
-    await service.delete_reply(current_user.id, is_admin, reply_id)
+    kind = body.get("kind", "topic")
+    if kind not in POST_KINDS:
+        raise ValidationException(
+            message="kind 必须为 topic / post", error_code="VALIDATION_FAILED"
+        )
+    post = await service.create_post(
+        current_user.id,
+        kind,
+        title=body.get("title", ""),
+        content_markdown=body.get("contentMarkdown", body.get("content_markdown", "")),
+        category_id=body.get("categoryId") or body.get("category_id"),
+        status=body.get("status", "published"),
+        slug=body.get("slug"),
+        excerpt=body.get("excerpt"),
+        cover_image=body.get("coverImage") or body.get("cover_image"),
+        tags=body.get("tags"),
+        series_id=body.get("seriesId") or body.get("series_id"),
+        series_order=body.get("seriesOrder") or body.get("series_order"),
+    )
+    return _post_out(post)
+
+
+@router.put("/posts/{post_id}", response_model=dict)
+async def update_post(
+    post_id: int,
+    body: dict,
+    service: CommunityService = Depends(get_community_service),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    is_admin = await _is_admin(service, current_user)
+    post = await service.update_post(current_user.id, post_id, body, is_admin)
+    return _post_out(post)
+
+
+@router.delete("/posts/{post_id}")
+async def delete_post(
+    post_id: int,
+    service: CommunityService = Depends(get_community_service),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    is_admin = await _is_admin(service, current_user)
+    await service.delete_post(current_user.id, post_id, is_admin)
     return {"ok": True}
 
 
-@router.post("/forum/like")
-async def toggle_like(
-    body: LikeToggleRequest,
-    service: ForumService = Depends(get_forum_service),
-    current_user: User = Depends(get_current_active_user),
-) -> Any:
-    return await service.toggle_like(current_user.id, body.target_type, body.target_id)
-
-
-@router.post("/forum/favorite")
-async def toggle_favorite(
-    body: FavoriteToggleRequest,
-    service: ForumService = Depends(get_forum_service),
-    current_user: User = Depends(get_current_active_user),
-) -> Any:
-    return await service.toggle_favorite(current_user.id, body.topic_id)
-
-
-@router.get("/forum/favorites", response_model=PaginatedResponse[TopicOut])
-async def list_favorites(
+@router.get("/drafts")
+async def list_drafts(
     pagination: PaginationParams = Depends(),
-    service: ForumService = Depends(get_forum_service),
+    service: CommunityService = Depends(get_community_service),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
-    topics, total = await service.list_user_favorites(
+    posts, total = await service.user_drafts(
         current_user.id, skip=pagination.skip, limit=pagination.limit
     )
     return PaginatedResponse(
-        items=[_topic_out(t) for t in topics],
+        items=[_post_out(p) for p in posts],
         total=total,
         skip=pagination.skip,
         limit=pagination.limit,
     )
 
 
-@router.get("/forum/users/{user_id}/topics", response_model=PaginatedResponse[TopicOut])
+# ------------------------------------------------------------------ 评论
+
+
+@router.get("/posts/{post_id}/comments", response_model=PaginatedResponse[dict])
+async def list_comments(
+    post_id: int,
+    pagination: PaginationParams = Depends(),
+    service: CommunityService = Depends(get_community_service),
+) -> Any:
+    comments, total = await service.list_comments(
+        post_id, skip=pagination.skip, limit=pagination.limit
+    )
+    return PaginatedResponse(
+        items=[_comment_out(c) for c in comments],
+        total=total,
+        skip=pagination.skip,
+        limit=pagination.limit,
+    )
+
+
+@router.post("/posts/{post_id}/comments", response_model=dict, status_code=201)
+async def create_comment(
+    post_id: int,
+    body: dict,
+    service: CommunityService = Depends(get_community_service),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    content = body.get("contentMarkdown", body.get("content_markdown", ""))
+    if not content:
+        raise ValidationException(
+            message="内容不能为空", error_code="VALIDATION_FAILED"
+        )
+    comment = await service.create_comment(
+        current_user.id,
+        post_id,
+        content,
+        body.get("parentCommentId") or body.get("parent_comment_id"),
+    )
+    return _comment_out(comment)
+
+
+@router.get("/comments/{comment_id}/nested")
+async def list_nested_comments(
+    comment_id: int,
+    service: CommunityService = Depends(get_community_service),
+) -> Any:
+    comments = await service.list_nested_comments(comment_id)
+    return [_comment_out(c) for c in comments]
+
+
+@router.put("/comments/{comment_id}", response_model=dict)
+async def update_comment(
+    comment_id: int,
+    body: dict,
+    service: CommunityService = Depends(get_community_service),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    content = body.get("contentMarkdown", body.get("content_markdown", ""))
+    is_admin = await _is_admin(service, current_user)
+    comment = await service.update_comment(
+        current_user.id, is_admin, comment_id, content
+    )
+    return _comment_out(comment)
+
+
+@router.delete("/comments/{comment_id}")
+async def delete_comment(
+    comment_id: int,
+    service: CommunityService = Depends(get_community_service),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    is_admin = await _is_admin(service, current_user)
+    await service.delete_comment(current_user.id, is_admin, comment_id)
+    return {"ok": True}
+
+
+# ------------------------------------------------------------------ 点赞/收藏
+
+
+@router.post("/reactions")
+async def toggle_like(
+    body: dict,
+    service: CommunityService = Depends(get_community_service),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    target_type = body.get("targetType", body.get("target_type"))
+    target_id = body.get("targetId", body.get("target_id"))
+    if target_type not in ("post", "comment") or not target_id:
+        raise ValidationException(message="参数不合法", error_code="VALIDATION_FAILED")
+    return await service.toggle_like(current_user.id, target_type, int(target_id))
+
+
+@router.post("/favorites")
+async def toggle_favorite(
+    body: dict,
+    service: CommunityService = Depends(get_community_service),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    target_id = body.get("targetId", body.get("target_id"))
+    if not target_id:
+        raise ValidationException(message="参数不合法", error_code="VALIDATION_FAILED")
+    return await service.toggle_favorite(current_user.id, int(target_id))
+
+
+@router.get("/favorites")
+async def list_favorites(
+    pagination: PaginationParams = Depends(),
+    service: CommunityService = Depends(get_community_service),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    posts, total = await service.list_user_favorites(
+        current_user.id, skip=pagination.skip, limit=pagination.limit
+    )
+    return PaginatedResponse(
+        items=[_post_out(p) for p in posts],
+        total=total,
+        skip=pagination.skip,
+        limit=pagination.limit,
+    )
+
+
+# ------------------------------------------------------------------ 关注
+
+
+@router.post("/follows")
+async def toggle_follow(
+    body: dict,
+    service: CommunityService = Depends(get_community_service),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    following_id = body.get("followingId", body.get("following_id"))
+    if not following_id:
+        raise ValidationException(message="参数不合法", error_code="VALIDATION_FAILED")
+    return await service.toggle_follow(current_user.id, int(following_id))
+
+
+@router.get("/follows")
+async def list_follows(
+    type: str = "following",
+    page: int = 1,
+    page_size: int = 20,
+    service: CommunityService = Depends(get_community_service),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    skip = (max(1, page) - 1) * page_size
+    if type == "followers":
+        return await service.list_followers(
+            current_user.id, current_user_id=current_user.id, skip=skip, limit=page_size
+        )
+    return await service.list_following(
+        current_user.id, current_user_id=current_user.id, skip=skip, limit=page_size
+    )
+
+
+@router.get("/users/{user_id}/follow-status")
+async def follow_status(
+    user_id: int,
+    service: CommunityService = Depends(get_community_service),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    return {
+        "is_following": await service.is_following(current_user.id, user_id),
+        "counts": await service.get_follow_counts(user_id),
+    }
+
+
+@router.get("/users/{user_id}/follow-counts")
+async def follow_counts(
+    user_id: int,
+    service: CommunityService = Depends(get_community_service),
+) -> Any:
+    return await service.get_follow_counts(user_id)
+
+
+# ------------------------------------------------------------------ 举报
+
+
+@router.post("/reports", response_model=dict, status_code=201)
+async def submit_report(
+    body: dict,
+    service: CommunityService = Depends(get_community_service),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    target_type = body.get("targetType", body.get("target_type"))
+    target_id = body.get("targetId", body.get("target_id"))
+    reason = body.get("reason")
+    if target_type not in ("post", "comment") or not target_id or not reason:
+        raise ValidationException(message="参数不合法", error_code="VALIDATION_FAILED")
+    report = await service.submit_report(
+        current_user.id, target_type, int(target_id), reason, body.get("detail")
+    )
+    return {"ok": True, "id": report.id}
+
+
+# ------------------------------------------------------------------ 系列
+
+
+@router.get("/blog/series")
+async def list_series(
+    service: CommunityService = Depends(get_community_service),
+) -> Any:
+    return await service.list_series()
+
+
+@router.post("/blog/series", response_model=dict, status_code=201)
+async def create_series(
+    body: dict,
+    service: CommunityService = Depends(get_community_service),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    title = body.get("title", "")
+    if not title:
+        raise ValidationException(
+            message="标题不能为空", error_code="VALIDATION_FAILED"
+        )
+    return await service.create_series(current_user.id, title, body.get("description"))
+
+
+# ------------------------------------------------------------------ 用户数据
+
+
+@router.get("/forum/users/{user_id}/topics", response_model=PaginatedResponse[dict])
 async def list_user_topics(
     user_id: int,
     pagination: PaginationParams = Depends(),
-    service: ForumService = Depends(get_forum_service),
+    service: CommunityService = Depends(get_community_service),
 ) -> Any:
-    topics, total = await service.list_user_topics(
-        user_id, skip=pagination.skip, limit=pagination.limit
+    posts, total = await service.list_posts(
+        kind="topic", author_id=user_id, skip=pagination.skip, limit=pagination.limit
     )
     return PaginatedResponse(
-        items=[_topic_out(t) for t in topics],
+        items=[_post_out(p) for p in posts],
         total=total,
         skip=pagination.skip,
         limit=pagination.limit,
     )
 
 
-@router.get(
-    "/forum/users/{user_id}/replies", response_model=PaginatedResponse[ReplyOut]
-)
+@router.get("/forum/users/{user_id}/replies", response_model=PaginatedResponse[dict])
 async def list_user_replies(
     user_id: int,
     pagination: PaginationParams = Depends(),
-    service: ForumService = Depends(get_forum_service),
+    service: CommunityService = Depends(get_community_service),
 ) -> Any:
-    replies, total = await service.list_user_replies(
+    comments, total = await service.comment_repo.list_for_author(
         user_id, skip=pagination.skip, limit=pagination.limit
     )
+    await service._load_author_summaries(comments)
     return PaginatedResponse(
-        items=[_reply_out(r) for r in replies],
+        items=[_comment_out(c) for c in comments],
         total=total,
         skip=pagination.skip,
         limit=pagination.limit,
     )
+
+
+# ------------------------------------------------------------------ 上传
 
 
 @router.post("/forum/upload")
 async def upload_forum_image(
     file: UploadFile = File(...),
-    service: ForumService = Depends(get_forum_service),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
-    """论坛图片上传（≤5MB，JPEG/PNG/WebP/GIF，魔数校验）。"""
     content = await file.read()
     if len(content) > FORUM_IMAGE_MAX_SIZE:
         raise ValidationException(
@@ -353,7 +546,6 @@ async def upload_forum_image(
         raise ValidationException(
             message="文件内容与声明类型不匹配", error_code="INVALID_FILE_TYPE"
         )
-
     _IMAGES_DIR.mkdir(parents=True, exist_ok=True)
     import time
 
@@ -369,7 +561,6 @@ async def upload_forum_image(
 
 @router.get("/forum/images/{filename}")
 async def serve_forum_image(filename: str) -> Any:
-    """论坛图片静态服务（公开）。"""
     if not FORUM_IMAGE_FILENAME_RE.match(filename):
         raise NotFoundException(
             message="图片不存在", resource_type="forum_image", resource_id=filename
@@ -391,155 +582,10 @@ async def serve_forum_image(filename: str) -> Any:
     )
 
 
-# ------------------------------------------------------------------ 博客
-
-
-@router.get("/blog", response_model=PaginatedResponse[dict])
-async def list_blog_posts(
-    pagination: PaginationParams = Depends(),
-    category: Optional[str] = None,
-    search: Optional[str] = None,
-    status: str = "published",
-    service: BlogService = Depends(get_blog_service),
-) -> Any:
-    posts, total = await service.list_posts(
-        status=status,
-        category=category,
-        search=search,
-        skip=pagination.skip,
-        limit=pagination.limit,
-    )
-    return PaginatedResponse(
-        items=[_post_out(p) for p in posts],
-        total=total,
-        skip=pagination.skip,
-        limit=pagination.limit,
-    )
-
-
-@router.post("/blog", response_model=dict, status_code=201)
-async def create_blog_post(
-    body: BlogPostInput,
-    service: BlogService = Depends(get_blog_service),
-    current_user: User = Depends(get_current_active_user),
-) -> Any:
-    post = await service.create_post(current_user.id, body)
-    return _post_out(post)
-
-
-@router.get("/blog/{slug}", response_model=dict)
-async def get_blog_post(
-    slug: str,
-    service: BlogService = Depends(get_blog_service),
-    current_user: Optional[User] = Depends(get_current_user),
-) -> Any:
-    post = await service.get_post_by_slug(
-        slug, current_user.id if current_user else None
-    )
-    await service.increment_view(post.id)
-    return _post_out(post)
-
-
-@router.put("/blog/{slug}", response_model=dict)
-async def update_blog_post(
-    slug: str,
-    body: BlogPostInput,
-    service: BlogService = Depends(get_blog_service),
-    current_user: User = Depends(get_current_active_user),
-) -> Any:
-    post = await service.get_post_by_slug(slug)
-    is_admin = await _is_admin(service.db, current_user)
-    updated = await service.update_post(current_user.id, post.id, body, is_admin)
-    return _post_out(updated)
-
-
-@router.delete("/blog/{slug}")
-async def delete_blog_post(
-    slug: str,
-    service: BlogService = Depends(get_blog_service),
-    current_user: User = Depends(get_current_active_user),
-) -> Any:
-    post = await service.get_post_by_slug(slug)
-    is_admin = await _is_admin(service.db, current_user)
-    await service.delete_post(current_user.id, post.id, is_admin)
-    return {"ok": True}
-
-
-@router.post("/blog/{slug}/like")
-async def toggle_blog_like(
-    slug: str,
-    service: BlogService = Depends(get_blog_service),
-    current_user: User = Depends(get_current_active_user),
-) -> Any:
-    post = await service.get_post_by_slug(slug)
-    return await service.toggle_like(post.id, current_user.id)
-
-
-@router.get("/blog/series", response_model=list[dict])
-async def list_blog_series(
-    service: BlogService = Depends(get_blog_service),
-) -> Any:
-    return await service.list_series()
-
-
-@router.post("/blog/series", response_model=dict, status_code=201)
-async def create_blog_series(
-    body: BlogSeriesInput,
-    service: BlogService = Depends(get_blog_service),
-    current_user: User = Depends(get_current_active_user),
-) -> Any:
-    return await service.create_series(current_user.id, body)
-
-
-# ------------------------------------------------------------------ 成员 / Feed
-
-
-@router.get("/members")
-async def list_members(
-    tag: Optional[str] = None,
-    service: CommunityService = Depends(get_community_service),
-) -> Any:
-    return await service.list_members(tag)
-
-
-@router.get("/feed")
-async def get_feed(
-    kind: Optional[str] = None,
-    tag: Optional[str] = None,
-    search: Optional[str] = None,
-    exclude_members: bool = False,
-    page: int = 1,
-    page_size: int = 20,
-    service: CommunityService = Depends(get_community_service),
-) -> Any:
-    return await service.get_feed(
-        kind=kind,
-        tag=tag,
-        search=search,
-        exclude_members=exclude_members,
-        page=page,
-        page_size=page_size,
-    )
-
-
-@router.get("/tags")
-async def get_tags(
-    service: CommunityService = Depends(get_community_service),
-) -> Any:
-    return {"tags": await service.get_feed_tags()}
-
-
-@router.get("/feed/stats")
-async def get_feed_stats(
-    service: CommunityService = Depends(get_community_service),
-) -> Any:
-    return await service.get_feed_stats()
-
-
 # ------------------------------------------------------------------ 内部
 
 
-async def _is_admin(db, user: User) -> bool:
+async def _is_admin(service: CommunityService, user: User) -> bool:
     from sqlalchemy import select
 
     from app.models.role import Role
@@ -547,12 +593,12 @@ async def _is_admin(db, user: User) -> bool:
     if user.is_superuser:
         return True
     roles = (
-        (await db.execute(select(Role.name).join(Role.users).where(User.id == user.id)))
+        (
+            await service.db.execute(
+                select(Role.name).join(Role.users).where(User.id == user.id)
+            )
+        )
         .scalars()
         .all()
     )
     return "admin" in roles or "content_moderator" in roles
-
-
-def _cat_out(cat) -> dict:
-    return CategoryOut.model_validate(cat).model_dump()

@@ -670,10 +670,10 @@ class UserService:
         return user
 
     async def get_public_profile(self, user_id: int) -> Optional[dict]:
-        """用户公开主页（无需登录）：公开资料 + 论坛/考试统计。"""
+        """用户公开主页（无需登录）：公开资料 + 社区/考试统计。"""
         from sqlalchemy import func, select
+        from app.models.community import CommunityComment, CommunityPost
         from app.models.exam import Exam, ExamAttempt, ExamQuestion
-        from app.models.forum import ForumReply, ForumTopic
 
         user = await self.user_repo.get_by_id(user_id)
         if user is None or user.deleted_at is not None or not user.is_active:
@@ -683,10 +683,11 @@ class UserService:
             (
                 await self.db.execute(
                     select(func.count())
-                    .select_from(ForumTopic)
+                    .select_from(CommunityPost)
                     .where(
-                        ForumTopic.author_id == user_id,
-                        ForumTopic.status == "published",
+                        CommunityPost.author_id == user_id,
+                        CommunityPost.kind == "topic",
+                        CommunityPost.status == "published",
                     )
                 )
             ).scalar_one()
@@ -695,10 +696,10 @@ class UserService:
             (
                 await self.db.execute(
                     select(func.count())
-                    .select_from(ForumReply)
+                    .select_from(CommunityComment)
                     .where(
-                        ForumReply.author_id == user_id,
-                        ForumReply.status == "published",
+                        CommunityComment.author_id == user_id,
+                        CommunityComment.status == "published",
                     )
                 )
             ).scalar_one()

@@ -1,8 +1,8 @@
-# MIGRATION_PLAN — FZTBU CS 前后端分离迁移计划
+﻿# MIGRATION_PLAN — FZTBU CS 前后端分离迁移计划
 
 > 文档类型：planning + ADR 记录 | 受众：架构师 / 后端迁移实施者 / 前端 BFF 改造者
 > 目标：将 CS-Web-Frontend（Next.js 全栈单体）中的全部后端功能（server 层 + API 路由 + 数据库访问）分离到本仓库（FastAPI WitchCat 脚手架），前端降级为纯 UI + BFF 薄转发。
-> 最后更新：2026-08-01 | Stale 信号：模块迁移状态清单与实际代码不一致、表清单与 Alembic 迁移不符
+> 最后更新：2026-08-03（前端重建：适配上游 community v2 重构） | Stale 信号：模块迁移状态清单与实际代码不一致、表清单与 Alembic 迁移不符
 
 ---
 

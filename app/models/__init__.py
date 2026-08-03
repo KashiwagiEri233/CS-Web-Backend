@@ -32,6 +32,17 @@ from app.models.forum_interaction import (
     ForumMention,
 )
 from app.models.blog import BlogPost, BlogSeries, BlogLike
+from app.models.community import (
+    CommunityCategory,
+    CommunityPost,
+    CommunityComment,
+    CommunityReaction,
+    CommunityFavorite,
+    CommunityPostView,
+    CommunityMention,
+    CommunityFollow,
+    CommunityReport,
+)
 from app.models.notification import Notification, Announcement
 from app.models.exam import Exam, ExamQuestion, ExamQuestionOption, ExamAttempt
 from app.models.task import Task, TaskClaim
@@ -72,6 +83,15 @@ __all__ = [
     "BlogPost",
     "BlogSeries",
     "BlogLike",
+    "CommunityCategory",
+    "CommunityPost",
+    "CommunityComment",
+    "CommunityReaction",
+    "CommunityFavorite",
+    "CommunityPostView",
+    "CommunityMention",
+    "CommunityFollow",
+    "CommunityReport",
     "Notification",
     "Announcement",
     "Exam",
