@@ -1,0 +1,65 @@
+# ============ CS-Web-Backend 一键部署 ============
+# 使用：
+#   1. cp .env.docker.example .env 并填写全部 CHANGE_ME 变量
+#   2. docker compose up -d --build
+#   3. 访问 http://<host>:9000/docs
+#
+# 说明：
+#   - PostgreSQL 数据持久化在 pgdata 卷
+#   - 启动时自动 alembic upgrade head（DB_AUTO_MIGRATE=true）
+#   - 后端监听容器内 8000，映射宿主 9000（与前端 BFF 默认一致）
+#   - 前端容器通过 cs-net 网络直连 backend:8000（无需暴露公网）
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: cs-backend-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DATABASE_NAME:-domefff}
+      POSTGRES_USER: ${DATABASE_USER:-postgres}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?请在 .env 中设置 DATABASE_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER:-postgres} -d ${DATABASE_NAME:-domefff}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks:
+      - cs-net
+
+  backend:
+    build: .
+    container_name: cs-backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # 容器内连 db 服务，覆盖 .env 中的 localhost
+      DATABASE_HOST: db
+      DATABASE_PORT: "5432"
+      DATABASE_NAME: ${DATABASE_NAME:-domefff}
+      DATABASE_USER: ${DATABASE_USER:-postgres}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+      # 空库自动建库 + 自动迁移到 head
+      DB_AUTO_CREATE_DATABASE: "true"
+      DB_AUTO_MIGRATE: "true"
+      SECRET_KEY: ${SECRET_KEY}
+      TOTP_ENCRYPTION_KEY: ${TOTP_ENCRYPTION_KEY}
+      PASSWORD_RESET_DEFAULT: ${PASSWORD_RESET_DEFAULT:-}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+      REQUIRE_REDIS_FOR_SECURITY: "false"
+    ports:
+      - "9000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - cs-net
+
+volumes:
+  pgdata:
+
+networks:
+  cs-net:
+    driver: bridge
