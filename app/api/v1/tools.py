@@ -25,8 +25,8 @@ from app.schemas.tools import (
     ComponentGuideInput,
     ComponentItemInput,
     ComponentVariantInput,
-    ExamAttemptInput,
     ExamInput,
+    ExamSubmitIn,
     QuestionInput,
     ResourceInput,
     TaskInput,
@@ -62,7 +62,20 @@ def _exam_out(exam) -> dict:
     return ExamOut.model_validate(exam).model_dump()
 
 
-def _question_out(q) -> dict:
+def _question_out(q, include_answer: bool = False) -> dict:
+    def _opt_get(opt, key):
+        return opt.get(key) if isinstance(opt, dict) else getattr(opt, key, None)
+
+    options = []
+    for opt in getattr(q, "options", []) or []:
+        item = {
+            "label": _opt_get(opt, "label"),
+            "content": _opt_get(opt, "content"),
+            "sort_order": _opt_get(opt, "sort_order"),
+        }
+        if include_answer:
+            item["is_correct"] = _opt_get(opt, "is_correct")
+        options.append(item)
     return {
         "id": q.id,
         "exam_id": q.exam_id,
@@ -71,7 +84,7 @@ def _question_out(q) -> dict:
         "content_markdown": q.content_markdown,
         "score": q.score,
         "sort_order": q.sort_order,
-        "options": getattr(q, "options", []),
+        "options": options,
         "created_at": q.created_at,
     }
 
@@ -144,16 +157,23 @@ async def list_exam_questions(
 
 
 @router.post("/exam/{exam_id}/submit")
-async def submit_answer(
+async def submit_answers(
     exam_id: int,
-    question_id: int,
-    body: ExamAttemptInput,
+    body: ExamSubmitIn,
     service: ExamService = Depends(get_exam_service),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
-    return await service.submit_answer(
-        current_user.id, exam_id, question_id, body.answer
-    )
+    results = []
+    for item in body.answers:
+        results.append(
+            await service.submit_answer(
+                current_user.id, exam_id, item.question_id, item.answer
+            )
+        )
+    return {
+        "results": results,
+        "score": sum(r.get("score") or 0 for r in results),
+    }
 
 
 @router.get("/exam/{exam_id}/my-results")
@@ -245,7 +265,7 @@ async def admin_list_questions(
     current_user: User = Depends(require_permission("exam", "read")),
 ) -> Any:
     questions = await service.list_questions(exam_id)
-    return {"questions": [_question_out(q) for q in questions]}
+    return {"questions": [_question_out(q, include_answer=True) for q in questions]}
 
 
 @router.post("/admin/exam/{exam_id}/questions", response_model=dict, status_code=201)
@@ -255,7 +275,9 @@ async def create_question(
     service: ExamService = Depends(get_exam_service),
     current_user: User = Depends(require_permission("exam", "question_create")),
 ) -> Any:
-    return _question_out(await service.create_question(exam_id, body))
+    return _question_out(
+        await service.create_question(exam_id, body), include_answer=True
+    )
 
 
 @router.put("/admin/exam/{exam_id}/questions/{question_id}", response_model=dict)
@@ -266,7 +288,9 @@ async def update_question(
     service: ExamService = Depends(get_exam_service),
     current_user: User = Depends(require_permission("exam", "question_update")),
 ) -> Any:
-    return _question_out(await service.update_question(question_id, body))
+    return _question_out(
+        await service.update_question(question_id, body), include_answer=True
+    )
 
 
 @router.delete("/admin/exam/{exam_id}/questions/{question_id}")

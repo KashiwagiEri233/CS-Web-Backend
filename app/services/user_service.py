@@ -202,8 +202,15 @@ class UserService:
         if role != "all":
             users = [u for u in users if role in {r.name for r in u.roles}]
 
+        from app.schemas.auth import UserOut
+
+        def _admin_out(u: User) -> dict:
+            base = UserOut.model_validate(u).model_dump()
+            base["roles"] = [r.name for r in u.roles]
+            return base
+
         return {
-            "users": users,
+            "users": [_admin_out(u) for u in users],
             "total": total,
             "page": page,
             "page_size": page_size,

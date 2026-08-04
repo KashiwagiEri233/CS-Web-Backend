@@ -49,9 +49,12 @@ class ExamService:
         return exam
 
     async def create_exam(self, created_by: int, data: ExamInput) -> Exam:
-        payload = data.model_dump()
+        payload = data.model_dump(exclude={"questions"})
         payload["created_by"] = created_by
         exam = await self.repo.create(payload)
+        if data.questions:
+            for q in data.questions:
+                await self.create_question(exam.id, q)
         await self.db.commit()
         return exam
 

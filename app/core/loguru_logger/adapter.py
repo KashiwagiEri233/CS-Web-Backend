@@ -107,6 +107,14 @@ class LoguruAdapter:
         )
         bound_logger = self._logger.bind(**log_fields)
 
+        # 位置参数插值（loguru 原生风格）：对 msg 先做 .format(*args)。
+        # 失败（如 JSON 消息中的字面量大括号）则保持原样，保证 JSON 安全。
+        if args:
+            try:
+                msg = msg.format(*args)
+            except Exception:  # noqa: BLE001 - 插值失败不影响日志输出
+                pass
+
         if kwargs:
             formatted_params = []
             for k, v in kwargs.items():

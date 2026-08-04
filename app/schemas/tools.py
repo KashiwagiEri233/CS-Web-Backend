@@ -27,6 +27,7 @@ class ExamInput(BaseModel):
     end_time: Optional[datetime] = None
     duration_minutes: Optional[int] = None
     tech_tags: Optional[List[str]] = None
+    questions: Optional[List["QuestionInput"]] = None
     model_config = ConfigDict(str_strip_whitespace=True)
 
     @field_validator("title")
@@ -65,10 +66,17 @@ class QuestionInput(BaseModel):
 
 
 class ExamAttemptInput(BaseModel):
+    question_id: int
     answer: str
 
 
+class ExamSubmitIn(BaseModel):
+    answers: List[ExamAttemptInput]
+
+
 class ExamOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     title: str
     description: Optional[str] = None
@@ -76,13 +84,15 @@ class ExamOut(BaseModel):
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     duration_minutes: Optional[int] = None
-    tech_tags: List[str] = []
+    tech_tags: Optional[List[str]] = None
     created_by: int
     created_at: datetime
     updated_at: datetime
 
 
 class QuestionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     exam_id: int
     type: str
@@ -95,6 +105,8 @@ class QuestionOut(BaseModel):
 
 
 class AttemptOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     user_id: int
     exam_id: int
@@ -209,12 +221,14 @@ class TaskInput(BaseModel):
 
 
 class TaskOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     title: str
     description: str
     content_markdown: Optional[str] = None
     category: str
-    tags: List[str] = []
+    tags: Optional[List[str]] = None
     points: int
     max_claimants: int
     status: str
@@ -226,6 +240,8 @@ class TaskOut(BaseModel):
 
 
 class TaskClaimOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     task_id: int
     user_id: int
@@ -242,6 +258,8 @@ class TaskClaimOut(BaseModel):
 
 
 class PointsTransactionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     user_id: int
     amount: int
@@ -325,6 +343,8 @@ class ComponentGuideInput(BaseModel):
 
 
 class ComponentItemOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     name: str
     slug: str
