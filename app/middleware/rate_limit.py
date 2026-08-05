@@ -84,9 +84,9 @@ class RateLimitMiddleware:
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 content={
                     "success": False,
-                    "error_code": ErrorCode.RateLimit.RATE_LIMIT_EXCEEDED,
+                    "errorCode": ErrorCode.RateLimit.RATE_LIMIT_EXCEEDED,
                     "message": self.error_detail,
-                    "status_code": status.HTTP_429_TOO_MANY_REQUESTS,
+                    "statusCode": status.HTTP_429_TOO_MANY_REQUESTS,
                 },
                 headers={"Retry-After": str(self.period)},
             )

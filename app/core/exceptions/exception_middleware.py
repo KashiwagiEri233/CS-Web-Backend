@@ -104,7 +104,9 @@ class ExceptionHandlerMiddleware:
                 extra_headers = None
 
             try:
-                content = response.model_dump()
+                # by_alias=True：与路由层 handler_utils 的错误响应保持一致，
+                # 输出 camelCase（errorCode/statusCode/...），避免同一契约两套命名。
+                content = response.model_dump(by_alias=True)
                 response_obj = JSONResponse(
                     status_code=response.status_code,
                     content=content,

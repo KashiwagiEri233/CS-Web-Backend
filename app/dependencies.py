@@ -84,3 +84,22 @@ async def get_current_active_user(
     if not current_user.is_active:
         raise UserNotActiveException(user_id=current_user.id)
     return current_user
+
+
+async def get_optional_current_user(
+    request: Request,
+    token: Optional[str] = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> Optional[User]:
+    """可选用户依赖：未登录 / token 无效时返回 None，而非抛 401。
+
+    用于"可选登录"场景——如 2FA 登录第二步（此刻用户只有预认证 token，
+    尚未持有 access token）与社区匿名浏览（登录则附带身份）。直接声明
+    ``Optional[User] = Depends(get_current_active_user)`` 不可行：FastAPI
+    会在进入路由前解析依赖，而 ``get_current_user`` 对缺失 token 抛
+    AuthenticationException，导致请求在函数体前就以 401 失败。
+    """
+    try:
+        return await get_current_user(request, token=token, db=db)
+    except AuthenticationException:
+        return None

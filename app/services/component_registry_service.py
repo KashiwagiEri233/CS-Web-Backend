@@ -10,6 +10,7 @@ from app.repositories.tools_repo import ComponentRegistryRepository
 from app.schemas.tools import (
     ComponentGuideInput,
     ComponentItemInput,
+    ComponentItemOut,
     ComponentVariantInput,
 )
 
@@ -19,14 +20,14 @@ class ComponentRegistryService:
         self.db = db
         self.repo = ComponentRegistryRepository(db)
 
-    async def list_components(self) -> list[dict]:
+    async def list_components(self) -> list[ComponentItemOut]:
         items = await self.repo.list_items()
         result = []
         for item in items:
             result.append(await self._to_out(item))
         return result
 
-    async def get_component(self, item_id: int) -> dict:
+    async def get_component(self, item_id: int) -> ComponentItemOut:
         item = await self.repo.get_item(item_id)
         if item is None:
             raise NotFoundException(
@@ -36,7 +37,7 @@ class ComponentRegistryService:
             )
         return await self._to_out(item)
 
-    async def create_component(self, data: ComponentItemInput) -> dict:
+    async def create_component(self, data: ComponentItemInput) -> ComponentItemOut:
         if await self.repo.get_item_by_slug(data.slug):
             raise ConflictException(
                 message="slug 已存在", error_code=ErrorCode.Conflict.SLUG_EXISTS
@@ -45,7 +46,7 @@ class ComponentRegistryService:
         await self.db.commit()
         return await self._to_out(item)
 
-    async def update_component(self, item_id: int, data: ComponentItemInput) -> dict:
+    async def update_component(self, item_id: int, data: ComponentItemInput) -> ComponentItemOut:
         item = await self.repo.get_item(item_id)
         if item is None:
             raise NotFoundException(
@@ -76,8 +77,8 @@ class ComponentRegistryService:
         return await self.get_component(item_id)
 
     async def toggle_variant(
-        self, item_id: int, variant_id: int, enabled: bool
-    ) -> dict:
+        self, item_id: int,         variant_id: int, enabled: bool
+    ) -> ComponentItemOut:
         variant = await self.repo.get_variant(item_id, variant_id)
         if variant is None:
             raise NotFoundException(
@@ -89,42 +90,44 @@ class ComponentRegistryService:
         await self.db.commit()
         return await self.get_component(item_id)
 
-    async def update_guide(self, item_id: int, data: ComponentGuideInput) -> dict:
+    async def update_guide(self, item_id: int, data: ComponentGuideInput) -> ComponentItemOut:
         await self.get_component(item_id)
         await self.repo.upsert_guide(item_id, data.use_cases, data.anti_patterns)
         await self.db.commit()
         return await self.get_component(item_id)
 
-    async def _to_out(self, item: ComponentRegistryItem) -> dict:
+    async def _to_out(self, item: ComponentRegistryItem) -> ComponentItemOut:
         variants = await self.repo.list_variants(item.id)
         guide = await self.repo.get_guide(item.id)
-        return {
-            "id": item.id,
-            "name": item.name,
-            "slug": item.slug,
-            "category": item.category,
-            "description": item.description,
-            "migration_status": item.migration_status,
-            "sort_order": item.sort_order,
-            "variants": [
-                {
-                    "id": v.id,
-                    "size": v.size,
-                    "color": v.color,
-                    "state": v.state,
-                    "is_enabled": v.is_enabled,
-                }
-                for v in variants
-            ],
-            "guide": (
-                {
-                    "id": guide.id,
-                    "use_cases": guide.use_cases or [],
-                    "anti_patterns": guide.anti_patterns or [],
-                }
-                if guide
-                else None
-            ),
-            "created_at": item.created_at,
-            "updated_at": item.updated_at,
-        }
+        return ComponentItemOut.model_validate(
+            {
+                "id": item.id,
+                "name": item.name,
+                "slug": item.slug,
+                "category": item.category,
+                "description": item.description,
+                "migration_status": item.migration_status,
+                "sort_order": item.sort_order,
+                "variants": [
+                    {
+                        "id": v.id,
+                        "size": v.size,
+                        "color": v.color,
+                        "state": v.state,
+                        "is_enabled": v.is_enabled,
+                    }
+                    for v in variants
+                ],
+                "guide": (
+                    {
+                        "id": guide.id,
+                        "use_cases": guide.use_cases or [],
+                        "anti_patterns": guide.anti_patterns or [],
+                    }
+                    if guide
+                    else None
+                ),
+                "created_at": item.created_at,
+                "updated_at": item.updated_at,
+            }
+        )

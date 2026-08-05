@@ -15,7 +15,8 @@ async def upgrade_schema_to_head() -> None:
     from alembic.config import Config
 
     def _upgrade() -> None:
-        ini = Path(__file__).resolve().parent.parent / "alembic.ini"
+        # 测试现已位于 tools/tests/，需向上三级到达仓库根处的 alembic.ini。
+        ini = Path(__file__).resolve().parent.parent.parent / "alembic.ini"
         command.upgrade(Config(str(ini)), "head")
 
     await asyncio.to_thread(_upgrade)

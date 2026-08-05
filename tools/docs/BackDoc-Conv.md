@@ -144,7 +144,7 @@ api (路由)  →  service (业务)  →  repository (数据)  →  model (ORM)
 
 ## 8. 测试约定
 
-- **目录结构**：`tests/` 镜像 `app/` 子包结构；每个子包必须有 `__init__.py`（见 `../tests/README.md`）。
+- **目录结构**：`tools/tests/` 镜像 `app/` 子包结构；每个子包必须有 `__init__.py`（见 `../tools/tests/README.md`）。
 - **命名**：测试文件 `test_*.py`，测试函数 `test_*`。
 - **异步**：`pytest.ini` 段名必须是 `[pytest]`，`asyncio_mode=auto`，异步测试直接 `async def`，**不要** `@pytest.mark.asyncio`。
 - **运行**：`python -m pytest`。

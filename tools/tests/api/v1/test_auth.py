@@ -217,6 +217,6 @@ def test_login_email_requires_2fa_shape():
     )
     assert resp.status_code == 200
     body = resp.json()
-    assert body["requires2fa"] is True
+    assert body["requires2Fa"] is True  # to_camel 对 requires_2fa → requires2Fa
     assert body["twoFactorToken"] == "tok"
     assert body["accessToken"] is None

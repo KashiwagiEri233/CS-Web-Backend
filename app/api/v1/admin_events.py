@@ -15,6 +15,7 @@ from app.schemas.event import (
     BatchUpdateRequest,
     EventCheckinOut,
     EventInput,
+    EventListOut,
     EventOut,
     EventRegistrationOut,
     EventSettingsIn,
@@ -43,18 +44,32 @@ def _bad_request(message: str):
 # ------------------------------------------------------------------ 活动 CRUD
 
 
-@router.get("", response_model=list[EventOut])
+@router.get("", response_model=EventListOut)
 async def list_all_events(
     service: EventService = Depends(get_event_service),
     current_user: User = Depends(require_permission("event", "read")),
 ) -> Any:
-    """活动列表（管理视图，全部）。"""
+    """活动列表（管理视图，全部）。
+
+    返回与前端 BFF 期望一致的分页包裹结构：
+    { items, total, page, page_size, total_pages }。
+    前端 BFF（GET /api/admin/events）按 body.items 解析列表并读取
+    body.total / body.total_pages 做分页，裸数组会导致列表永远为空。
+    """
     events = await service.event_repo.list_all()
     for event in events:
         setattr(
             event, "registered_count", await service.reg_repo.count_registered(event.id)
         )
-    return [_to_event_out(e) for e in events]
+    items = [_to_event_out(e) for e in events]
+    total = len(items)
+    return {
+        "items": items,
+        "total": total,
+        "page": 1,
+        "page_size": total,
+        "total_pages": 1 if total > 0 else 0,
+    }
 
 
 @router.post("", response_model=EventOut, status_code=201)

@@ -231,3 +231,17 @@ class BatchUpdateRequest(BaseModel):
         if v is not None and v not in EVENT_STATUSES:
             raise ValueError("状态必须为 upcoming / ongoing / ended")
         return v
+
+
+class EventListOut(TZModel):
+    """活动列表（管理视图）分页包裹结构。
+
+    与前端 BFF（GET /api/admin/events）的消费结构对齐：
+    按 body.items 读取列表，并按 body.total / body.total_pages 做分页。
+    """
+
+    items: List[EventOut]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int

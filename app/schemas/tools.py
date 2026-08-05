@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from app.schemas.base import TZModel
+from app.schemas.base import TZModel, camel_config
 
 # ------------------------------------------------------------------ 考试
 
@@ -319,7 +319,9 @@ class ComponentItemInput(BaseModel):
     description: Optional[str] = None
     sort_order: int = 0
     migration_status: str = "legacy"
-    model_config = ConfigDict(str_strip_whitespace=True)
+    # camel_config 让前端用 camelCase（migrationStatus/sortOrder）提交，
+    # populate_by_name 同时兼容旧客户端用 snake_case 提交。
+    model_config = camel_config(str_strip_whitespace=True)
 
     @field_validator("name", "slug")
     @classmethod
@@ -335,15 +337,38 @@ class ComponentVariantInput(BaseModel):
     color: str
     state: str
     is_enabled: bool = True
+    model_config = camel_config(str_strip_whitespace=True)
 
 
 class ComponentGuideInput(BaseModel):
     use_cases: List[str] = []
     anti_patterns: List[str] = []
+    model_config = camel_config(str_strip_whitespace=True)
+
+
+class ComponentVariantOut(BaseModel):
+    model_config = camel_config(from_attributes=True)
+
+    id: int
+    size: str
+    color: str
+    state: str
+    is_enabled: bool
+
+
+class ComponentGuideOut(BaseModel):
+    model_config = camel_config(from_attributes=True)
+
+    id: int
+    use_cases: List[str] = []
+    anti_patterns: List[str] = []
 
 
 class ComponentItemOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    # camel_config 输出 camelCase，与前端的 ComponentItem 字段对齐，
+    # 修复此前 snake_case（migration_status/sort_order/is_enabled...）
+    # 导致前端 item.migrationStatus 为 undefined 而崩溃的问题。
+    model_config = camel_config(from_attributes=True)
 
     id: int
     name: str
@@ -352,7 +377,7 @@ class ComponentItemOut(BaseModel):
     description: Optional[str] = None
     migration_status: str
     sort_order: int
-    variants: List[Dict[str, Any]] = []
-    guide: Optional[Dict[str, Any]] = None
+    variants: List[ComponentVariantOut] = []
+    guide: Optional[ComponentGuideOut] = None
     created_at: datetime
     updated_at: datetime

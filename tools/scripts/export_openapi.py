@@ -23,7 +23,8 @@ import sys
 from pathlib import Path
 
 # 将后端仓库根加入 sys.path，使脚本可独立运行（不依赖外部 PYTHONPATH）。
-_BACKEND_ROOT = Path(__file__).resolve().parent.parent
+# 脚本现已位于 tools/scripts/，需向上三级到达仓库根。
+_BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(_BACKEND_ROOT))
 

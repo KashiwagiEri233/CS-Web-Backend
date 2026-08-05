@@ -11,7 +11,7 @@ from app.core.exceptions import (
     ValidationException,
 )
 from app.core.request_context import get_client_meta
-from app.dependencies import get_current_active_user
+from app.dependencies import get_current_active_user, get_optional_current_user
 from app.dependencies_services import get_auth_service, get_verification_service
 from app.models.user import User
 from app.schemas.auth import (
@@ -160,12 +160,12 @@ async def two_factor_setup(
     return await auth_service.totp_service.setup(current_user.id, current_user.email)
 
 
-@router.post("/2fa/verify")
+@router.post("/2fa/verify", response_model=LoginResponse)
 async def two_factor_verify(
     request: Request,
     body: TwoFactorVerifyRequest,
     auth_service: AuthService = Depends(get_auth_service),
-    current_user: Optional[User] = Depends(get_current_active_user),
+    current_user: Optional[User] = Depends(get_optional_current_user),
 ) -> Any:
     """2FA 验证码：设置确认（mode=setup，需登录）或登录二次验证（mode=login）。"""
     if body.mode == "setup":

@@ -100,7 +100,7 @@ uvicorn app.main:app --reload --port 9000
 uv run python -m pytest -q --no-cov -m "not integration and not queue_integration"
 
 # PG 集成测试（需 Linux + PostgreSQL）
-uv run python -m pytest tests/integration -v --no-cov
+uv run python -m pytest tools/tests/integration -v --no-cov
 
 # 风格 / 类型
 uv run flake8 app tests
@@ -124,8 +124,8 @@ app/
 ├── database.py        # 引擎 + get_db（路由）/ get_session（路由外）
 └── main.py            # 入口：中间件 + 异常处理器 + lifespan
 alembic/               # 迁移（单一 head 链）
-tests/                 # 镜像 app/ 结构 + integration/（PG 集成）
-docs/                  # 本仓库文档（见下方索引）
+tools/tests/                 # 镜像 app/ 结构 + integration/（PG 集成）
+tools/docs/                  # 本仓库文档（见下方索引）
 ```
 
 ---
@@ -140,8 +140,8 @@ docs/                  # 本仓库文档（见下方索引）
 4. `services/<x>_service.py`（组合 repo）
 5. `api/v1/<x>.py` → 注册到 `api/v1/__init__.py`
 6. 建表/迁移（Alembic）
-7. `tests/` 镜像补测试
-8. 业务模块**必须**在 `docs/BackDoc-Mods.md` 对应节登记（或新建 `docs/modules/<name>.md` 并登记到 `docs/README.md` 索引）
+7. `tools/tests/` 镜像补测试
+8. 业务模块**必须**在 `tools/docs/BackDoc-Mods.md` 对应节登记（或新建 `tools/docs/modules/<name>.md` 并登记到 `tools/docs/README.md` 索引）
 
 > **中心注册点**（必须登记，否则不生效）：ORM 模型、业务异常、中间件、配置项、API router、启动/关闭任务（`@register_startup`/`@register_shutdown`）、测试子包 `__init__.py`。
 
@@ -163,7 +163,7 @@ docs/                  # 本仓库文档（见下方索引）
 
 ## 6. 必须守住的约定（不变量速览）
 
-> 完整版见 `docs/BackDoc-Arch.md` §10、`docs/BackDoc-Conv.md`。
+> 完整版见 `tools/docs/BackDoc-Arch.md` §10、`tools/docs/BackDoc-Conv.md`。
 
 1. **分层单向**：api → service → repository → model，禁止反向/跨层。
 2. **DB 会话**：路由 `Depends(get_db)`，路由外 `async with get_session()`；**都不自动提交**——repo 只 flush，service 显式 commit。
@@ -187,13 +187,13 @@ docs/                  # 本仓库文档（见下方索引）
 | 任务/路由不生效 | 99% 是忘记在中心注册点登记（`models/__init__.py`、`v1/__init__.py`、`lifecycle/__init__.py`） |
 | 启动失败"时区非法" | 缺 `tzdata`（尤其 Windows/alpine），展示层会误报；确保已装 |
 | 时间多了/少了 8 小时 | 用了 naive `datetime`；统一走 `now_utc()` + `TZModel` |
-| 测试连不上库 | `.env.test` 需 `DATABASE_URL` 指向**库名含 `test`** 的库（`tests/conftest.py` 校验） |
+| 测试连不上库 | `.env.test` 需 `DATABASE_URL` 指向**库名含 `test`** 的库（`tools/tests/conftest.py` 校验） |
 | 改了配置但无效 | 没同步 `.env.example`，或字段名与 `Settings` 不一致 |
 | `alembic check` 报 drift | 别改历史迁移文件，新增增量迁移 |
 
 ---
 
-## 8. 文档地图（本仓库 docs/）
+## 8. 文档地图（本仓库 tools/docs/）
 
 | 文档 | 用途 |
 |---|---|
@@ -212,8 +212,8 @@ docs/                  # 本仓库文档（见下方索引）
 
 ## 9. 提交前检查清单
 
-- [ ] 改了端点/签名/配置项 → 对应 `docs/BackDoc-Sec.md`/`BackDoc-Infra.md`/`BackDoc-Mods.md` 已更新
+- [ ] 改了端点/签名/配置项 → 对应 `tools/docs/BackDoc-Sec.md`/`BackDoc-Infra.md`/`BackDoc-Mods.md` 已更新
 - [ ] 新增/改名公共函数或配置项 → 文档已同步
-- [ ] 新建模块 → `docs/BackDoc-Mods.md` 登记或新建 `docs/modules/<name>.md` + 登记到 `docs/README.md` 索引
+- [ ] 新建模块 → `tools/docs/BackDoc-Mods.md` 登记或新建 `tools/docs/modules/<name>.md` + 登记到 `tools/docs/README.md` 索引
 - [ ] `flake8` + `mypy` 通过
 - [ ] 单元测试通过；改动涉及 DB 的补集成测试

@@ -64,9 +64,9 @@ pipeline {
         stage('Static checks') {
             steps {
                 script {
-                    runPythonModule('compileall -q app alembic scripts tests')
-                    runPythonModule('black --check app tests alembic scripts run.py')
-                    runPythonModule('flake8 app tests alembic scripts run.py')
+                    runPythonModule('compileall -q app alembic tools/scripts tools/tests')
+                    runPythonModule('black --check app tools/tests alembic tools/scripts run.py')
+                    runPythonModule('flake8 app tools/tests alembic tools/scripts run.py')
                     runPythonModule('mypy')
                 }
             }
@@ -76,7 +76,7 @@ pipeline {
                 script {
                     // 冻结 /api/v1 契约：比对当前 OpenAPI 与基线 openapi.baseline.json。
                     // 契约变更须经评审后重跑 `python scripts/export_openapi.py --baseline > openapi.baseline.json` 更新基线。
-                    runPythonModule('python scripts/export_openapi.py --check openapi.baseline.json')
+                    runPythonModule('python tools/scripts/export_openapi.py --check openapi.baseline.json')
                 }
             }
         }

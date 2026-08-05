@@ -15,7 +15,8 @@ import re
 import tomllib
 from pathlib import Path
 
-_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+# 测试现已位于 tools/tests/core/，需向上四级到达仓库根。
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 # name[extras]specifier —— 覆盖 requirements 与 PEP 508 里本项目实际用到的写法
 _REQUIREMENT_RE = re.compile(

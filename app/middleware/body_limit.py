@@ -85,9 +85,9 @@ class BodySizeLimitMiddleware:
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             content={
                 "success": False,
-                "error_code": ErrorCode.Request.REQUEST_BODY_TOO_LARGE,
+                "errorCode": ErrorCode.Request.REQUEST_BODY_TOO_LARGE,
                 "message": f"请求体过大，最大允许 {self.max_bytes} 字节。",
-                "status_code": status.HTTP_413_CONTENT_TOO_LARGE,
+                "statusCode": status.HTTP_413_CONTENT_TOO_LARGE,
             },
         )
         await response(scope, receive, send)

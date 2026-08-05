@@ -52,8 +52,10 @@ class TOTPService:
 
         return {
             "secret": secret,
-            "otpauthURI": otpauth_uri,
-            "backupCodes": backup_codes,
+            # 返回 snake_case，与 TwoFactorSetupResponse（camel_config → otpauthUri）对齐；
+            # 此前用 otpauthURI 导致 response_model 缺字段 → 500。
+            "otpauth_uri": otpauth_uri,
+            "backup_codes": backup_codes,
         }
 
     async def confirm(self, user_id: int, code: str) -> None:

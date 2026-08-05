@@ -147,7 +147,7 @@ Redis 是**增强项**，未配置/故障时自动降级内存；降级策略由
 **失败语义**：`critical=True` 任务失败 → raise 中止启动（DB、RBAC seed）；`critical=False` 失败 →
 仅告警继续（Redis/OTel）。关闭阶段任何异常都吞掉只记日志，绝不向外抛。
 
-**完整任务清单、priority 段约定与新增任务配方见 `docs/BackDoc-Infra.md`**「启动/关闭任务注册表」节（唯一权威，不在此重复）。
+**完整任务清单、priority 段约定与新增任务配方见 `tools/docs/BackDoc-Infra.md`**「启动/关闭任务注册表」节（唯一权威，不在此重复）。
 
 ---
 
@@ -238,5 +238,5 @@ core/security, middleware/rbac
 - `../CLAUDE.md` — 项目定位、技术栈、硬性禁止项、启动/配置/测试速查。
 - `../AGENTS.md` — AI Agent 扩展约定、中心注册点、Alembic 迁移管理、不变量。
 - `BackDoc-Conv.md` — 编码规范、命名、质量红线、安全/错误处理约定。
-- `../tests/README.md` — 测试目录组织与运行方式。
+- `../tools/tests/README.md` — 测试目录组织与运行方式。
 - `README.md` — 文档索引与分类约定；详解见 `BackDoc-Sec.md`、`BackDoc-Infra.md`、`BackDoc-Mods.md`。

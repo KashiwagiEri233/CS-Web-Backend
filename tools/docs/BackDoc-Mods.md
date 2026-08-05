@@ -95,8 +95,8 @@ Phase 1 新增（全部登记 `.env.example`）：
 
 ### 测试
 
-`tests/api/v1/test_auth.py`、`tests/services/test_auth_service.py`、`tests/integration/test_auth_token_lifecycle.py`、
-`test_auth_phase1.py`（需 PG）、`tests/core/test_totp.py`、`test_totp_encryption.py`、`test_password_compat.py`、`test_token_blacklist.py`。
+`tools/tests/api/v1/test_auth.py`、`tools/tests/services/test_auth_service.py`、`tools/tests/integration/test_auth_token_lifecycle.py`、
+`test_auth_phase1.py`（需 PG）、`tools/tests/core/test_totp.py`、`test_totp_encryption.py`、`test_password_compat.py`、`test_token_blacklist.py`。
 
 ---
 
@@ -145,7 +145,7 @@ Phase 1 新增（全部登记 `.env.example`）：
 
 ### 测试
 
-`tests/api/v1/test_users.py`、`tests/services/test_user_service.py`、`tests/integration/test_auth_phase1.py`。
+`tools/tests/api/v1/test_users.py`、`tools/tests/services/test_user_service.py`、`tools/tests/integration/test_auth_phase1.py`。
 
 ---
 

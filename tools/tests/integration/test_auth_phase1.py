@@ -110,8 +110,8 @@ async def test_two_factor_full_flow(integration_db_ready):
 
             # setup → confirm
             setup = await svc.totp_service.setup(user.id, email)
-            assert setup["otpauthURI"].startswith("otpauth://")
-            assert len(setup["backupCodes"]) == 8
+            assert setup["otpauth_uri"].startswith("otpauth://")
+            assert len(setup["backup_codes"]) == 8
             code = totp_core.generate_code(setup["secret"], int(now_utc().timestamp()))
             await svc.totp_service.confirm(user.id, code)
             assert await svc.totp_service.is_enabled(user.id)

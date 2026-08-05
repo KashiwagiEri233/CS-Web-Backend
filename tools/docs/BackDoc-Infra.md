@@ -44,7 +44,7 @@
 
 #### 测试
 
-`tests/core/test_structured_logging.py`、`test_exception_logging.py`、`test_exception_middleware.py`。
+`tools/tests/core/test_structured_logging.py`、`test_exception_logging.py`、`test_exception_middleware.py`。
 
 #### 扩展指引
 
@@ -156,7 +156,7 @@ otel-collector 等）。**默认关闭**：`OTEL_ENABLED=False` 时完全 no-op�
 ### 测试
 
 - CI：`upgrade head → downgrade base → upgrade head`。
-- `tests/integration/test_http_postgres_e2e.py`、`test_auth_token_lifecycle.py`、`test_rbac_db.py`。
+- `tools/tests/integration/test_http_postgres_e2e.py`、`test_auth_token_lifecycle.py`、`test_rbac_db.py`。
 
 ### 扩展指引
 
@@ -218,7 +218,7 @@ otel-collector 等）。**默认关闭**：`OTEL_ENABLED=False` 时完全 no-op�
 
 ### 测试与扩展
 
-- 测试：`tests/core/test_lifecycle.py`、`test_app_runtime.py`。
+- 测试：`tools/tests/core/test_lifecycle.py`、`test_app_runtime.py`。
 - 扩展：写协程函数 + 装饰器；`lifecycle/__init__.py` 的 `_import_registrants()` 追加 import；core 失败需拒绝启动才标 `critical=True`；需清理资源的配套 `@register_shutdown`。
 
 **常见坑**：任务不执行 → 99% 是忘了 `_import_registrants()` import；不要在 `run_startup` 内动态注册；展示逻辑留 `lifespan`。
@@ -271,7 +271,7 @@ otel-collector 等）。**默认关闭**：`OTEL_ENABLED=False` 时完全 no-op�
 
 ### 测试与扩展
 
-- 测试：`tests/core/test_queue.py`、`tests/integration/test_queue_worker.py`。
+- 测试：`tools/tests/core/test_queue.py`、`tools/tests/integration/test_queue_worker.py`。
 - 扩展：加任务 `tasks.py` 登记 `TASKS`；定时任务加 `cron_jobs`；重试/超时配 `max_tries`/`job_timeout`。
 
 ---
@@ -310,5 +310,5 @@ otel-collector 等）。**默认关闭**：`OTEL_ENABLED=False` 时完全 no-op�
 
 ### 测试与扩展
 
-- 测试：`tests/core/test_cache.py`、`tests/integration/test_redis_backends.py`。
+- 测试：`tools/tests/core/test_cache.py`、`tools/tests/integration/test_redis_backends.py`。
 - 扩展：新增缓存场景优先复用 `get_cache()`；键必须带业务前缀，可失效数据设 TTL。

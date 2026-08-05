@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import NotFoundException, ValidationException
 from app.core.request_context import get_client_meta
 from app.database import get_db
-from app.dependencies import get_current_active_user, get_current_user
+from app.dependencies import get_current_active_user, get_optional_current_user
 from app.dependencies_services import get_community_service
 from app.models.community import CommunityPost
 from app.models.user import User
@@ -168,7 +168,7 @@ async def list_posts(
     sort: str = "latest",
     following: bool = False,
     service: CommunityService = Depends(get_community_service),
-    current_user: Optional[User] = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_optional_current_user),
 ) -> Any:
     posts, total = await service.list_posts(
         kind=kind,
@@ -198,7 +198,7 @@ async def get_post(
     post_id: int,
     request: Request,
     service: CommunityService = Depends(get_community_service),
-    current_user: Optional[User] = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_optional_current_user),
 ) -> Any:
     post = await service.get_post(post_id, current_user.id if current_user else None)
     client_ip = get_client_meta(request).get("ip_address")
@@ -217,7 +217,7 @@ async def get_post_by_slug(
     slug: str,
     request: Request,
     service: CommunityService = Depends(get_community_service),
-    current_user: Optional[User] = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_optional_current_user),
 ) -> Any:
     post = await service.get_post_by_slug(
         slug, current_user.id if current_user else None

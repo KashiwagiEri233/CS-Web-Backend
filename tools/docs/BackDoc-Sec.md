@@ -44,8 +44,8 @@
 
 ### 测试
 
-`tests/core/test_security.py`、`test_token_blacklist.py`、`tests/middleware/test_rbac_permissions.py`、
-`tests/integration/test_http_postgres_e2e.py`、`test_redis_backends.py`。
+`tools/tests/core/test_security.py`、`test_token_blacklist.py`、`tools/tests/middleware/test_rbac_permissions.py`、
+`tools/tests/integration/test_http_postgres_e2e.py`、`test_redis_backends.py`。
 
 ### 扩展指引
 
@@ -97,7 +97,7 @@
 
 ### 测试
 
-`tests/core/test_exception_handlers.py`、`test_exception_handler_middleware.py`、`test_exception_logging.py`、`tests/services/test_exception_service.py`。
+`tools/tests/core/test_exception_handlers.py`、`test_exception_handler_middleware.py`、`test_exception_logging.py`、`tools/tests/services/test_exception_service.py`。
 
 ---
 

@@ -16,7 +16,8 @@ import os
 import sys
 from pathlib import Path
 
-project_root = Path(__file__).parent.parent
+# 脚本现已位于 tools/scripts/，需向上三级到达仓库根。
+project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from app.core.loguru_logger import get_logger  # noqa: E402

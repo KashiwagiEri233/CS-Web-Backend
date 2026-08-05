@@ -15,7 +15,8 @@ from dotenv import dotenv_values
 from sqlalchemy.engine import make_url
 
 
-ROOT_DIR = Path(__file__).resolve().parent.parent
+# 测试现已位于 tools/tests/，需向上三级到达仓库根。
+ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 TEST_ENV_FILE = ROOT_DIR / ".env.test"
 
 _DATABASE_ENV_KEYS = (

@@ -19,7 +19,7 @@
 | `alembic upgrade head` | 成功；42 张表建成（框架 8 + 业务 34，含 two_factor_auth） |
 | `alembic check` | 无 drift（模型 ↔ 数据库一致） |
 | `alembic downgrade -1 && upgrade head` | 往返成功 |
-| Phase 1 集成测试 | `tests/integration/test_auth_phase1.py` 全绿（注册/2FA/懒升级/会话/重置流） |
+| Phase 1 集成测试 | `tools/tests/integration/test_auth_phase1.py` 全绿（注册/2FA/懒升级/会话/重置流） |
 | pytest | 全绿（除标记 integration 且无 Redis 时跳过的用例） |
 
 ---
@@ -45,7 +45,7 @@ cp .env.development .env          # 或 .env.local
 uv sync                            # 或 pip install --require-hashes -r requirements.lock
 ```
 
-> 测试库另需：库名必须含 `test`（见 `tests/conftest.py` 校验），如
+> 测试库另需：库名必须含 `test`（见 `tools/tests/conftest.py` 校验），如
 > `CREATE DATABASE domefff_test OWNER postgres;`
 
 ---
@@ -92,7 +92,7 @@ rm alembic/versions/<新文件>   # 删除临时文件
 ```bash
 # 需要 domefff_test 测试库（库名含 test，见 conftest 校验）+ .env.test 的
 # TOTP_ENCRYPTION_KEY/PASSWORD_RESET_DEFAULT（模板已含）
-uv run python -m pytest tests/integration/test_auth_phase1.py -v --no-cov
+uv run python -m pytest tools/tests/integration/test_auth_phase1.py -v --no-cov
 ```
 
 覆盖：注册→登录→改密、2FA 全流程（setup/confirm/登录二次验证/备用码一次性）、
@@ -101,7 +101,7 @@ scrypt 懒升级、登录历史、设备列表/远程登出、忘记密码→批
 ### 3b2. Phase 2 集成测试（公告/通知/入社/管理员用户）
 
 ```bash
-uv run python -m pytest tests/integration/test_phase2_modules.py -v --no-cov
+uv run python -m pytest tools/tests/integration/test_phase2_modules.py -v --no-cov
 ```
 
 覆盖：公告生命周期（生效/过期/角色定向/CRUD）、通知列表/已读/广播/群发记录聚合、
@@ -111,7 +111,7 @@ uv run python -m pytest tests/integration/test_phase2_modules.py -v --no-cov
 ### 3b3. 子阶段 2.5 集成测试（管理员角色/审计删除）
 
 ```bash
-uv run python -m pytest tests/integration/test_phase2_5_admin.py -v --no-cov
+uv run python -m pytest tools/tests/integration/test_phase2_5_admin.py -v --no-cov
 ```
 
 覆盖：角色 CRUD（权限自动创建/全量替换/用户数）、系统角色删除保护、审计日志删除（单条 + 批量）。
@@ -119,7 +119,7 @@ uv run python -m pytest tests/integration/test_phase2_5_admin.py -v --no-cov
 ### 3b4. Phase 3 集成测试（活动模块）
 
 ```bash
-uv run python -m pytest tests/integration/test_phase3_events.py -v --no-cov
+uv run python -m pytest tools/tests/integration/test_phase3_events.py -v --no-cov
 ```
 
 覆盖：活动 CRUD + 自动归档、报名流（重复 409/名额满 409/取消重报）、签到码生成与核销
@@ -128,7 +128,7 @@ uv run python -m pytest tests/integration/test_phase3_events.py -v --no-cov
 ### 3b5. Phase 4 集成测试（社区模块）
 
 ```bash
-uv run python -m pytest tests/integration/test_phase4_community.py -v --no-cov
+uv run python -m pytest tools/tests/integration/test_phase4_community.py -v --no-cov
 ```
 
 覆盖：版块+主题（slug 冲突/反范式计数/浏览去重）、回复+互动（楼中楼/点赞收藏）、
@@ -138,7 +138,7 @@ uv run python -m pytest tests/integration/test_phase4_community.py -v --no-cov
 ### 3b6. Phase 5 集成测试（工具集模块）
 
 ```bash
-uv run python -m pytest tests/integration/test_phase5_tools.py -v --no-cov
+uv run python -m pytest tools/tests/integration/test_phase5_tools.py -v --no-cov
 ```
 
 覆盖：考试（组卷/答题判分 upsert/排名/状态机）、资源（提交/审核/浏览）、
@@ -146,7 +146,7 @@ uv run python -m pytest tests/integration/test_phase5_tools.py -v --no-cov
 组件注册表（slug 冲突/variants 四元组唯一/guide/toggle）。
 
 > 纯单元测试（TOTP RFC 6238 向量、加密交叉验证、scrypt 兼容）已在本机通过，
-> 无需 PG：`tests/core/test_totp*.py`、`tests/core/test_password_compat.py`。
+> 无需 PG：`tools/tests/core/test_totp*.py`、`tools/tests/core/test_password_compat.py`。
 
 ### 3c. 前后端联调（Phase 1 BFF 切换）
 
