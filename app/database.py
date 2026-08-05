@@ -198,25 +198,27 @@ async def _verify_alembic_version() -> None:
     def _read_revisions(sync_conn):
         ini_path = Path(__file__).resolve().parent.parent / "alembic.ini"
         script = ScriptDirectory.from_config(Config(str(ini_path)))
-        head = script.get_current_head()
+        heads = script.get_heads()
         current = MigrationContext.configure(sync_conn).get_current_revision()
-        return head, current
+        return heads, current
 
     async with engine.connect() as conn:
-        head, current = await conn.run_sync(_read_revisions)
+        heads, current = await conn.run_sync(_read_revisions)
 
-    if current == head:
+    # 当前版本须为主链 head 之一（含独立可选维护迁移分支，如旧表 DROP）。
+    # 仅当当前版本落后于所有 head 时才拒绝启动，避免强制应用"待评审"的可选迁移。
+    if current in heads:
         _db_logger.info("数据库迁移版本已是最新", revision=current)
         return
 
     _db_logger.error(
         "数据库迁移版本不一致，拒绝启动",
         current=current or "(未迁移/无 alembic_version)",
-        expected=head,
+        expected_heads=heads,
     )
     raise RuntimeError(
         f"数据库迁移版本不一致：当前={current or '(未迁移/无 alembic_version)'}，"
-        f"代码最新={head}。请先执行 `alembic upgrade head` 再启动应用。"
+        f"代码最新 heads={heads}。请先执行 `alembic upgrade head` 再启动应用。"
     )
 
 

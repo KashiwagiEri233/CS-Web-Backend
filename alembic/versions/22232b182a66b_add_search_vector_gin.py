@@ -5,7 +5,7 @@
 并建立 GIN 索引加速 websearch_to_tsquery 查询。历史数据在 upgrade 中回填。
 
 Revision ID: 22232b182a66b
-Revises: 22232b182a66
+Revises: d6e7f8g9h0i1
 Create Date: 2026-08-06
 
 """
@@ -18,7 +18,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = "22232b182a66b"
-down_revision: Union[str, Sequence[str], None] = "22232b182a66"
+down_revision: Union[str, Sequence[str], None] = "d6e7f8g9h0i1"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
