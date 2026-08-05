@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Optional
 
 from sqlalchemy import DateTime as _DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
@@ -27,7 +28,7 @@ class PointsTransaction(Base):
     source_type: Mapped[str] = mapped_column(
         String(50), nullable=False, default="system"
     )
-    source_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     balance_after: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, index=True)
 

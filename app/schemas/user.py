@@ -9,10 +9,11 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, field_validator
 
 from app.core.validators import validate_password_strength
 from app.schemas.auth import User, UserBase, UserCreate, UserOut, UserUpdate
+from app.schemas.base import camel_config
 from app.schemas.profile import ProfileUpdate
 
 __all__ = [
@@ -43,7 +44,7 @@ class AdminUserUpdate(ProfileUpdate):
 
     role: Optional[str] = None
     is_active: Optional[bool] = None
-    model_config = ConfigDict(str_strip_whitespace=True)
+    model_config = camel_config(str_strip_whitespace=True)
 
     @field_validator("role")
     @classmethod
@@ -67,13 +68,14 @@ class AdminUserListOut(BaseModel):
     page: int
     page_size: int
     total_pages: int
+    model_config = camel_config()
 
 
 class CustomResetPassword(BaseModel):
     """超级管理员自定义重置密码。"""
 
     password: str
-    model_config = ConfigDict(str_strip_whitespace=True)
+    model_config = camel_config(str_strip_whitespace=True)
 
     @field_validator("password")
     @classmethod

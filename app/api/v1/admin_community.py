@@ -9,41 +9,10 @@ from fastapi import APIRouter, Depends, Request
 from app.dependencies_services import get_community_service
 from app.middleware.rbac import require_permission
 from app.models.user import User
+from app.schemas.community import post_to_dict
 from app.services.community_service import CommunityService
 
 router = APIRouter()
-
-
-def _post_out(post) -> dict:
-    return {
-        "id": post.id,
-        "kind": post.kind,
-        "category_id": post.category_id,
-        "author_id": post.author_id,
-        "title": post.title,
-        "content_markdown": post.content_markdown,
-        "status": post.status,
-        "is_pinned": post.is_pinned,
-        "is_featured": post.is_featured,
-        "reply_count": post.reply_count,
-        "favorite_count": post.favorite_count,
-        "last_reply_at": post.last_reply_at,
-        "hidden_by": post.hidden_by,
-        "hidden_at": post.hidden_at,
-        "hidden_reason": post.hidden_reason,
-        "slug": post.slug,
-        "excerpt": post.excerpt,
-        "cover_image": post.cover_image,
-        "tags": post.tags or [],
-        "series_id": post.series_id,
-        "published_at": post.published_at,
-        "view_count": post.view_count,
-        "like_count": post.like_count,
-        "author": getattr(post, "author", None),
-        "category": getattr(post, "category", None),
-        "created_at": post.created_at,
-        "updated_at": post.updated_at,
-    }
 
 
 # ------------------------------------------------------------------ 内容审核
@@ -70,7 +39,7 @@ async def admin_list_posts(
         skip=skip,
         limit=limit,
     )
-    return {"items": [_post_out(p) for p in posts], "total": total}
+    return {"items": [post_to_dict(p) for p in posts], "total": total}
 
 
 @router.put("/forum/topics/{post_id}")
@@ -81,7 +50,7 @@ async def admin_update_post(
     current_user: User = Depends(require_permission("forum", "update")),
 ) -> Any:
     post = await service.update_post(current_user.id, post_id, body, is_admin=True)
-    return _post_out(post)
+    return post_to_dict(post)
 
 
 @router.delete("/forum/topics/{post_id}")
@@ -306,11 +275,11 @@ async def admin_blog_action(
         return {"error": "缺少 post_id"}
     if sub == "publish":
         return {
-            "post": _post_out(await service.publish_post(current_user.id, int(post_id)))
+            "post": post_to_dict(await service.publish_post(current_user.id, int(post_id)))
         }
     if sub == "archive":
         return {
-            "post": _post_out(await service.archive_post(current_user.id, int(post_id)))
+            "post": post_to_dict(await service.archive_post(current_user.id, int(post_id)))
         }
     if sub == "delete":
         await service.delete_post(current_user.id, int(post_id), is_admin=True)

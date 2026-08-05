@@ -9,7 +9,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.loguru_logger import get_logger, suppress_library_logging
-from app.database import engine
+from app.database import engine, run_alembic_upgrade
 
 suppress_library_logging()
 
@@ -58,17 +58,12 @@ class DatabaseInitializer:
         return table_status
 
     async def apply_migrations(self) -> None:
-        """执行 ``alembic upgrade head``（同步 API 放线程池）。"""
-        import asyncio
+        """执行 ``alembic upgrade head``。
 
-        from alembic import command
-        from alembic.config import Config
-
-        def _upgrade():
-            ini_path = Path(__file__).resolve().parent.parent.parent / "alembic.ini"
-            command.upgrade(Config(str(ini_path)), "head")
-
-        await asyncio.to_thread(_upgrade)
+        复用 ``app.database.run_alembic_upgrade`` 单一实现，避免 alembic 路径/配置
+        在 database 与 db_initializer 两处重复（alembic.ini 定位逻辑集中维护）。
+        """
+        await run_alembic_upgrade()
         self.logger.info("已执行 alembic upgrade head")
 
     async def initialize_database(self) -> Dict[str, Any]:

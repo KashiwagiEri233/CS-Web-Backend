@@ -1,14 +1,14 @@
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, EmailStr, field_validator, ConfigDict
+from pydantic import BaseModel, EmailStr, field_validator
 
 from app.core.validators import (
     MAX_EMAIL_LENGTH,
     validate_password_strength,
     validate_username,
 )
-from app.schemas.base import TZModel
+from app.schemas.base import TZModel, camel_config
 
 
 class UserBase(BaseModel):
@@ -16,6 +16,7 @@ class UserBase(BaseModel):
     email: EmailStr
     full_name: Optional[str] = None
     is_active: bool = True
+    model_config = camel_config()
 
     @field_validator("username")
     @classmethod
@@ -42,7 +43,7 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str
-    model_config = ConfigDict(str_strip_whitespace=True)
+    model_config = camel_config(str_strip_whitespace=True)
 
     @field_validator("password")
     @classmethod
@@ -61,7 +62,7 @@ class UserUpdate(BaseModel):
     # 管理端重置（PUT /users/{id}）由 UserService.update_user 忽略本字段。
     old_password: Optional[str] = None
     is_active: Optional[bool] = None
-    model_config = ConfigDict(str_strip_whitespace=True)
+    model_config = camel_config(str_strip_whitespace=True)
 
     @field_validator("email")
     @classmethod
@@ -91,7 +92,7 @@ class User(UserBase):
     id: int
     is_superuser: bool
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = camel_config(from_attributes=True)
 
 
 # 别名，用于API响应
@@ -99,11 +100,16 @@ UserResponse = User
 
 
 class UserOut(TZModel):
-    """用户出参（含业务资料字段，Phase 1 迁移）。"""
+    """用户出参（含业务资料字段，Phase 1 迁移）。
+
+    email 用宽松 str 而非 EmailStr：输出序列化不应因历史/测试数据使用保留域名
+    （如 @test.local、@example）而整体 422（管理员用户列表会因此变空）。
+    邮箱格式的强校验保留在输入侧（UserCreate / UserUpdate / 登录 / 注册）。
+    """
 
     id: int
     username: str
-    email: EmailStr
+    email: str
     full_name: Optional[str] = None
     display_name: Optional[str] = None
     bio: Optional[str] = None
@@ -116,6 +122,13 @@ class UserOut(TZModel):
     is_superuser: bool
     created_at: datetime
     updated_at: datetime
+
+    @field_validator("email")
+    @classmethod
+    def validate_email_length(cls, v: str) -> str:
+        if len(str(v)) > MAX_EMAIL_LENGTH:
+            raise ValueError(f"邮箱长度不能超过{MAX_EMAIL_LENGTH}个字符")
+        return v
 
 
 class MeResponse(TZModel):
@@ -132,7 +145,7 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str
     code: str
-    model_config = ConfigDict(str_strip_whitespace=True)
+    model_config = camel_config(str_strip_whitespace=True)
 
     @field_validator("email")
     @classmethod
@@ -186,6 +199,7 @@ class TokenPair(BaseModel):
     refresh_token: str
     token_type: str = "bearer"
     expires_in: int  # access token 有效期（秒），便于前端调度刷新
+    model_config = camel_config()
 
 
 class LoginResponse(BaseModel):
@@ -197,17 +211,20 @@ class LoginResponse(BaseModel):
     refresh_token: Optional[str] = None
     token_type: Optional[str] = None
     expires_in: Optional[int] = None
+    model_config = camel_config()
 
 
 class RefreshRequest(BaseModel):
     """用 refresh token 换新 access token 的请求体。"""
 
     refresh_token: str
+    model_config = camel_config()
 
 
 class LoginRequest(BaseModel):
     username: str
     password: str
+    model_config = camel_config()
 
 
 class EmailLoginRequest(BaseModel):
@@ -215,7 +232,7 @@ class EmailLoginRequest(BaseModel):
 
     email: EmailStr
     password: str
-    model_config = ConfigDict(str_strip_whitespace=True)
+    model_config = camel_config(str_strip_whitespace=True)
 
 
 class TwoFactorSetupResponse(BaseModel):
@@ -224,12 +241,14 @@ class TwoFactorSetupResponse(BaseModel):
     secret: str
     otpauth_uri: str
     backup_codes: List[str]
+    model_config = camel_config()
 
 
 class TwoFactorCodeRequest(BaseModel):
     """2FA 确认 / 禁用 / 重新生成备用码：TOTP 或备用码。"""
 
     code: str
+    model_config = camel_config()
 
 
 class TwoFactorVerifyRequest(BaseModel):
@@ -238,6 +257,7 @@ class TwoFactorVerifyRequest(BaseModel):
     mode: str = "login"
     code: str
     two_factor_token: Optional[str] = None
+    model_config = camel_config()
 
 
 class TwoFactorStatusResponse(BaseModel):
@@ -245,3 +265,23 @@ class TwoFactorStatusResponse(BaseModel):
 
     enabled: bool
     setup: bool
+    model_config = camel_config()
+
+
+class SessionOut(BaseModel):
+    """设备会话（活跃 refresh token）出参。"""
+
+    id: int
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    created_at: datetime
+    expires_at: datetime
+    family_id: str = ""
+    model_config = camel_config()
+
+
+class SessionListResponse(BaseModel):
+    """GET /auth/sessions 响应。"""
+
+    sessions: List[SessionOut]
+    model_config = camel_config()

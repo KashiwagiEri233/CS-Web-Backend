@@ -24,14 +24,7 @@ from app.models.event import (
     EventCheckin,
     ActivityParticipation,
 )
-from app.models.forum import ForumCategory, ForumTopic, ForumReply
-from app.models.forum_interaction import (
-    ForumLike,
-    ForumFavorite,
-    ForumTopicView,
-    ForumMention,
-)
-from app.models.blog import BlogPost, BlogSeries, BlogLike
+from app.models.blog import BlogSeries
 from app.models.community import (
     CommunityCategory,
     CommunityPost,
@@ -73,16 +66,7 @@ __all__ = [
     "EventRegistration",
     "EventCheckin",
     "ActivityParticipation",
-    "ForumCategory",
-    "ForumTopic",
-    "ForumReply",
-    "ForumLike",
-    "ForumFavorite",
-    "ForumTopicView",
-    "ForumMention",
-    "BlogPost",
     "BlogSeries",
-    "BlogLike",
     "CommunityCategory",
     "CommunityPost",
     "CommunityComment",

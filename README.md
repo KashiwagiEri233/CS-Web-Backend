@@ -3,7 +3,7 @@
 > 计算机社团官网后端 — FastAPI + PostgreSQL
 >
 > 由原 Next.js 全栈单体（CS-Web-Frontend）按模块分离而来：前端降级为「UI + BFF 薄转发」，
-> 认证、数据、业务逻辑全部由本仓库接管。分离计划与 ADR 见 [MIGRATION_PLAN.md](MIGRATION_PLAN.md)。
+> 认证、数据、业务逻辑全部由本仓库接管。分离计划与 ADR 见 [docs/BackDoc-Archv.md](docs/BackDoc-Archv.md)。
 
 ## 技术栈
 
@@ -91,7 +91,7 @@ uv run mypy app
 # 单元测试（268 个，本机即可全跑）
 uv run python -m pytest -q --no-cov -m "not integration and not queue_integration"
 
-# PG 集成测试（需 Linux + PostgreSQL，验证流程见 docs/MIGRATION_VERIFICATION.md）
+# PG 集成测试（需 Linux + PostgreSQL，验证流程见 docs/BackDoc-MigV.md）
 uv run python -m pytest tests/integration -v --no-cov
 ```
 
@@ -114,14 +114,14 @@ app/
 └── main.py            # 应用入口（lifespan + 中间件）
 alembic/               # 迁移（单一 head 链）
 tests/                 # 单元测试 + integration/（PG 集成）
-docs/                  # 验证指南（MIGRATION_VERIFICATION.md）等
+docs/                  # 验证指南（BackDoc-MigV.md）等
 ```
 
 ## 参考文档
 
 | 文档 | 内容 |
 |---|---|
-| `MIGRATION_PLAN.md` | 前后端分离迁移计划：模块/阶段/决策/重建记录（社区 v2 适配） |
-| `docs/MIGRATION_VERIFICATION.md` | Linux/PG 环境验证指引（各 Phase 集成测试、2FA/密码兼容检查清单） |
+| `docs/BackDoc-Archv.md` | 前后端分离迁移计划 + 特性设计稿（历史归档，不作现行方案） |
+| `docs/BackDoc-MigV.md` | Linux/PG 环境验证指引（各 Phase 集成测试、2FA/密码兼容检查清单） |
 | `CLAUDE.md` / `AGENTS.md` | 项目定位、扩展约定、Alembic 管理、不变量 |
-| `CONVENTIONS.md` | 编码规范与质量红线 |
+| `docs/BackDoc-Conv.md` | 编码规范与质量红线 |

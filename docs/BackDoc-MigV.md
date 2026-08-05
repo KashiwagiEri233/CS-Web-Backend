@@ -1,5 +1,8 @@
-# MIGRATION_VERIFICATION — 迁移验证指南（Linux / 有 PostgreSQL 环境）
+# MIGRATION_VERIFICATION — 迁移验证指南（Linux / 有 PostgreSQL 环境）（BackDoc-MigV）
 
+> 更新人：3yearsZ
+> 最后更新：2026-08-05（统一 BackDoc 命名）
+> 关联：基础设施见 [BackDoc-Infra.md](BackDoc-Infra.md)；架构见 [BackDoc-Arch.md](BackDoc-Arch.md)
 > 执行者：Linux 环境的 agent（或任何具备 PostgreSQL 的 CI/开发机）
 > 目的：验证 `d1e2f3a4b5c6_add_cs_business_tables.py`（Phase 0 数据层基线，离线手写）
 > 与 `f6a7b8c9d0e1_add_refresh_tokens_device_info.py`（Phase 1 会话字段）是否与
@@ -12,7 +15,7 @@
 
 | 检查项 | 预期 |
 |---|---|
-| `alembic heads` | 单一 head：`f6a7b8c9d0e1` |
+| `alembic heads` | 单一 head：`d6e7f8g9h0i1` |
 | `alembic upgrade head` | 成功；42 张表建成（框架 8 + 业务 34，含 two_factor_auth） |
 | `alembic check` | 无 drift（模型 ↔ 数据库一致） |
 | `alembic downgrade -1 && upgrade head` | 往返成功 |
@@ -52,7 +55,7 @@ uv sync                            # 或 pip install --require-hashes -r require
 ### 1. 迁移链完整性
 
 ```bash
-uv run alembic heads          # 必须只有一行：d1e2f3a4b5c6 (head)
+uv run alembic heads          # 必须只有一行：d6e7f8g9h0i1 (head)
 uv run alembic history | head -12
 ```
 
@@ -160,12 +163,8 @@ pnpm dev                            # http://localhost:2333
 ```
 
 验证清单：
-- [ ] 注册（验证码）→ 自动登录 → /api/auth/me 返回完整用户
-- [ ] 登录 → 2FA 启用后返回 requires2FA → 2FA 完成登录
-- [ ] 修改密码 → 旧 access 失效、自动静默刷新
-- [ ] GitHub OAuth 入口/回调（未配置时入口 404）
-- [ ] 设备列表 / 远程登出 / 头像上传 / 预设头像
-- [ ] 忘记密码 → 管理员批准 → 默认密码登录
+
+> ℹ️ 变更记录/待办条目已迁移至根目录 `项目演变历史.md` / `项目待办事项.md`。
 
 ### 4. 表结构与约束抽查
 
@@ -229,7 +228,7 @@ PY
 ### 6. 回滚往返
 
 ```bash
-uv run alembic downgrade -1       # 回滚到 e6a4b91d70c2：33 张业务表应消失，users 业务列移除
+uv run alembic downgrade -1       # 回滚到 f0a1b2c3d4e5；再升级回 head 应无 drift
 uv run alembic upgrade head       # 再升级回 head
 ```
 

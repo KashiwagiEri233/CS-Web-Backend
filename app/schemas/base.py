@@ -15,14 +15,29 @@
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, field_serializer
+from pydantic.alias_generators import to_camel
 
 from app.core.timezone import utc_to_local
 
 
-class TZModel(BaseModel):
-    """出参基类：from_attributes + datetime 统一转 settings.TIMEZONE 展示。"""
+def camel_config(**overrides) -> ConfigDict:
+    """统一 camelCase 传输契约配置。
 
-    model_config = ConfigDict(from_attributes=True)
+    - alias_generator=to_camel：JSON 输入/输出使用 camelCase 字段名。
+    - populate_by_name=True：同时接受 camelCase(alias) 与 snake_case(属性名) 入参，
+      保证迁移期旧客户端/测试用 snake_case 提交 body 仍可用（向后兼容）。
+    - Python 内部属性名保持 snake_case，service/repo 层访问不受影响。
+    """
+    return ConfigDict(alias_generator=to_camel, populate_by_name=True, **overrides)
+
+
+class TZModel(BaseModel):
+    """出参基类：from_attributes + datetime 统一转 settings.TIMEZONE 展示。
+
+    JSON 传输字段统一 camelCase（alias_generator=to_camel）；属性名保持 snake_case。
+    """
+
+    model_config = camel_config(from_attributes=True)
 
     @field_serializer("*", mode="wrap", when_used="always")
     def _serialize_local_datetime(self, value, handler):

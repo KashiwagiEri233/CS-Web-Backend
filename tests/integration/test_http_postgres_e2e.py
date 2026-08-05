@@ -48,7 +48,7 @@ async def test_http_auth_user_and_revocation_flow(integration_db_ready):
                 json={"username": admin_name, "password": _PASSWORD},
             )
             assert admin_login.status_code == 200, admin_login.text
-            admin_token = admin_login.json()["access_token"]
+            admin_token = admin_login.json()["accessToken"]
 
             # 注册需要邮箱验证码：直接用服务生成并取明文
             from app.services.verification_service import VerificationService
@@ -76,7 +76,7 @@ async def test_http_auth_user_and_revocation_flow(integration_db_ready):
             )
             assert login.status_code == 200, login.text
             token_pair = login.json()
-            user_headers = {"Authorization": f"Bearer {token_pair['access_token']}"}
+            user_headers = {"Authorization": f"Bearer {token_pair['accessToken']}"}
 
             profile = await client.get("/api/v1/auth/me", headers=user_headers)
             assert profile.status_code == 200
@@ -87,15 +87,15 @@ async def test_http_auth_user_and_revocation_flow(integration_db_ready):
             updated = await client.put(
                 "/api/v1/users/me",
                 headers=user_headers,
-                json={"full_name": "Updated Through HTTP"},
+                json={"fullName": "Updated Through HTTP"},
             )
             assert updated.status_code == 200, updated.text
-            assert updated.json()["full_name"] == "Updated Through HTTP"
+            assert updated.json()["fullName"] == "Updated Through HTTP"
 
             logout = await client.post(
                 "/api/v1/auth/logout",
                 headers=user_headers,
-                json={"refresh_token": token_pair["refresh_token"]},
+                json={"refreshToken": token_pair["refreshToken"]},
             )
             assert logout.status_code == 200, logout.text
 

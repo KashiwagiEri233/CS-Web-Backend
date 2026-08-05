@@ -6,14 +6,19 @@ import re
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, File, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
 from fastapi.responses import FileResponse
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundException, ValidationException
 from app.core.request_context import get_client_meta
+from app.database import get_db
 from app.dependencies import get_current_active_user, get_current_user
 from app.dependencies_services import get_community_service
+from app.models.community import CommunityPost
 from app.models.user import User
+from app.schemas.community import post_to_dict
 from app.schemas.pagination import PaginatedResponse, PaginationParams
 from app.services.community_service import CommunityService
 from app.utils.image_validate import is_valid_image_mime
@@ -30,42 +35,6 @@ FORUM_IMAGE_FILENAME_RE = re.compile(
 _IMAGES_DIR = Path("data") / "forum-images"
 
 POST_KINDS = {"topic", "post"}
-
-
-def _post_out(post) -> dict:
-    return {
-        "id": post.id,
-        "kind": post.kind,
-        "category_id": post.category_id,
-        "author_id": post.author_id,
-        "title": post.title,
-        "content_markdown": post.content_markdown,
-        "status": post.status,
-        "is_pinned": post.is_pinned,
-        "is_featured": post.is_featured,
-        "reply_count": post.reply_count,
-        "favorite_count": post.favorite_count,
-        "last_reply_at": post.last_reply_at,
-        "last_reply_id": post.last_reply_id,
-        "hidden_by": post.hidden_by,
-        "hidden_at": post.hidden_at,
-        "hidden_reason": post.hidden_reason,
-        "slug": post.slug,
-        "excerpt": post.excerpt,
-        "cover_image": post.cover_image,
-        "tags": post.tags or [],
-        "series_id": post.series_id,
-        "series_order": post.series_order,
-        "published_at": post.published_at,
-        "view_count": post.view_count,
-        "like_count": post.like_count,
-        "author": getattr(post, "author", None),
-        "category": getattr(post, "category", None),
-        "is_liked_by_me": getattr(post, "is_liked_by_me", False),
-        "is_favorited_by_me": getattr(post, "is_favorited_by_me", False),
-        "created_at": post.created_at,
-        "updated_at": post.updated_at,
-    }
 
 
 def _comment_out(comment) -> dict:
@@ -100,6 +69,76 @@ def _category_out(cat) -> dict:
         "created_at": cat.created_at,
         "updated_at": cat.updated_at,
     }
+
+
+def _member_out(user, post_count: int = 0) -> dict:
+    """用户 → 成员出参（与前端 toMember 字段一一对应）。
+
+    role 由 is_superuser / roles 推导：超级用户 → root，否则取首个显式角色，默认 user。
+    """
+    if user.is_superuser:
+        role = "root"
+    elif getattr(user, "roles", None):
+        role = user.roles[0].name if user.roles else "user"
+    else:
+        role = "user"
+    return {
+        "id": user.id,
+        "display_name": user.display_name or user.username,
+        "bio": user.bio,
+        "avatar_url": user.avatar_url,
+        "avatar_type": user.avatar_type or "initial",
+        "github_url": user.github_url,
+        "website_url": user.website_url,
+        "tech_tags": user.tech_tags or [],
+        "role": role,
+        "joined_at": user.created_at,
+        "post_count": post_count,
+    }
+
+
+# ------------------------------------------------------------------ 成员
+
+@router.get("/members")
+async def list_members(
+    db: AsyncSession = Depends(get_db),
+    tag: Optional[str] = None,
+    search: Optional[str] = None,
+    sort: str = Query("active", pattern="^(active|newest|recent)$"),
+    limit: int = Query(50, ge=1, le=100),
+) -> Any:
+    """社区成员列表：活跃用户（按发帖数/新近排序），支持 tag / search 过滤。
+
+    - sort=active：按发帖数降序（活跃度）；sort=newest|recent：按加入时间倒序。
+    - tag：按 tech_tags 包含过滤；search：按 display_name/username 模糊匹配。
+    """
+    # 基本条件：未软删除
+    conds = [User.deleted_at.is_(None)]
+
+    if tag:
+        conds.append(User.tech_tags.contains([tag]))
+    if search:
+        like = f"%{search.strip()}%"
+        conds.append(func.lower(User.display_name).like(func.lower(like)) | func.lower(User.username).like(func.lower(like)))
+
+    # 活跃用户需关联发帖数；普通排序可直接查用户
+    base = select(User).where(*conds)
+
+    if sort == "active":
+        stmt = (
+            select(User, func.count(CommunityPost.id).label("post_count"))
+            .outerjoin(CommunityPost, CommunityPost.author_id == User.id)
+            .where(*conds)
+            .group_by(User.id)
+            .order_by(func.count(CommunityPost.id).desc(), User.created_at.desc())
+            .limit(limit)
+        )
+        rows = (await db.execute(stmt)).all()
+        return [_member_out(user, int(pc or 0)) for user, pc in rows]
+
+    order = User.created_at.desc()
+    users = (await db.scalars(base.order_by(order).limit(limit))).all()
+    return [_member_out(user) for user in users]
 
 
 # ------------------------------------------------------------------ 分类
@@ -147,7 +186,7 @@ async def list_posts(
         limit=pagination.limit,
     )
     return PaginatedResponse(
-        items=[_post_out(p) for p in posts],
+        items=[post_to_dict(p) for p in posts],
         total=total,
         skip=pagination.skip,
         limit=pagination.limit,
@@ -170,7 +209,7 @@ async def get_post(
         current_user.id if current_user else None,
         hash_ip_for_view(client_ip) if client_ip else None,
     )
-    return _post_out(post)
+    return post_to_dict(post)
 
 
 @router.get("/posts/slug/{slug}", response_model=dict)
@@ -191,7 +230,7 @@ async def get_post_by_slug(
         current_user.id if current_user else None,
         hash_ip_for_view(client_ip) if client_ip else None,
     )
-    return _post_out(post)
+    return post_to_dict(post)
 
 
 @router.post("/posts", response_model=dict, status_code=201)
@@ -219,7 +258,7 @@ async def create_post(
         series_id=body.get("seriesId") or body.get("series_id"),
         series_order=body.get("seriesOrder") or body.get("series_order"),
     )
-    return _post_out(post)
+    return post_to_dict(post)
 
 
 @router.put("/posts/{post_id}", response_model=dict)
@@ -231,7 +270,7 @@ async def update_post(
 ) -> Any:
     is_admin = await _is_admin(service, current_user)
     post = await service.update_post(current_user.id, post_id, body, is_admin)
-    return _post_out(post)
+    return post_to_dict(post)
 
 
 @router.delete("/posts/{post_id}")
@@ -255,7 +294,7 @@ async def list_drafts(
         current_user.id, skip=pagination.skip, limit=pagination.limit
     )
     return PaginatedResponse(
-        items=[_post_out(p) for p in posts],
+        items=[post_to_dict(p) for p in posts],
         total=total,
         skip=pagination.skip,
         limit=pagination.limit,
@@ -376,7 +415,7 @@ async def list_favorites(
         current_user.id, skip=pagination.skip, limit=pagination.limit
     )
     return PaginatedResponse(
-        items=[_post_out(p) for p in posts],
+        items=[post_to_dict(p) for p in posts],
         total=total,
         skip=pagination.skip,
         limit=pagination.limit,
@@ -402,7 +441,7 @@ async def toggle_follow(
 async def list_follows(
     type: str = "following",
     page: int = 1,
-    page_size: int = 20,
+    page_size: int = Query(20, alias="pageSize"),
     service: CommunityService = Depends(get_community_service),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
@@ -493,7 +532,7 @@ async def list_user_topics(
         kind="topic", author_id=user_id, skip=pagination.skip, limit=pagination.limit
     )
     return PaginatedResponse(
-        items=[_post_out(p) for p in posts],
+        items=[post_to_dict(p) for p in posts],
         total=total,
         skip=pagination.skip,
         limit=pagination.limit,

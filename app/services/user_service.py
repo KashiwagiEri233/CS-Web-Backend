@@ -312,7 +312,9 @@ class UserService:
             actor=actor,
             target_id=target.id,
             detail={
-                "changed_fields": list(update.model_dump(exclude_unset=True).keys())
+                "changed_fields": list(update.model_dump(exclude_unset=True).keys()),
+                "email": target.email,
+                "username": target.username,
             },
             client_meta=client_meta,
         )
@@ -382,7 +384,7 @@ class UserService:
             action="user.enable" if active else "user.disable",
             actor=actor,
             target_id=target.id,
-            detail={"to": active},
+            detail={"to": active, "email": target.email, "username": target.username},
             client_meta=client_meta,
         )
         return target
@@ -448,7 +450,11 @@ class UserService:
             action="user.reset_password",
             actor=actor,
             target_id=target.id,
-            detail={"via": "default" if default_password else "custom"},
+            detail={
+                "via": "default" if default_password else "custom",
+                "email": target.email,
+                "username": target.username,
+            },
             client_meta=client_meta,
         )
 

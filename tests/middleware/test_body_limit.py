@@ -43,7 +43,7 @@ def test_oversized_body_rejected_with_413():
     resp = client.post("/echo", json={"a": "x" * (_LIMIT * 2)})
     assert resp.status_code == 413
     body = resp.json()
-    assert body["error_code"] == ErrorCode.Request.REQUEST_BODY_TOO_LARGE
+    assert body["errorCode"] == ErrorCode.Request.REQUEST_BODY_TOO_LARGE
     assert body["success"] is False
 
 

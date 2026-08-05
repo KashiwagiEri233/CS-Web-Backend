@@ -23,6 +23,7 @@ from app.schemas.auth import (
     RefreshRequest,
     RegisterRequest,
     SendCodeRequest,
+    SessionListResponse,
     TokenPair,
     TwoFactorCodeRequest,
     TwoFactorSetupResponse,
@@ -242,14 +243,14 @@ async def oauth_github_callback(
 # ------------------------------------------------------------------ 会话管理
 
 
-@router.get("/sessions")
+@router.get("/sessions", response_model=SessionListResponse)
 async def list_sessions(
     auth_service: AuthService = Depends(get_auth_service),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     """设备列表：活跃 refresh token（含 ip/user_agent）。"""
     sessions = await auth_service.list_sessions(current_user.id)
-    return {"sessions": sessions}
+    return SessionListResponse(sessions=sessions)
 
 
 @router.delete("/sessions/{token_id}")

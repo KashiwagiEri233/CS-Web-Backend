@@ -1,9 +1,15 @@
-# CONVENTIONS.md
+# 后端编码规范（BackDoc-Conv）
+
+> 更新人：3yearsZ
+> 最后更新：2026-08-05（统一 BackDoc 命名；通用条款改为锚点引用根级）
+> 关联：通用工程规范见根 [`RootDoc-EngConv.md`](../../docs/RootDoc-EngConv.md)；扩展约定见 `../AGENTS.md`；项目定位见 `../CLAUDE.md`；架构见 [BackDoc-Arch.md](BackDoc-Arch.md)
 
 本项目的编码规范、目录组织与通用约定。**所有贡献者（含 AI Agent）在写代码前必须先读本文档**。
-项目级扩展约定（如何加模块、中心注册点、Alembic 迁移）见 `AGENTS.md`；项目定位与硬性禁止项见 `CLAUDE.md`。
 
-> 文档优先级：场景内具体指令 > `AGENTS.md` > `CLAUDE.md` > 本文件 > 通用工作流。
+> 框架无关的通用工程规范（命名 / DRY / 圈复杂度 / 错误处理 / 安全 / 配置 / 测试 / Git）已提炼到根仓库 `../../docs/RootDoc-EngConv.md`，本文档侧重 Python/FastAPI 强相关的分层、会话、迁移等约定。
+项目级扩展约定（如何加模块、中心注册点、Alembic 迁移）见 `../AGENTS.md`；项目定位与硬性禁止项见 `../CLAUDE.md`。
+
+> 文档优先级：场景内具体指令 > `../AGENTS.md` > `../CLAUDE.md` > 本文件 > 通用工作流。
 
 ---
 
@@ -85,56 +91,41 @@ api (路由)  →  service (业务)  →  repository (数据)  →  model (ORM)
 
 ## 4. 代码质量红线
 
-### 4.1 文件大小
+> 通用红线（文件大小 ~300 行、函数单一职责、DRY 三次法则、圈复杂度 ≤10、禁止散落魔法值）见根 [`RootDoc-EngConv.md`](../../docs/RootDoc-EngConv.md) §二。本节只列后端专属补充。
 
-- 单个 `.py` 文件超过 **~300 行**时必须停下来评估拆分（按职责拆函数/类/文件）。
-- 非强制阈值，但是「这文件是不是干了太多事」的信号。
+### 4.1 后端专属补充
 
-### 4.2 函数与职责
-
-- **单一职责**：一个 service 只管一个业务域；一个函数只做一件事。禁止「订单+支付+物流」塞进一个 `order_service.py`。
+- **单一职责**：一个 service 只管一个业务域；禁止「订单+支付+物流」塞进一个 `order_service.py`。
 - **提前返回降嵌套**：嵌套控制在 **3 层**以内，超过考虑重构控制流。
-- **函数长度**：明显超过一屏（约 50–80 行逻辑代码）或包含多个处理阶段时，按语义拆辅助函数。
 - **避免布尔参数控制多模式**：必要时改用枚举/策略对象/独立函数。
 
-### 4.3 DRY 与抽象
+### 4.2 后端单一事实源
 
-- **三次法则**：同一段逻辑在 3 处出现，必须抽公共函数；1–2 处直接写，**不要预先抽象**。
-- 出现真实重复才复用；不要因为两段代码暂时相似就过早抽象。
-
-### 4.4 圈复杂度
-
-- 单函数圈复杂度建议 ≤ **10**；超过考虑用早返回、查表、策略对象拆分。
-- 避免深度嵌套的 `if/elif` 链，优先改写为「条件 → 动作」的映射。
-
-### 4.5 魔法值与单一事实源
-
-- **禁止散落的魔法值**：重复出现的字面量（版本号、地址、状态码字符串…）必须收敛到单一来源。
 - **版本号**：唯一定义在 `app/__init__.py` 的 `__version__`；`FastAPI(version=)`、OTel `service.version`、启动日志等一律引用它，升级只改一处。
 - **不硬编码 host:port**：绑定地址由 `run.py --host/--port`（uvicorn）决定，代码/日志**不要写死** `0.0.0.0:8000`——真实地址由 uvicorn 自行打印。
-- **错误码**：用 `ErrorCode.*` 常量（见 `AGENTS.md` 「错误码注册表」），禁止裸字符串。
+- **错误码**：用 `ErrorCode.*` 常量（见 `../AGENTS.md` 「错误码注册表」），禁止裸字符串。
 - **边界**：`Settings` 里带注释的默认值本身就是单一来源，不算魔法值；本地化、仅 1–2 处的字面量按三次法则可不抽。
 
 ---
 
 ## 5. 错误处理约定
 
+> 通用约定（禁止空 catch / 静默吞错、系统边界校验、不泄露敏感信息）见根 [`RootDoc-EngConv.md`](../../docs/RootDoc-EngConv.md) §三。本节只列后端专属补充。
+
 - **业务错误**：抛 `BaseAppException` 子类（`app/core/exceptions/base_exceptions.py`），由全局处理器统一映射状态码。
 - **禁止**：在路由里 `try/except` 吞掉业务异常再返回自定义格式——绕过统一异常处理体系。
-- **禁止空 catch / 静默吞错**：必须记录或向上抛；错误信息保留上下文但**不得泄露敏感信息**（密钥、令牌、密码）。
-- **系统边界校验**：外部输入（HTTP/文件/外部 API）必须校验；内部代码信任类型，不重复校验。
 - **中间件短路**：中间件里要短路就 `return JSONResponse(...)`，**禁止 `raise HTTPException`**（异常处理器只覆盖路由层，中间件异常由最外层 `ExceptionHandlerMiddleware` 兜底）。
 
 ---
 
 ## 6. 安全约定
 
-- **禁止硬编码**密钥、令牌、密码、生产凭证；统一从配置或环境变量读取。
+> 通用安全约定（禁止硬编码密钥/令牌/密码、参数化查询、日志禁止记录敏感信息）见根 [`RootDoc-EngConv.md`](../../docs/RootDoc-EngConv.md) §四。本节只列后端专属补充。
+
 - **密码**：使用 `app/core/security.py` 的哈希函数，禁止自实现加密。
 - **权限**：用依赖 `require_permission / require_role / require_superuser`（`app/middleware/rbac.py`），**禁止用装饰器**。
 - **SQL**：使用 SQLAlchemy 参数化查询，禁止字符串拼接 SQL 或命令。
 - **输入校验**：Pydantic schema 在路由层校验；ORM 层信任 schema 已校验。
-- **日志**：禁止记录密码、token、个人敏感信息。
 
 ---
 
@@ -147,13 +138,13 @@ api (路由)  →  service (业务)  →  repository (数据)  →  model (ORM)
   - `.env.test`（测试，同样走 Alembic）
   - `.env`（生产，`DB_AUTO_MIGRATE` 按部署策略）
 - **`SECRET_KEY` 必须从环境变量设置，禁止占位值**。
-- 例外：队列开关 `QUEUE_ENABLED` 由可选队列模块自读环境/.env（不在 `Settings`），见 `docs/system/queue.md`。
+- 例外：队列开关 `QUEUE_ENABLED` 由可选队列模块自读环境/.env（不在 `Settings`），见 `BackDoc-Infra.md`。
 
 ---
 
 ## 8. 测试约定
 
-- **目录结构**：`tests/` 镜像 `app/` 子包结构；每个子包必须有 `__init__.py`（见 `tests/README.md`）。
+- **目录结构**：`tests/` 镜像 `app/` 子包结构；每个子包必须有 `__init__.py`（见 `../tests/README.md`）。
 - **命名**：测试文件 `test_*.py`，测试函数 `test_*`。
 - **异步**：`pytest.ini` 段名必须是 `[pytest]`，`asyncio_mode=auto`，异步测试直接 `async def`，**不要** `@pytest.mark.asyncio`。
 - **运行**：`python -m pytest`。
@@ -163,19 +154,17 @@ api (路由)  →  service (业务)  →  repository (数据)  →  model (ORM)
 
 ## 9. Git 与提交
 
-- **提交格式**：`<type>(<scope>): <subject>`，type：`feat / fix / refactor / chore / docs / test`。
-- **不主动 commit / push**，除非用户明确要求。
-- **禁止提交**：`*.db`、`logs/`。本私有仓库允许跟踪环境配置文件；个人覆盖写入
-  `.env.local` / `.env.*.local`，不要提交。
-- **侵入性操作**（删文件、改公共接口、改数据库结构）**先说明范围再做**。
+> 通用 Git 约定（提交格式 `<type>(<scope>): <subject>`、不主动 commit / push、侵入性操作先说明范围）见根 [`RootDoc-EngConv.md`](../../docs/RootDoc-EngConv.md) §七。本节只列后端专属补充。
+
+- **禁止提交**：`*.db`、`logs/`。本私有仓库允许跟踪环境配置文件；个人覆盖写入 `.env.local` / `.env.*.local`，不要提交。
 
 ---
 
 ## 10. 数据库迁移约定（摘要）
 
-> 完整规则见 `AGENTS.md` 的「Alembic 迁移管理」章节。
+> 完整规则见 `../AGENTS.md` 的「Alembic 迁移管理」章节。
 
-- **铁律**：全环境 **仅 Alembic**；禁止 `Base.metadata.create_all`（`DB_AUTO_CREATE` 已废弃）。
+- **铁律**：全环境 **仅 Alembic**；禁止 `Base.metadata.create_all`。建库由 `DB_AUTO_CREATE_DATABASE` 控制，schema 仍只由 Alembic 管理。
 - **启动**：`DB_AUTO_MIGRATE=True` 自动 `upgrade head`；`False` 仅校验版本不一致则 fail fast。
 - **改模型流程**：改 model → 登记 `models/__init__.py` → `alembic revision --autogenerate -m "..."` → 检查 upgrade() → 确认单一 head → upgrade。
 - **禁止**修改 baseline 或已有迁移文件（历史事实不可改）。

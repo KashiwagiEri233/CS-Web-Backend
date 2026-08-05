@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 
 from app.core.request_context import get_client_meta
 from app.dependencies_services import get_user_service
@@ -43,7 +43,7 @@ async def list_users(
     role: str = "all",
     active: str = "all",
     page: int = 1,
-    page_size: int = 50,
+    page_size: int = Query(50, alias="pageSize"),
     user_service: UserService = Depends(get_user_service),
     current_user: User = Depends(require_permission("user", "list")),
 ) -> Any:
