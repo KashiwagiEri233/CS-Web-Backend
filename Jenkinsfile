@@ -71,6 +71,15 @@ pipeline {
                 }
             }
         }
+        stage('API contract freeze (G3)') {
+            steps {
+                script {
+                    // 冻结 /api/v1 契约：比对当前 OpenAPI 与基线 openapi.baseline.json。
+                    // 契约变更须经评审后重跑 `python scripts/export_openapi.py --baseline > openapi.baseline.json` 更新基线。
+                    runPythonModule('python scripts/export_openapi.py --check openapi.baseline.json')
+                }
+            }
+        }
         stage('Tests') {
             steps {
                 script {

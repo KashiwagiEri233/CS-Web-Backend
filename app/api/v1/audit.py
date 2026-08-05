@@ -17,7 +17,7 @@ from app.dependencies import get_current_active_user
 from app.dependencies_services import get_audit_service
 from app.middleware.rbac import require_permission
 from app.models.user import User
-from app.schemas.audit import AuditLogItem
+from app.schemas.audit import AuditLogItem, CreateAuditLogRequest
 from app.schemas.pagination import PaginatedResponse, PaginationParams
 from app.services.audit_service import AuditService
 
@@ -124,3 +124,32 @@ async def delete_audit_logs_before(
         **get_client_meta(request),
     )
     return {"ok": True, "count": count}
+
+
+@router.post(
+    "/logs",
+    response_model=AuditLogItem,
+    status_code=201,
+    dependencies=[Depends(require_permission("system", "logs"))],
+)
+async def create_audit_log(
+    payload: CreateAuditLogRequest,
+    request: Request,
+    svc: AuditService = Depends(get_audit_service),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """创建审计日志（B1 阶段2：供前端 BFF 将管理员操作审计下沉到后端）。
+
+    操作者身份由当前已认证用户推导（actor_id/actor_username），不信任客户端传入，
+    避免伪造审计记录；IP/User-Agent 由可信请求元数据解析。需 system:logs 权限。
+    """
+    row = await svc.record_atomic(
+        action=payload.action,
+        resource_type=payload.resource_type,
+        resource_id=payload.resource_id,
+        actor_id=current_user.id,
+        actor_username=current_user.username,
+        detail=payload.detail,
+        **get_client_meta(request),
+    )
+    return AuditLogItem.model_validate(svc.to_item_dict(row))

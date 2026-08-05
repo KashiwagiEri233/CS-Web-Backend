@@ -1,0 +1,136 @@
+#!/usr/bin/env python3
+"""导出 /api/v1 OpenAPI 契约并与基线比对（G3：冻结契约门禁）。
+
+用法：
+    # 生成/更新基线（审批后执行）：
+    python scripts/export_openapi.py --baseline > openapi.baseline.json
+    # 或：make contract-baseline
+
+    # 比对当前契约与基线（CI 门禁，发现差异即非零退出）：
+    python scripts/export_openapi.py --check openapi.baseline.json
+    # 或：make contract-check
+
+说明：
+    - 直接 import app.main:app 后在进程内调用 app.openapi()，无需启动服务、无需数据库。
+    - 仅导出 /api/v1 前缀的路由（API_V1_STR），冻结业务契约。
+    - 比对忽略 servers/info/version 等易变字段，聚焦 path / method / 参数 / schema。
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+# 将后端仓库根加入 sys.path，使脚本可独立运行（不依赖外部 PYTHONPATH）。
+_BACKEND_ROOT = Path(__file__).resolve().parent.parent
+if str(_BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(_BACKEND_ROOT))
+
+# 最小环境变量，避免导入期因缺失密钥报错（schema 生成不需要真实密钥）。
+import os
+
+os.environ.setdefault("SECRET_KEY", "contract-export-placeholder-32bytes-minimum")
+os.environ.setdefault("TOTP_ENCRYPTION_KEY", "contract-export-placeholder-32bytes-min")
+os.environ.setdefault("DATABASE_PASSWORD", "contract-export")
+os.environ.setdefault("AUTH_ENABLED", "true")
+
+
+def _load_app():
+    # 在导入 app 前先移除 loguru 默认 sink，避免 import 期日志污染 stdout/stdout。
+    # 注意：app.main 的 import 会触发 init_logging 重新挂 sink，这里仅尽力而为；
+    # 真正的纯净输出由「写文件」而非「写 stdout」保证（见 main()）。
+    try:
+        from loguru import logger
+
+        logger.remove()
+    except Exception:
+        pass
+
+    from app.main import app  # 延迟导入，确保 env 已设
+
+    return app
+
+
+def export_spec() -> dict:
+    app = _load_app()
+    from app.core.config import settings
+
+    spec = app.openapi()
+    # 仅保留 /api/v1 路由，冻结业务契约范围
+    v1_prefix = settings.API_V1_STR  # 形如 /api/v1
+    paths = {
+        p: d for p, d in spec.get("paths", {}).items() if p.startswith(v1_prefix)
+    }
+    spec = dict(spec)
+    spec["paths"] = paths
+    # 移除易变字段，避免无意义 diff
+    spec.pop("servers", None)
+    info = dict(spec.get("info", {}))
+    info.pop("version", None)
+    spec["info"] = info
+    return spec
+
+
+def _normalize(spec: dict) -> str:
+    return json.dumps(spec, sort_keys=True, indent=2, ensure_ascii=False)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="导出/比对 /api/v1 OpenAPI 契约")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument(
+        "--baseline",
+        nargs="?",
+        const="openapi.baseline.json",
+        metavar="OUTPUT_JSON",
+        help="导出当前契约为基线（纯 JSON 写入文件，默认 openapi.baseline.json）",
+    )
+    group.add_argument(
+        "--check",
+        metavar="BASELINE_JSON",
+        help="将当前契约与指定基线文件比对，差异则退出码 1",
+    )
+    args = parser.parse_args()
+
+    current = export_spec()
+
+    if args.baseline:
+        out_path = Path(args.baseline)
+        out_path.write_text(_normalize(current), encoding="utf-8")
+        print(f"[contract-baseline] 已写入基线：{out_path}（{len(current['paths'])} 个 /api/v1 路由）")
+        return 0
+
+    baseline_path = Path(args.check)
+    if not baseline_path.exists():
+        print(f"[contract-check] 基线文件不存在：{baseline_path}", file=sys.stderr)
+        return 2
+
+    baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+    cur = json.loads(_normalize(current))
+    base = json.loads(_normalize(baseline))
+
+    if cur == base:
+        print("[contract-check] OK：当前契约与基线一致。")
+        return 0
+
+    # 计算差异摘要
+    added = sorted(set(cur["paths"]) - set(base["paths"]))
+    removed = sorted(set(base["paths"]) - set(cur["paths"]))
+    print("[contract-check] 契约发生变化（需评审并更新基线）：", file=sys.stderr)
+    if added:
+        print(f"  新增路由: {added}", file=sys.stderr)
+    if removed:
+        print(f"  移除路由: {removed}", file=sys.stderr)
+    # 路由级变更（同 path 但 method/参数/schema 不同）
+    changed = []
+    for p in set(cur["paths"]) & set(base["paths"]):
+        if cur["paths"][p] != base["paths"][p]:
+            changed.append(p)
+    if changed:
+        print(f"  变更路由: {sorted(changed)}", file=sys.stderr)
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
