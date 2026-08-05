@@ -9,10 +9,10 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, field_validator
 
 from app.schemas.auth import UserOut
-from app.schemas.base import TZModel
+from app.schemas.base import TZModel, camel_config
 
 DISPLAY_NAME_MAX = 32
 BIO_MAX = 200
@@ -31,7 +31,7 @@ class ProfileUpdate(BaseModel):
     github_url: Optional[str] = None
     website_url: Optional[str] = None
     tech_tags: Optional[List[str]] = None
-    model_config = ConfigDict(str_strip_whitespace=True)
+    model_config = camel_config(str_strip_whitespace=True)
 
     @field_validator("display_name", "bio", "github_url", "website_url", mode="after")
     @classmethod
@@ -71,6 +71,7 @@ class ChangePasswordRequest(BaseModel):
 
     old_password: str
     new_password: str
+    model_config = camel_config()
 
     @field_validator("new_password")
     @classmethod
@@ -87,6 +88,7 @@ class AvatarPresetRequest(BaseModel):
     """设置预设头像。"""
 
     preset_id: int
+    model_config = camel_config()
 
 
 class ActivityParticipationOut(TZModel):

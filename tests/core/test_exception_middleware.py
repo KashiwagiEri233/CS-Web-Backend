@@ -44,19 +44,19 @@ def _client():
 def test_http_exception_in_middleware_keeps_status():
     resp = _client().get("/http403")
     assert resp.status_code == 403
-    assert resp.json()["status_code"] == 403
+    assert resp.json()["statusCode"] == 403
 
 
 def test_app_exception_in_middleware_maps_to_its_status():
     resp = _client().get("/biz")
     assert resp.status_code == 404
-    assert resp.json()["error_code"] == "RESOURCE_NOT_FOUND"
+    assert resp.json()["errorCode"] == "RESOURCE_NOT_FOUND"
 
 
 def test_unknown_exception_in_middleware_is_500():
     resp = _client().get("/boom")
     assert resp.status_code == 500
-    assert resp.json()["error_code"] == "INTERNAL_SERVER_ERROR"
+    assert resp.json()["errorCode"] == "INTERNAL_SERVER_ERROR"
 
 
 def test_normal_request_passes_through():

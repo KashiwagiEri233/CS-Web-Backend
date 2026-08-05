@@ -18,6 +18,7 @@ from app.dependencies import get_current_active_user, get_current_user
 from app.dependencies_services import get_community_service
 from app.models.community import CommunityPost
 from app.models.user import User
+from app.schemas.community import post_to_dict
 from app.schemas.pagination import PaginatedResponse, PaginationParams
 from app.services.community_service import CommunityService
 from app.utils.image_validate import is_valid_image_mime
@@ -34,42 +35,6 @@ FORUM_IMAGE_FILENAME_RE = re.compile(
 _IMAGES_DIR = Path("data") / "forum-images"
 
 POST_KINDS = {"topic", "post"}
-
-
-def _post_out(post) -> dict:
-    return {
-        "id": post.id,
-        "kind": post.kind,
-        "category_id": post.category_id,
-        "author_id": post.author_id,
-        "title": post.title,
-        "content_markdown": post.content_markdown,
-        "status": post.status,
-        "is_pinned": post.is_pinned,
-        "is_featured": post.is_featured,
-        "reply_count": post.reply_count,
-        "favorite_count": post.favorite_count,
-        "last_reply_at": post.last_reply_at,
-        "last_reply_id": post.last_reply_id,
-        "hidden_by": post.hidden_by,
-        "hidden_at": post.hidden_at,
-        "hidden_reason": post.hidden_reason,
-        "slug": post.slug,
-        "excerpt": post.excerpt,
-        "cover_image": post.cover_image,
-        "tags": post.tags or [],
-        "series_id": post.series_id,
-        "series_order": post.series_order,
-        "published_at": post.published_at,
-        "view_count": post.view_count,
-        "like_count": post.like_count,
-        "author": getattr(post, "author", None),
-        "category": getattr(post, "category", None),
-        "is_liked_by_me": getattr(post, "is_liked_by_me", False),
-        "is_favorited_by_me": getattr(post, "is_favorited_by_me", False),
-        "created_at": post.created_at,
-        "updated_at": post.updated_at,
-    }
 
 
 def _comment_out(comment) -> dict:
@@ -221,7 +186,7 @@ async def list_posts(
         limit=pagination.limit,
     )
     return PaginatedResponse(
-        items=[_post_out(p) for p in posts],
+        items=[post_to_dict(p) for p in posts],
         total=total,
         skip=pagination.skip,
         limit=pagination.limit,
@@ -244,7 +209,7 @@ async def get_post(
         current_user.id if current_user else None,
         hash_ip_for_view(client_ip) if client_ip else None,
     )
-    return _post_out(post)
+    return post_to_dict(post)
 
 
 @router.get("/posts/slug/{slug}", response_model=dict)
@@ -265,7 +230,7 @@ async def get_post_by_slug(
         current_user.id if current_user else None,
         hash_ip_for_view(client_ip) if client_ip else None,
     )
-    return _post_out(post)
+    return post_to_dict(post)
 
 
 @router.post("/posts", response_model=dict, status_code=201)
@@ -293,7 +258,7 @@ async def create_post(
         series_id=body.get("seriesId") or body.get("series_id"),
         series_order=body.get("seriesOrder") or body.get("series_order"),
     )
-    return _post_out(post)
+    return post_to_dict(post)
 
 
 @router.put("/posts/{post_id}", response_model=dict)
@@ -305,7 +270,7 @@ async def update_post(
 ) -> Any:
     is_admin = await _is_admin(service, current_user)
     post = await service.update_post(current_user.id, post_id, body, is_admin)
-    return _post_out(post)
+    return post_to_dict(post)
 
 
 @router.delete("/posts/{post_id}")
@@ -329,7 +294,7 @@ async def list_drafts(
         current_user.id, skip=pagination.skip, limit=pagination.limit
     )
     return PaginatedResponse(
-        items=[_post_out(p) for p in posts],
+        items=[post_to_dict(p) for p in posts],
         total=total,
         skip=pagination.skip,
         limit=pagination.limit,
@@ -450,7 +415,7 @@ async def list_favorites(
         current_user.id, skip=pagination.skip, limit=pagination.limit
     )
     return PaginatedResponse(
-        items=[_post_out(p) for p in posts],
+        items=[post_to_dict(p) for p in posts],
         total=total,
         skip=pagination.skip,
         limit=pagination.limit,
@@ -476,7 +441,7 @@ async def toggle_follow(
 async def list_follows(
     type: str = "following",
     page: int = 1,
-    page_size: int = 20,
+    page_size: int = Query(20, alias="pageSize"),
     service: CommunityService = Depends(get_community_service),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
@@ -567,7 +532,7 @@ async def list_user_topics(
         kind="topic", author_id=user_id, skip=pagination.skip, limit=pagination.limit
     )
     return PaginatedResponse(
-        items=[_post_out(p) for p in posts],
+        items=[post_to_dict(p) for p in posts],
         total=total,
         skip=pagination.skip,
         limit=pagination.limit,

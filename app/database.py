@@ -154,11 +154,14 @@ _db_logger = get_logger("database")
 _STARTUP_LOCK_KEY = 873924001
 
 
-async def _run_alembic_upgrade() -> None:
+async def run_alembic_upgrade() -> None:
     """执行 alembic upgrade head（建表 / 升级到最新）。
 
     多 worker 并发安全由调用方（``_init_schema_under_lock``）的 advisory lock 保证，
     本函数只负责执行 upgrade。
+
+    公共入口：``app/utils/db_initializer.py`` 的 ``DatabaseInitializer.apply_migrations``
+    复用本函数，避免 alembic 路径/配置在两处重复。
     """
     import asyncio
     from pathlib import Path
@@ -173,6 +176,10 @@ async def _run_alembic_upgrade() -> None:
     # alembic command 是同步阻塞调用，放线程池避免阻塞事件循环
     await asyncio.to_thread(_upgrade)
     _db_logger.info("已自动执行 alembic upgrade head (DB_AUTO_MIGRATE=True)")
+
+
+# 向后兼容别名（历史私有名）
+_run_alembic_upgrade = run_alembic_upgrade
 
 
 async def _verify_alembic_version() -> None:

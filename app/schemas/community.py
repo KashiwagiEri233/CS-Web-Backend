@@ -225,79 +225,6 @@ class HideRequest(BaseModel):
 
 # ------------------------------------------------------------------ 博客
 
-BLOG_LIMITS = {
-    "TITLE_MAX": 120,
-    "EXCERPT_MAX": 300,
-    "CONTENT_MAX": 50000,
-    "TAGS_MAX": 10,
-    "TAG_MAX": 30,
-    "SLUG_MAX": 80,
-}
-
-
-class BlogPostInput(BaseModel):
-    title: str
-    content_markdown: str
-    excerpt: Optional[str] = None
-    cover_image: Optional[str] = None
-    category: str = "general"
-    tags: Optional[List[str]] = None
-    status: str = "draft"  # draft | published | archived
-    series_id: Optional[int] = None
-    series_order: Optional[int] = None
-    model_config = ConfigDict(str_strip_whitespace=True)
-
-    @field_validator("title")
-    @classmethod
-    def _validate_title(cls, v: str) -> str:
-        v = v.strip()
-        if not v:
-            raise ValueError("标题不能为空")
-        if len(v) > BLOG_LIMITS["TITLE_MAX"]:
-            raise ValueError(f"标题不能超过 {BLOG_LIMITS['TITLE_MAX']} 字符")
-        return v
-
-    @field_validator("excerpt")
-    @classmethod
-    def _validate_excerpt(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None and len(v) > BLOG_LIMITS["EXCERPT_MAX"]:
-            raise ValueError(f"摘要不能超过 {BLOG_LIMITS['EXCERPT_MAX']} 字符")
-        return v
-
-    @field_validator("tags")
-    @classmethod
-    def _validate_tags(cls, v: Optional[List[str]]) -> Optional[List[str]]:
-        if v is None:
-            return v
-        if len(v) > BLOG_LIMITS["TAGS_MAX"]:
-            raise ValueError(f"标签不能超过 {BLOG_LIMITS['TAGS_MAX']} 个")
-        if any(len(t) > BLOG_LIMITS["TAG_MAX"] for t in v):
-            raise ValueError(f"单个标签不能超过 {BLOG_LIMITS['TAG_MAX']} 字符")
-        return v
-
-
-class BlogPostOut(BaseModel):
-    id: int
-    title: str
-    slug: str
-    excerpt: Optional[str] = None
-    content_markdown: str
-    cover_image: Optional[str] = None
-    category: str
-    tags: List[str] = []
-    status: str
-    author_id: int
-    author_name: Optional[str] = None
-    series_id: Optional[int] = None
-    series_order: Optional[int] = None
-    view_count: int
-    like_count: int
-    published_at: Optional[datetime] = None
-    is_liked_by_me: bool = False
-    created_at: datetime
-    updated_at: datetime
-
-
 class BlogSeriesInput(BaseModel):
     title: str
     description: Optional[str] = None
@@ -354,3 +281,51 @@ class FeedStatsOut(BaseModel):
     topic_count: int
     post_count: int
     member_count: int
+
+
+# ------------------------------------------------------------------ ORM → dict 序列化（路由层共享）
+
+
+def post_to_dict(post) -> Dict[str, Any]:
+    """将 CommunityPost ORM 对象序列化为 API 响应 dict。
+
+    公开接口（app/api/v1/community.py）与管理接口（app/api/v1/admin_community.py）
+    共用此单一实现，避免两处 ``_post_out`` 复制漂移。
+
+    ``post`` 可能携带运行时附加属性（``author`` / ``category`` /
+    ``is_liked_by_me`` / ``is_favorited_by_me``），用 ``getattr`` 安全读取，
+    缺失时回退默认值。
+    """
+    return {
+        "id": post.id,
+        "kind": post.kind,
+        "category_id": post.category_id,
+        "author_id": post.author_id,
+        "title": post.title,
+        "content_markdown": post.content_markdown,
+        "status": post.status,
+        "is_pinned": post.is_pinned,
+        "is_featured": post.is_featured,
+        "reply_count": post.reply_count,
+        "favorite_count": post.favorite_count,
+        "last_reply_at": post.last_reply_at,
+        "last_reply_id": getattr(post, "last_reply_id", None),
+        "hidden_by": post.hidden_by,
+        "hidden_at": post.hidden_at,
+        "hidden_reason": post.hidden_reason,
+        "slug": post.slug,
+        "excerpt": post.excerpt,
+        "cover_image": post.cover_image,
+        "tags": post.tags or [],
+        "series_id": post.series_id,
+        "series_order": getattr(post, "series_order", None),
+        "published_at": post.published_at,
+        "view_count": post.view_count,
+        "like_count": post.like_count,
+        "author": getattr(post, "author", None),
+        "category": getattr(post, "category", None),
+        "is_liked_by_me": getattr(post, "is_liked_by_me", False),
+        "is_favorited_by_me": getattr(post, "is_favorited_by_me", False),
+        "created_at": post.created_at,
+        "updated_at": post.updated_at,
+    }

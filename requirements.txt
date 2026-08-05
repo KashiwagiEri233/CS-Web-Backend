@@ -5,6 +5,9 @@ uvicorn[standard]==0.28.0
 # 数据库相关
 sqlalchemy==2.0.51
 asyncpg==0.30.0
+# SQLAlchemy async 引擎的底层协程调度依赖（传递依赖但建议显式声明，
+# 与 pyproject.toml 保持一致，避免 lock / 部署环境漂移）
+greenlet>=3.0,<4.0
 # alembic 迁移用的同步驱动（env.py 把 +asyncpg 去掉后用 psycopg2）；缺它 alembic 在容器内无法运行
 psycopg2-binary==2.9.10
 alembic==1.13.1

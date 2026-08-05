@@ -73,7 +73,7 @@ def safe_json_response(
     try:
         return JSONResponse(
             status_code=status_code,
-            content=response_model.model_dump(),
+            content=response_model.model_dump(by_alias=True),
             headers=headers,
         )
     except Exception:

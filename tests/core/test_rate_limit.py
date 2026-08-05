@@ -201,8 +201,8 @@ def test_middleware_returns_429_not_500():
     resp = client.get("/")
     assert resp.status_code == 429
     body = resp.json()
-    assert body["error_code"] == "RATE_LIMIT_EXCEEDED"
-    assert body["status_code"] == 429
+    assert body["errorCode"] == "RATE_LIMIT_EXCEEDED"
+    assert body["statusCode"] == 429
     assert resp.headers["retry-after"] == "60"
 
 

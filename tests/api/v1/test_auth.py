@@ -108,7 +108,7 @@ def test_register_delegates_to_service():
     )
 
     assert resp.status_code == 200
-    assert resp.json()["access_token"] == "a"
+    assert resp.json()["accessToken"] == "a"
     assert captured.get("email") == "b@t.com"
     assert captured.get("password") == "Str0ng!Pass"
     assert "ip_address" in captured.get("client_meta", {})
@@ -153,7 +153,7 @@ def test_login_delegates_to_service():
     resp = client.post("/auth/login", data={"username": "admin", "password": "x"})
 
     assert resp.status_code == 200
-    assert resp.json()["access_token"] == "a"
+    assert resp.json()["accessToken"] == "a"
     assert captured["username"] == "admin"
     assert "ip_address" in captured["client_meta"]
 
@@ -182,7 +182,7 @@ def test_login_json_delegates_to_service():
     client = TestClient(_build_app(_FakeAuthService()), raise_server_exceptions=False)
     resp = client.post("/auth/login-json", json={"username": "admin", "password": "x"})
     assert resp.status_code == 200
-    assert resp.json()["refresh_token"] == "r"
+    assert resp.json()["refreshToken"] == "r"
 
 
 def test_login_email_delegates_to_service():
@@ -202,7 +202,7 @@ def test_login_email_delegates_to_service():
         "/auth/login-email", json={"email": "b@t.com", "password": "Str0ng!Pass"}
     )
     assert resp.status_code == 200
-    assert resp.json()["access_token"] == "a"
+    assert resp.json()["accessToken"] == "a"
     assert captured["email"] == "b@t.com"
 
 
@@ -217,6 +217,6 @@ def test_login_email_requires_2fa_shape():
     )
     assert resp.status_code == 200
     body = resp.json()
-    assert body["requires_2fa"] is True
-    assert body["two_factor_token"] == "tok"
-    assert body["access_token"] is None
+    assert body["requires2fa"] is True
+    assert body["twoFactorToken"] == "tok"
+    assert body["accessToken"] is None
