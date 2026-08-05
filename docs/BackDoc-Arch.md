@@ -1,7 +1,11 @@
-# ARCHITECTURE.md
+# 后端架构文档（BackDoc-Arch）
+
+> 更新人：3yearsZ
+> 最后更新：2026-08-05（统一 BackDoc 命名）
+> 关联：编码规范见 [BackDoc-Conv.md](BackDoc-Conv.md)；扩展约定见 `../AGENTS.md`；项目定位见 `../CLAUDE.md`；安全与权限见 [BackDoc-Sec.md](BackDoc-Sec.md)；基础设施见 [BackDoc-Infra.md](BackDoc-Infra.md)；业务模块见 [BackDoc-Mods.md](BackDoc-Mods.md)；入职见 [BackDoc-Onboard.md](BackDoc-Onboard.md)
 
 本项目（企业级 FastAPI RBAC 权限管理脚手架）的系统设计与模块关系文档。
-编码规范见 `conventions.md`，扩展约定见 `../AGENTS.md`，项目定位见 `../CLAUDE.md`。
+编码规范见 `BackDoc-Conv.md`，扩展约定见 `../AGENTS.md`，项目定位见 `../CLAUDE.md`。
 
 ---
 
@@ -92,19 +96,19 @@ CORS → ExceptionHandler → SecurityHeaders → Logging → Metrics → RateLi
 
 ### 4.2 异常处理（`app/core/exceptions/`）
 
-用 `BaseAppException` 子类表达业务失败，由全局处理器统一映射状态码与响应体；未处理异常由最外层 `ExceptionHandlerMiddleware` 兜底。错误码集中在 `ErrorCode` 注册表。详见 **`security.md`**「异常处理」节。
+用 `BaseAppException` 子类表达业务失败，由全局处理器统一映射状态码与响应体；未处理异常由最外层 `ExceptionHandlerMiddleware` 兜底。错误码集中在 `ErrorCode` 注册表。详见 **`BackDoc-Sec.md`**「异常处理」节。
 
 ### 4.3 认证与权限（`app/middleware/rbac.py` + `app/core/security.py`）
 
-鉴权用**依赖注入**（`Depends(require_permission("res","act"))`），**禁止用装饰器**；`AUTH_ENABLED=False` 时全局放行为超级用户（仅本地）。详见 **`security.md`**「鉴权与安全基础设施」节。
+鉴权用**依赖注入**（`Depends(require_permission("res","act"))`），**禁止用装饰器**；`AUTH_ENABLED=False` 时全局放行为超级用户（仅本地）。详见 **`BackDoc-Sec.md`**「鉴权与安全基础设施」节。
 
 ### 4.4 限流与缓存
 
-Redis 是**增强项**，未配置/故障时自动降级内存；降级策略由 `RATE_LIMIT_FALLBACK` / `CACHE_FALLBACK` 控制。限流详见 **`security.md`**「请求限流」节，缓存详见 **`infrastructure.md`**「缓存」节。
+Redis 是**增强项**，未配置/故障时自动降级内存；降级策略由 `RATE_LIMIT_FALLBACK` / `CACHE_FALLBACK` 控制。限流详见 **`BackDoc-Sec.md`**「请求限流」节，缓存详见 **`BackDoc-Infra.md`**「缓存」节。
 
 ### 4.5 日志
 
-统一入口 `from app.core.loguru_logger import get_logger`；**禁止 `print`、禁止直接配置 loguru handler**。详见 **`infrastructure.md`**「可观测性」节。
+统一入口 `from app.core.loguru_logger import get_logger`；**禁止 `print`、禁止直接配置 loguru handler**。详见 **`BackDoc-Infra.md`**「可观测性」节。
 
 ---
 
@@ -130,7 +134,7 @@ Redis 是**增强项**，未配置/故障时自动降级内存；降级策略由
 
 ## 6. 数据库会话管理（`app/database.py`）
 
-路由内用 `Depends(get_db)`，路由外用 `async with get_session()`；**统一不自动提交**，由调用方显式 `await db.commit()`，保证事务边界清晰（repo 只 flush，service commit）。详见 **`infrastructure.md`**「数据库与事务」节。
+路由内用 `Depends(get_db)`，路由外用 `async with get_session()`；**统一不自动提交**，由调用方显式 `await db.commit()`，保证事务边界清晰（repo 只 flush，service commit）。详见 **`BackDoc-Infra.md`**「数据库与事务」节。
 
 ---
 
@@ -143,7 +147,7 @@ Redis 是**增强项**，未配置/故障时自动降级内存；降级策略由
 **失败语义**：`critical=True` 任务失败 → raise 中止启动（DB、RBAC seed）；`critical=False` 失败 →
 仅告警继续（Redis/OTel）。关闭阶段任何异常都吞掉只记日志，绝不向外抛。
 
-**完整任务清单、priority 段约定与新增任务配方见 `docs/infrastructure.md`**「启动/关闭任务注册表」节（唯一权威，不在此重复）。
+**完整任务清单、priority 段约定与新增任务配方见 `docs/BackDoc-Infra.md`**「启动/关闭任务注册表」节（唯一权威，不在此重复）。
 
 ---
 
@@ -233,6 +237,6 @@ core/security, middleware/rbac
 
 - `../CLAUDE.md` — 项目定位、技术栈、硬性禁止项、启动/配置/测试速查。
 - `../AGENTS.md` — AI Agent 扩展约定、中心注册点、Alembic 迁移管理、不变量。
-- `conventions.md` — 编码规范、命名、质量红线、安全/错误处理约定。
+- `BackDoc-Conv.md` — 编码规范、命名、质量红线、安全/错误处理约定。
 - `../tests/README.md` — 测试目录组织与运行方式。
-- `README.md` — 文档索引与分类约定；详解见 `security.md`、`infrastructure.md`、`modules.md`。
+- `README.md` — 文档索引与分类约定；详解见 `BackDoc-Sec.md`、`BackDoc-Infra.md`、`BackDoc-Mods.md`。

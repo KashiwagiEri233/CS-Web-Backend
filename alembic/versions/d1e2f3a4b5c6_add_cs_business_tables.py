@@ -6,7 +6,7 @@
 
 ⚠️ 本迁移为离线手写（生成时无可用 PostgreSQL 实例），需在 Linux/有 PG 环境
 执行 `alembic upgrade head` 后用 `alembic check` / autogenerate 比对验证，
-见 docs/MIGRATION_VERIFICATION.md。
+见 docs/BackDoc-MigV.md。
 
 Revision ID: d1e2f3a4b5c6
 Revises: e6a4b91d70c2

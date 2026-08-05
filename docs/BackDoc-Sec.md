@@ -1,5 +1,8 @@
-# 安全与防护（鉴权 / 异常 / 限流）
+# 安全与防护（鉴权 / 异常 / 限流）（BackDoc-Sec）
 
+> 更新人：3yearsZ
+> 最后更新：2026-08-05（统一 BackDoc 命名）
+> 关联：架构见 [BackDoc-Arch.md](BackDoc-Arch.md)；基础设施见 [BackDoc-Infra.md](BackDoc-Infra.md)；编码规范见 [BackDoc-Conv.md](BackDoc-Conv.md)
 > 本文件合并了原 `system/security_auth.md`、`system/exception_handling.md`、`system/rate_limit.md`，
 > 统一阐述"请求如何被安全地鉴权、异常如何被规范化处理、过量流量如何被限流"。
 

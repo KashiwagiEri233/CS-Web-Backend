@@ -1,5 +1,8 @@
-# 运行基础设施（可观测 / 数据 / 会话）
+# 运行基础设施（可观测 / 数据 / 会话）（BackDoc-Infra）
 
+> 更新人：3yearsZ
+> 最后更新：2026-08-05（统一 BackDoc 命名）
+> 关联：架构见 [BackDoc-Arch.md](BackDoc-Arch.md)；安全见 [BackDoc-Sec.md](BackDoc-Sec.md)；迁移验证见 [BackDoc-MigV.md](BackDoc-MigV.md)
 > 本文件合并了原 `docs/observability.md` 与 `docs/data_and_tasks.md`，统一阐述应用**运行期的基础设施**：
 > 如何被观察（日志/追踪/指标）、数据如何存取（数据库/事务）、应用如何启停（生命周期）、
 > 后台任务如何执行（队列）、缓存如何降级。

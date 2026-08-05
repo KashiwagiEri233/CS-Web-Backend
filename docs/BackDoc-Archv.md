@@ -1,9 +1,13 @@
-# 历史归档（Archive）
+# 历史归档（Archive）（BackDoc-Archv）
 
+> 更新人：3yearsZ
+> 最后更新：2026-08-05（统一 BackDoc 命名）
+> 注意：所有内容均为**已完成特性的历史演进痕迹**，**不作现行方案**。
+> 当前能力请以 [BackDoc-Arch.md](BackDoc-Arch.md)、[BackDoc-Sec.md](BackDoc-Sec.md)、[BackDoc-Infra.md](BackDoc-Infra.md)、[BackDoc-Mods.md](BackDoc-Mods.md) 为准。
 > 本文件合并了原 `docs/archive/` 目录下全部文档：
 > 前后端分离迁移计划（`migration_plan.md`）与两个已完成特性的实现设计稿（`plans/`）。
 > 所有内容均为**已完成特性的历史演进痕迹**，**不作现行方案**；当前能力请以根级文档
-> `docs/security.md`、`docs/infrastructure.md`、`docs/modules.md` 等为准。
+> `docs/BackDoc-Sec.md`、`docs/BackDoc-Infra.md`、`docs/BackDoc-Mods.md` 等为准。
 
 ---
 
@@ -46,8 +50,8 @@ Next.js 16（UI 层）── 保留全部 page/SSR/RSC/组件；route handler �
   │ REST/HTTP + Authorization: Bearer <JWT>（X-Request-Id 透传）
   ▼
 本仓库 FastAPI /api/v1（统一前缀挂载）
-  ├── middleware 链：CORS → 异常 → 安全头 → 日志 → 指标 → 限流 → 认证限流
-  ├── api → service → repository → model（单向分层）
+  ├── middleware 链：CORS -> 异常 -> 安全头 -> 日志 -> 指标 -> 限流 -> 认证限流
+  ├── api -> service -> repository -> model（单向分层）
   ├── RBAC：require_permission("res","act") + PermissionChecker 旁路
   └── 能力：JWT 双 token / 黑名单 / TOTP / OAuth / 限流 / 缓存 / arq 队列 / OTel / 健康检查
   ▼
@@ -55,7 +59,7 @@ PostgreSQL（domefff）← Alembic 管理全部 42+ 张表（含前端 36 张业
 Redis（可选增强）── 限流 / 缓存 / 2FA 防重放 / 跨实例黑名单
 ```
 
-### 1.4 表清单映射（SQLite/Drizzle 36 张 → SQLAlchemy 模型）
+### 1.4 表清单映射（SQLite/Drizzle 36 张 -> SQLAlchemy 模型）
 
 > 来源：前端 `src/shared/db/schema/*.ts`（Drizzle）+ `src/shared/db/migrations.ts` + `src/shared/db/schemas/*.ts`。
 > 状态列：`已有` = 本仓库已存在；`新建` = 待迁移；`合并` = 与后端已有表合并或吸收。
@@ -87,53 +91,14 @@ Redis（可选增强）── 限流 / 缓存 / 2FA 防重放 / 跨实例黑名�
 **迁移方式**：一次 Alembic baseline，把所有新模型一次性纳入首个大迁移 `add_cs_business_tables`，后续模块迭代增量迁移。禁止 `create_all`（见 `../../AGENTS.md` 铁律）。
 
 **类型映射注意**：
-- `integer` 布尔 0/1 → SQLAlchemy `Boolean`
-- ISO 字符串日期 → `DateTime(timezone=True)`（遵守 `../../CLAUDE.md` 双时区约定）
-- partial unique index → 迁移中手工 SQL
-- JSON 列 → `JSONB`
+- `integer` 布尔 0/1 -> SQLAlchemy `Boolean`
+- ISO 字符串日期 -> `DateTime(timezone=True)`（遵守 `../../CLAUDE.md` 双时区约定）
+- partial unique index -> 迁移中手工 SQL
+- JSON 列 -> `JSONB`
 
 ### 1.5 模块迁移路线图（6 个阶段）
 
-> 每阶段统一 SOP：契约 → 数据 → 实现 → 横切 → 测试 → 前端切换 → 验收。
-
-**Phase 0 — 数据层与契约基线**（✅ 数据层已完成 2026-08-01）
-- ✅ 全量 36 表 SQLAlchemy 模型 + 首个 Alembic 基线迁移 `d1e2f3a4b5c6`（33 张新表 + users 扩展 8 业务字段）
-- ✅ 决策闭环：OQ-1 统一 audit_logs / OQ-2 扩展后端 users / 主键全部 Integer
-- ⏳ 迁移验证待 Linux/PG 环境（见 `docs/MIGRATION_VERIFICATION.md`）
-
-**Phase 1 — 认证与用户**（✅ 后端 + 前端 BFF 代码完成 2026-08-01）
-- ✅ 邮箱登录 + 公开注册（验证码）+ 忘记密码申请流
-- ✅ TOTP 2FA 全流程（RFC 6238 + Node 交叉验证）+ GitHub OAuth + 邮件发送
-- ✅ scrypt→bcrypt 懒升级 + 2FA secret 同算法加密迁移
-- ✅ profile CRUD + 头像 + 公开主页 + 改密（历史复用检测）
-- ✅ 登录历史 + 设备列表/远程登出 + 密码重置审批
-- ✅ 前端 BFF 切换（19 个路由薄转发）
-
-**Phase 2 — 基础小模块**（✅ 后端完成 2026-08-01；前端 BFF 完成）
-- ✅ announcement / notification / join + admin users 管理（保护规则全量移植）
-- ✅ 事件总线 `app/core/events.py` + 通知订阅者 + 角色 seed
-- ✅ 前端 BFF 16 个路由薄转发
-- ✅ 子阶段 2.5：roles 表扩展 + `/admin/roles` CRUD + 权限全量替换 + 审计删除
-
-**Phase 3 — 活动 events**（✅ 后端 + 前端 BFF 完成 2026-08-01）
-- ✅ 活动 CRUD + 报名（限额/去重）+ 签到核销 + 自动归档 + 批量/统计 + 设置
-- ✅ 前端 BFF 15 个路由薄转发
-
-**Phase 4 — 社区 community**（✅ 后端 + 前端 BFF 完成 2026-08-01）
-- ✅ 论坛（版块/主题/回复/点赞收藏/浏览去重/@提及）+ 审核 + 博客 + 成员名录 + Feed 聚合
-- ✅ 图片上传 + 搜索降级（FTS5 → ILIKE）
-- ✅ 前端 BFF 37 个路由薄转发
-
-**Phase 5 — 工具集 tools**（✅ 后端 + 前端 BFF 完成 2026-08-01）
-- ✅ 考试（组卷/判分/排名）+ 资源（提交/审核）+ 任务（认领/审核→积分）+ 积分（流水/排行榜/等级）
-- ✅ Auxilio 学习助手 + 组件注册表
-- ✅ 前端 BFF 20 个路由薄转发
-
-**Phase 6 — 数据迁移与下线**（⏳ 待 Linux/PG 环境执行）
-- ⏳ 迁移脚本 `migrate-sqlite-to-pg.mjs`：按表导出 SQLite → PG，日期/ID/JSON 转换
-- ⏳ 2FA 数据重加密 + scrypt 密码懒升级
-- ⏳ 灰度切换 + 删除前端 server 层
-- ⏳ 论坛搜索 GIN + tsvector 优化 + 事件总线跨实例（ADR-014）
+> ℹ️ 变更记录/待办条目已迁移至根目录 `项目演变历史.md` / `项目待办事项.md`。
 
 ### 1.6 横切面能力迁移清单
 
@@ -152,62 +117,35 @@ Redis（可选增强）── 限流 / 缓存 / 2FA 防重放 / 跨实例黑名�
 
 ### 1.7 待决策清单（Open Questions）
 
-| # | 问题 | 建议倾向 |
-|---|---|---|
-| OQ-1 | 审计表合并（`admin_actions` vs `audit_logs`） | 以后端 `audit_logs` 为准并扩展脱敏字段 |
-| OQ-2 | users 表合并 | 扩展后端 users 表（单表） |
-| OQ-3 | 前端 JWT 存储 | BFF 托管 httpOnly cookie 转发 |
-| OQ-4 | TOTP secret 加密迁移 | 同算法解密→重加密，或强制重绑 |
-| OQ-5 | 密码哈希迁移 scrypt→bcrypt | 登录时懒升级，零停机 |
-| OQ-6 | 上传文件存储 | 初期本地磁盘，预留对象存储抽象 |
-| OQ-7 | refresh 失效后登出策略 | BFF 统一 401 拦截 + 静默刷新 |
+> ℹ️ 变更记录/待办条目已迁移至根目录 `项目演变历史.md` / `项目待办事项.md`。
 
 ### 1.8 风险与缓解
 
 | 风险 | 影响 | 缓解 |
 |---|---|---|
 | JWT 切换导致全站登出 | P0 | Phase 1 先行独立验收；迁移窗口双登录态并存 |
-| scrypt→bcrypt 迁移失败 | P0 | 懒升级 + 迁移脚本双保险 |
-| FTS5→tsvector 搜索差异 | P1 | Phase 4 单独验收搜索排序/中文分词 |
+| scrypt->bcrypt 迁移失败 | P0 | 懒升级 + 迁移脚本双保险 |
+| FTS5->tsvector 搜索差异 | P1 | Phase 4 单独验收搜索排序/中文分词 |
 | 双库写入期数据不一致 | P1 | 每模块完成才切流量；单写后端 |
 | 契约漂移 | P1 | 契约比对脚本；错误码走 `ErrorCode` 注册表 |
 | 上传/邮件能力缺失 | P1 | Phase 2 前补齐基础能力 |
-| 单进程→多 worker 语义变化 | P1 | Redis 化，生产启用 `REQUIRE_REDIS_FOR_SECURITY` |
+| 单进程->多 worker 语义变化 | P1 | Redis 化，生产启用 `REQUIRE_REDIS_FOR_SECURITY` |
 
 ### 1.9 验收标准
 
-- [ ] `/api/v1/**` 覆盖前端原 ~140 路由契约（OpenAPI 比对通过）
-- [ ] 前端 `src/modules/*/server` 全部删除，`src/app/api/**` 全为薄转发
-- [ ] SQLite 归档，生产仅 PG（Alembic 单一 head）
-- [ ] 前端 E2E 全量回归 + 后端 pytest 全绿
+> ℹ️ 变更记录/待办条目已迁移至根目录 `项目演变历史.md` / `项目待办事项.md`。
 
 ---
 
 ## 二、实现设计稿汇总（Plans）
 
 > 两个设计稿均为**已完成特性**的规划文档，仅作演进痕迹保留。
-> 现行实现细节见 `docs/security.md`（异常）、`docs/infrastructure.md`（日志）。
+> 现行实现细节见 `docs/BackDoc-Sec.md`（异常）、`docs/BackDoc-Infra.md`（日志）。
 
 ### 2.1 异常处理系统设计稿（fastapi-exception-handling-system）
 
-- **最终实现**：`app/core/exceptions/` + `docs/security.md`「异常处理」节 —— ✅ 已完成，设计方向与实现一致。
-- **定位**：为 FastAPI 建立完整异常处理系统，包括自定义异常类、全局异常处理器、异常日志记录和统一错误响应格式。
-- **核心设计**：
-  - 自定义异常类体系（业务/验证/权限异常）→ 最终 `BaseAppException` 子类体系
-  - 全局异常处理器（统一捕获处理）→ 最终 `setup_exception_handlers` + `ExceptionHandlerMiddleware`
-  - 异常日志记录（含请求上下文/堆栈）→ 最终异步落 `exception_log` 表
-  - 统一错误响应格式（错误码/消息/详情）→ 最终 `ErrorCode` 注册表 + 统一响应模型
-- **技术要点**：Python 继承 + Pydantic 验证；FastAPI `exception_handler` 装饰器；结构化日志；敏感信息过滤 + 请求 ID 追踪。
-- **与实现的差异**：设计稿用独立的 `exceptions/handlers/logging/responses/middleware` 模块结构，最终实现收敛到 `app/core/exceptions/` 单包内，接口命名不同但职责一致。
+> ℹ️ 变更记录/待办条目已迁移至根目录 `项目演变历史.md` / `项目待办事项.md`。
 
 ### 2.2 日志系统设计稿（fastapi-complete-logging-system）
 
-- **最终实现**：`app/core/loguru_logger/` + `docs/infrastructure.md`「可观测性」节 —— ✅ 已完成，但**技术选型不同**。
-- **定位**：创建完整的日志系统层，提供结构化日志、多输出目标、日志级别控制、上下文追踪和性能监控。
-- **核心设计**：
-  - 兼容标准库 logging 的接口 → 最终 `LoguruAdapter`
-  - 结构化日志（JSON）→ 最终 loguru JSON profile
-  - 多输出目标（控制台/文件/数据库）→ 最终 console/file sink
-  - 请求上下文追踪（correlation_id/user_id）→ 最终 `set_logging_context` / ContextVar
-  - 日志轮转、异步写入、敏感信息脱敏 → 均已在 loguru 实现
-- **⚠️ 重要差异**：原方案规划用 **structlog + orjson + PostgreSQL 落库**；最终落地采用 **loguru**（无 DB 落库）。因此设计稿中的 `logger_adapter/structured_logger/processors/handlers` 代码结构、`StructuredLoggerConfig`/`log_performance` 等接口与当前实现不一致，**仅作历史参考**。
+> ℹ️ 变更记录/待办条目已迁移至根目录 `项目演变历史.md` / `项目待办事项.md`。

@@ -1,5 +1,8 @@
-# 新手引导（Onboarding）
+# 新手引导（Onboarding）（BackDoc-Onboard）
 
+> 更新人：3yearsZ
+> 最后更新：2026-08-05（统一 BackDoc 命名）
+> 关联：架构见 [BackDoc-Arch.md](BackDoc-Arch.md)；编码规范见 [BackDoc-Conv.md](BackDoc-Conv.md)；业务模块见 [BackDoc-Mods.md](BackDoc-Mods.md)；扩展约定见 `../AGENTS.md`
 > **文档类型**：tutorial + reference | **受众**：新加入的开发者 / 首次接触本仓库的贡献者
 > **Source of truth**：本文件只做"入口引导"，具体细节一律指向各权威文档，不重复展开。
 > **快速路径**：想加一个 API 资源 → 见「开发工作流」→ `AGENTS.md` 的「加一个 API 资源」配方。
@@ -10,7 +13,7 @@
 
 计算机社团官网的**纯后端服务**（FastAPI + PostgreSQL）。
 
-- 原先是 Next.js 全栈单体的一部分，现已按模块拆分为独立仓库：前端 `CS-Web-Frontend` 降级为「UI + BFF 薄转发」，**所有认证、数据、业务逻辑都在本仓库**。
+- 前端 `CS-Web-Frontend` 为独立的「UI + BFF 薄转发」层；本仓库为**纯后端服务**，**所有认证、数据、业务逻辑都在本仓库**。
 - 提供：JWT 认证（双 token）、RBAC 权限、TOTP 2FA、GitHub OAuth、可降级 Redis 限流/缓存、结构化日志（loguru）、可观测性（OTel）。
 - 分层：`api → service → repository → model`，单向依赖。
 
@@ -138,7 +141,7 @@ docs/                  # 本仓库文档（见下方索引）
 5. `api/v1/<x>.py` → 注册到 `api/v1/__init__.py`
 6. 建表/迁移（Alembic）
 7. `tests/` 镜像补测试
-8. 业务模块**必须**在 `docs/modules.md` 对应节登记（或新建 `docs/modules/<name>.md` 并登记到 `docs/README.md` 索引）
+8. 业务模块**必须**在 `docs/BackDoc-Mods.md` 对应节登记（或新建 `docs/modules/<name>.md` 并登记到 `docs/README.md` 索引）
 
 > **中心注册点**（必须登记，否则不生效）：ORM 模型、业务异常、中间件、配置项、API router、启动/关闭任务（`@register_startup`/`@register_shutdown`）、测试子包 `__init__.py`。
 
@@ -160,7 +163,7 @@ docs/                  # 本仓库文档（见下方索引）
 
 ## 6. 必须守住的约定（不变量速览）
 
-> 完整版见 `docs/architecture.md` §10、`docs/conventions.md`。
+> 完整版见 `docs/BackDoc-Arch.md` §10、`docs/BackDoc-Conv.md`。
 
 1. **分层单向**：api → service → repository → model，禁止反向/跨层。
 2. **DB 会话**：路由 `Depends(get_db)`，路由外 `async with get_session()`；**都不自动提交**——repo 只 flush，service 显式 commit。
@@ -195,22 +198,22 @@ docs/                  # 本仓库文档（见下方索引）
 | 文档 | 用途 |
 |---|---|
 | `README.md` | 文档索引 + 分类约定 + 模板（**从这里找其他文档**） |
-| `architecture.md` | 系统架构总览（分层、中间件链、生命周期、不变量） |
-| `conventions.md` | 编码规范、命名、质量红线 |
-| `onboarding.md` | 本文件：新手引导 |
-| `security.md` | 安全与防护（鉴权 / 异常 / 限流） |
-| `infrastructure.md` | 运行基础设施（可观测性 / DB / 生命周期 / 队列 / 缓存） |
-| `modules.md` | 业务模块（认证 / 用户 / RBAC / 审计） |
-| `MIGRATION_VERIFICATION.md` | Linux/PG 环境迁移验证指南 |
-| `archive.md` | 历史归档（迁移计划 + 特性设计稿，不作现行方案） |
+| `BackDoc-Arch.md` | 系统架构总览（分层、中间件链、生命周期、不变量） |
+| `BackDoc-Conv.md` | 编码规范、命名、质量红线 |
+| `BackDoc-Onboard.md` | 本文件：新手引导 |
+| `BackDoc-Sec.md` | 安全与防护（鉴权 / 异常 / 限流） |
+| `BackDoc-Infra.md` | 运行基础设施（可观测性 / DB / 生命周期 / 队列 / 缓存） |
+| `BackDoc-Mods.md` | 业务模块（认证 / 用户 / RBAC / 审计） |
+| `BackDoc-MigV.md` | Linux/PG 环境迁移验证指南 |
+| `BackDoc-Archv.md` | 历史归档（迁移计划 + 特性设计稿，不作现行方案） |
 | `../CLAUDE.md` / `../AGENTS.md` | 项目定位 / 扩展约定（AI 协作也看这两个） |
 
 ---
 
 ## 9. 提交前检查清单
 
-- [ ] 改了端点/签名/配置项 → 对应 `docs/security.md`/`infrastructure.md`/`modules.md` 已更新
+- [ ] 改了端点/签名/配置项 → 对应 `docs/BackDoc-Sec.md`/`BackDoc-Infra.md`/`BackDoc-Mods.md` 已更新
 - [ ] 新增/改名公共函数或配置项 → 文档已同步
-- [ ] 新建模块 → `docs/modules.md` 登记或新建 `docs/modules/<name>.md` + 登记到 `docs/README.md` 索引
+- [ ] 新建模块 → `docs/BackDoc-Mods.md` 登记或新建 `docs/modules/<name>.md` + 登记到 `docs/README.md` 索引
 - [ ] `flake8` + `mypy` 通过
 - [ ] 单元测试通过；改动涉及 DB 的补集成测试

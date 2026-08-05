@@ -36,9 +36,9 @@ AI Agent 工作约定，作用域内优先于通用行为。配合 `CLAUDE.md`�
 | 中间件 | `app/middleware/<name>.py` | `app/main.py` 按顺序 `add_middleware`（见下方顺序约定） |
 | 配置项 | `app/core/config.py` 的 `Settings` | 同步加到 `.env.example` |
 | 迁移 | `alembic revision --autogenerate -m "..."`（改完模型后） | 提交前确认只有单一 head |
-| 启动/关闭任务 | `@register_startup` / `@register_shutdown` 装饰器（`app/core/lifecycle/`） | 注册点模块须在 `app/core/lifecycle/__init__.py` 的 `_import_registrants()` 中 import 触发登记；详见 `docs/infrastructure.md` |
+| 启动/关闭任务 | `@register_startup` / `@register_shutdown` 装饰器（`app/core/lifecycle/`） | 注册点模块须在 `app/core/lifecycle/__init__.py` 的 `_import_registrants()` 中 import 触发登记；详见 `docs/BackDoc-Infra.md` |
 | 测试 | `tests/<镜像 app 的子包>/test_*.py` | 子包需有 `__init__.py`（见 `tests/README.md`） |
-| 模块文档 | 系统级 → `docs/security.md`/`docs/infrastructure.md`；业务级 → `docs/modules.md` | 登记到 `docs/README.md` 索引表；含「接口」节（见 `docs/README.md` 的分类约定与模板） |
+| 模块文档 | 系统级 → `docs/BackDoc-Sec.md`/`docs/BackDoc-Infra.md`；业务级 → `docs/BackDoc-Mods.md` | 登记到 `docs/README.md` 索引表；含「接口」节（见 `docs/README.md` 的分类约定与模板） |
 
 ## 加一个 API 资源（标准配方）
 
@@ -82,13 +82,7 @@ raise AuthenticationException(error_code=ErrorCode.Auth.INVALID_CREDENTIALS)
 
 ### 第二步预留：业务模块自治（演进方向，暂不执行）
 
-设计已为「错误码随业务模块走」预留，触发条件：某业务域长大、自成模块时。迁移步骤：
-
-1. 在业务模块内建 `app/services/<domain>/errors.py`，定义该域的 `class <Domain>ErrorCode: ...`。
-2. 把该域相关的内嵌命名空间类（连同其常量、对应的业务异常子类）整块从 core 搬过去。
-3. 在 `app/core/exceptions/__init__.py` 把业务模块的错误码 re-export 回全局 `ErrorCode`。
-
-**关键约束**：迁移后调用方写法 `ErrorCode.<Namespace>.<NAME>` **保持不变**，只有 import/定义位置变化——这是当前命名空间设计要守住的契约，新增错误码时不要破坏这种可迁移性（例如不要把多个业务域的码混塞进同一个命名空间类）。
+> ℹ️ 变更记录/待办条目已迁移至根目录 `项目演变历史.md` / `项目待办事项.md`。
 
 ## Alembic 迁移管理（Schema 唯一来源）
 

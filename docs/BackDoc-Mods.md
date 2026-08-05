@@ -1,5 +1,8 @@
-# 业务模块（Auth / Users / RBAC / Audit）
+# 业务模块（Auth / Users / RBAC / Audit）（BackDoc-Mods）
 
+> 更新人：3yearsZ
+> 最后更新：2026-08-05（统一 BackDoc 命名）
+> 关联：架构见 [BackDoc-Arch.md](BackDoc-Arch.md)；安全见 [BackDoc-Sec.md](BackDoc-Sec.md)
 > 本文件合并了原 `modules/auth.md`、`modules/users.md`、`modules/rbac.md`、`modules/audit.md`，
 > 统一阐述与具体业务实体绑定的四个核心模块。
 
