@@ -9,6 +9,7 @@
 新增任务：在此定义 `async def`，并加入下方 `TASKS` 列表（worker 与 enqueue 都据此注册/校验）。
 """
 
+from app.core.events import event_bus
 from app.core.loguru_logger import get_logger
 
 logger = get_logger("queue.task")
@@ -31,8 +32,20 @@ async def example_send_notification(ctx, user_id: int, message: str) -> dict:
     return {"user_id": user_id, "delivered": True}
 
 
+async def dispatch_event_broadcast(ctx, event: str, data: dict) -> dict:
+    """跨实例事件广播落地任务（ADR-014）。
+
+    由任一 web 实例经 enqueue 投递；每个 worker 实例在 on_startup 已注册本地订阅者，
+    收到后在本进程内本地 emit（broadcast=False 防止回环），从而使所有实例的订阅者都执行。
+    """
+    logger.info("事件跨实例广播落地", event=event, eager=ctx.get("eager", False))
+    event_bus.emit(event, broadcast=False, **data)
+    return {"event": event, "delivered": True}
+
+
 # 任务注册表：worker 的 functions 与 enqueue 的合法性校验都依赖它。
 # 新增任务务必登记到这里，否则 enqueue 会拒绝投递（worker 也无法执行）。
 TASKS = [
     example_send_notification,
+    dispatch_event_broadcast,
 ]

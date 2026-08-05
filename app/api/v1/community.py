@@ -118,8 +118,9 @@ async def list_members(
     if tag:
         conds.append(User.tech_tags.contains([tag]))
     if search:
-        like = f"%{search.strip()}%"
-        conds.append(func.lower(User.display_name).like(func.lower(like)) | func.lower(User.username).like(func.lower(like)))
+        # 全文检索：search_vector @@ websearch_to_tsquery（GIN 索引加速）
+        ts_query = func.websearch_to_tsquery(text("'simple'"), search.strip())
+        conds.append(User.search_vector.op("@@")(ts_query))
 
     # 活跃用户需关联发帖数；普通排序可直接查用户
     base = select(User).where(*conds)

@@ -25,6 +25,11 @@ assert _BROKER_URL is not None
 
 
 async def on_startup(ctx) -> None:
+    # 每个 worker 实例注册本地通知订阅者；配合事件总线跨实例广播（ADR-014），
+    # 收到广播后在自身进程内运行订阅者，实现多实例事件一致。
+    from app.services.notification_events import register_notification_events
+
+    register_notification_events()
     logger.info("arq worker 启动", tasks=[fn.__name__ for fn in TASKS])
 
 

@@ -14,6 +14,7 @@ from sqlalchemy import (
     Table,
     Text,
 )
+from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.timezone import now_utc
@@ -87,6 +88,8 @@ class User(Base):
     tech_tags: Mapped[Optional[list]] = mapped_column(
         JSONDict, nullable=True, default=list
     )
+    # 全文搜索向量（Phase 6 GIN 优化）：由数据库触发器维护（display_name + username）
+    search_vector: Mapped[Optional[object]] = mapped_column(TSVECTOR, nullable=True, index=True)
 
     # 关联关系（selectin：async 会话下避免 lazy load MissingGreenlet）
     roles: Mapped[List["Role"]] = relationship(

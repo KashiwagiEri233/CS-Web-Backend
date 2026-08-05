@@ -1,5 +1,5 @@
 """社区 v2 仓储：categories / posts / comments / reactions / favorites / views / mentions /
-follows / reports / series。搜索为关键词 AND 语义 ILIKE（FTS5 降级实现），GIN 列入 Phase 6。
+follows / reports / series。搜索基于 PostgreSQL 原生全文检索（GIN + tsvector，Phase 6 已落地）。
 """
 
 from __future__ import annotations
@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Any, Optional, Sequence
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timezone import now_utc
@@ -26,13 +26,6 @@ from app.models.community import (
 from app.models.user import User
 
 VIEW_DEDUP_WINDOW_HOURS = 24
-
-
-def _keyword_condition(col, search: str) -> Any:
-    keywords = [kw for kw in search.strip().split() if kw]
-    if not keywords:
-        return None
-    return and_(*[col.ilike(f"%{kw}%") for kw in keywords])
 
 
 class CommunityCategoryRepository:
@@ -121,12 +114,9 @@ class CommunityPostRepository:
         if following_ids:
             conditions.append(CommunityPost.author_id.in_(following_ids))
         if search and search.strip():
-            conditions.append(
-                or_(
-                    _keyword_condition(CommunityPost.title, search),
-                    _keyword_condition(CommunityPost.content_markdown, search),
-                )
-            )
+            # 全文检索：search_vector @@ websearch_to_tsquery（GIN 索引加速，AND 语义）
+            ts_query = func.websearch_to_tsquery(text("'simple'"), search.strip())
+            conditions.append(CommunityPost.search_vector.op("@@")(ts_query))
 
         total = int(
             (
