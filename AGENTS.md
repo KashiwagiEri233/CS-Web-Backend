@@ -36,9 +36,9 @@ AI Agent 工作约定，作用域内优先于通用行为。配合 `CLAUDE.md`�
 | 中间件 | `app/middleware/<name>.py` | `app/main.py` 按顺序 `add_middleware`（见下方顺序约定） |
 | 配置项 | `app/core/config.py` 的 `Settings` | 同步加到 `.env.example` |
 | 迁移 | `alembic revision --autogenerate -m "..."`（改完模型后） | 提交前确认只有单一 head |
-| 启动/关闭任务 | `@register_startup` / `@register_shutdown` 装饰器（`app/core/lifecycle/`） | 注册点模块须在 `app/core/lifecycle/__init__.py` 的 `_import_registrants()` 中 import 触发登记；详见 `docs/system/lifecycle.md` |
+| 启动/关闭任务 | `@register_startup` / `@register_shutdown` 装饰器（`app/core/lifecycle/`） | 注册点模块须在 `app/core/lifecycle/__init__.py` 的 `_import_registrants()` 中 import 触发登记；详见 `docs/infrastructure.md` |
 | 测试 | `tests/<镜像 app 的子包>/test_*.py` | 子包需有 `__init__.py`（见 `tests/README.md`） |
-| 模块文档 | 系统级 → `docs/system/<x>.md`；业务级 → `docs/modules/<x>.md` | 登记到 `docs/README.md` 索引表；含「接口」节（见 `docs/README.md` 的分类约定与模板） |
+| 模块文档 | 系统级 → `docs/security.md`/`docs/infrastructure.md`；业务级 → `docs/modules.md` | 登记到 `docs/README.md` 索引表；含「接口」节（见 `docs/README.md` 的分类约定与模板） |
 
 ## 加一个 API 资源（标准配方）
 

@@ -1,9 +1,9 @@
 # CONVENTIONS.md
 
 本项目的编码规范、目录组织与通用约定。**所有贡献者（含 AI Agent）在写代码前必须先读本文档**。
-项目级扩展约定（如何加模块、中心注册点、Alembic 迁移）见 `AGENTS.md`；项目定位与硬性禁止项见 `CLAUDE.md`。
+项目级扩展约定（如何加模块、中心注册点、Alembic 迁移）见 `../AGENTS.md`；项目定位与硬性禁止项见 `../CLAUDE.md`。
 
-> 文档优先级：场景内具体指令 > `AGENTS.md` > `CLAUDE.md` > 本文件 > 通用工作流。
+> 文档优先级：场景内具体指令 > `../AGENTS.md` > `../CLAUDE.md` > 本文件 > 通用工作流。
 
 ---
 
@@ -112,7 +112,7 @@ api (路由)  →  service (业务)  →  repository (数据)  →  model (ORM)
 - **禁止散落的魔法值**：重复出现的字面量（版本号、地址、状态码字符串…）必须收敛到单一来源。
 - **版本号**：唯一定义在 `app/__init__.py` 的 `__version__`；`FastAPI(version=)`、OTel `service.version`、启动日志等一律引用它，升级只改一处。
 - **不硬编码 host:port**：绑定地址由 `run.py --host/--port`（uvicorn）决定，代码/日志**不要写死** `0.0.0.0:8000`——真实地址由 uvicorn 自行打印。
-- **错误码**：用 `ErrorCode.*` 常量（见 `AGENTS.md` 「错误码注册表」），禁止裸字符串。
+- **错误码**：用 `ErrorCode.*` 常量（见 `../AGENTS.md` 「错误码注册表」），禁止裸字符串。
 - **边界**：`Settings` 里带注释的默认值本身就是单一来源，不算魔法值；本地化、仅 1–2 处的字面量按三次法则可不抽。
 
 ---
@@ -147,13 +147,13 @@ api (路由)  →  service (业务)  →  repository (数据)  →  model (ORM)
   - `.env.test`（测试，同样走 Alembic）
   - `.env`（生产，`DB_AUTO_MIGRATE` 按部署策略）
 - **`SECRET_KEY` 必须从环境变量设置，禁止占位值**。
-- 例外：队列开关 `QUEUE_ENABLED` 由可选队列模块自读环境/.env（不在 `Settings`），见 `docs/system/queue.md`。
+- 例外：队列开关 `QUEUE_ENABLED` 由可选队列模块自读环境/.env（不在 `Settings`），见 `infrastructure.md`。
 
 ---
 
 ## 8. 测试约定
 
-- **目录结构**：`tests/` 镜像 `app/` 子包结构；每个子包必须有 `__init__.py`（见 `tests/README.md`）。
+- **目录结构**：`tests/` 镜像 `app/` 子包结构；每个子包必须有 `__init__.py`（见 `../tests/README.md`）。
 - **命名**：测试文件 `test_*.py`，测试函数 `test_*`。
 - **异步**：`pytest.ini` 段名必须是 `[pytest]`，`asyncio_mode=auto`，异步测试直接 `async def`，**不要** `@pytest.mark.asyncio`。
 - **运行**：`python -m pytest`。
@@ -173,9 +173,9 @@ api (路由)  →  service (业务)  →  repository (数据)  →  model (ORM)
 
 ## 10. 数据库迁移约定（摘要）
 
-> 完整规则见 `AGENTS.md` 的「Alembic 迁移管理」章节。
+> 完整规则见 `../AGENTS.md` 的「Alembic 迁移管理」章节。
 
-- **铁律**：全环境 **仅 Alembic**；禁止 `Base.metadata.create_all`（`DB_AUTO_CREATE` 已废弃）。
+- **铁律**：全环境 **仅 Alembic**；禁止 `Base.metadata.create_all`。建库由 `DB_AUTO_CREATE_DATABASE` 控制，schema 仍只由 Alembic 管理。
 - **启动**：`DB_AUTO_MIGRATE=True` 自动 `upgrade head`；`False` 仅校验版本不一致则 fail fast。
 - **改模型流程**：改 model → 登记 `models/__init__.py` → `alembic revision --autogenerate -m "..."` → 检查 upgrade() → 确认单一 head → upgrade。
 - **禁止**修改 baseline 或已有迁移文件（历史事实不可改）。

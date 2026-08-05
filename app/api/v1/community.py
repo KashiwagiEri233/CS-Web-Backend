@@ -6,13 +6,17 @@ import re
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, File, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
 from fastapi.responses import FileResponse
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundException, ValidationException
 from app.core.request_context import get_client_meta
+from app.database import get_db
 from app.dependencies import get_current_active_user, get_current_user
 from app.dependencies_services import get_community_service
+from app.models.community import CommunityPost
 from app.models.user import User
 from app.schemas.pagination import PaginatedResponse, PaginationParams
 from app.services.community_service import CommunityService
@@ -100,6 +104,76 @@ def _category_out(cat) -> dict:
         "created_at": cat.created_at,
         "updated_at": cat.updated_at,
     }
+
+
+def _member_out(user, post_count: int = 0) -> dict:
+    """用户 → 成员出参（与前端 toMember 字段一一对应）。
+
+    role 由 is_superuser / roles 推导：超级用户 → root，否则取首个显式角色，默认 user。
+    """
+    if user.is_superuser:
+        role = "root"
+    elif getattr(user, "roles", None):
+        role = user.roles[0].name if user.roles else "user"
+    else:
+        role = "user"
+    return {
+        "id": user.id,
+        "display_name": user.display_name or user.username,
+        "bio": user.bio,
+        "avatar_url": user.avatar_url,
+        "avatar_type": user.avatar_type or "initial",
+        "github_url": user.github_url,
+        "website_url": user.website_url,
+        "tech_tags": user.tech_tags or [],
+        "role": role,
+        "joined_at": user.created_at,
+        "post_count": post_count,
+    }
+
+
+# ------------------------------------------------------------------ 成员
+
+@router.get("/members")
+async def list_members(
+    db: AsyncSession = Depends(get_db),
+    tag: Optional[str] = None,
+    search: Optional[str] = None,
+    sort: str = Query("active", pattern="^(active|newest|recent)$"),
+    limit: int = Query(50, ge=1, le=100),
+) -> Any:
+    """社区成员列表：活跃用户（按发帖数/新近排序），支持 tag / search 过滤。
+
+    - sort=active：按发帖数降序（活跃度）；sort=newest|recent：按加入时间倒序。
+    - tag：按 tech_tags 包含过滤；search：按 display_name/username 模糊匹配。
+    """
+    # 基本条件：未软删除
+    conds = [User.deleted_at.is_(None)]
+
+    if tag:
+        conds.append(User.tech_tags.contains([tag]))
+    if search:
+        like = f"%{search.strip()}%"
+        conds.append(func.lower(User.display_name).like(func.lower(like)) | func.lower(User.username).like(func.lower(like)))
+
+    # 活跃用户需关联发帖数；普通排序可直接查用户
+    base = select(User).where(*conds)
+
+    if sort == "active":
+        stmt = (
+            select(User, func.count(CommunityPost.id).label("post_count"))
+            .outerjoin(CommunityPost, CommunityPost.author_id == User.id)
+            .where(*conds)
+            .group_by(User.id)
+            .order_by(func.count(CommunityPost.id).desc(), User.created_at.desc())
+            .limit(limit)
+        )
+        rows = (await db.execute(stmt)).all()
+        return [_member_out(user, int(pc or 0)) for user, pc in rows]
+
+    order = User.created_at.desc()
+    users = (await db.scalars(base.order_by(order).limit(limit))).all()
+    return [_member_out(user) for user in users]
 
 
 # ------------------------------------------------------------------ 分类

@@ -138,3 +138,6 @@ Thumbs.db
 
 # Alembic：迁移脚本是 schema 的版本化资产，必须提交（线上靠它建表）！只忽略缓存。
 alembic/versions/__pycache__/
+
+# 运行时数据（上传的头像/论坛图片/资源文件等），不入库，仅本地/卷挂载
+data/

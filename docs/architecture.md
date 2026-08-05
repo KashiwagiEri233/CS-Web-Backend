@@ -1,7 +1,7 @@
 # ARCHITECTURE.md
 
 本项目（企业级 FastAPI RBAC 权限管理脚手架）的系统设计与模块关系文档。
-编码规范见 `CONVENTIONS.md`，扩展约定见 `AGENTS.md`，项目定位见 `CLAUDE.md`。
+编码规范见 `conventions.md`，扩展约定见 `../AGENTS.md`，项目定位见 `../CLAUDE.md`。
 
 ---
 
@@ -92,47 +92,19 @@ CORS → ExceptionHandler → SecurityHeaders → Logging → Metrics → RateLi
 
 ### 4.2 异常处理（`app/core/exceptions/`）
 
-```
-BaseAppException（基类）
-   └─ 各业务异常子类
-        │
-        ▼
-setup_exception_handlers(app)   # 注册到 FastAPI，覆盖路由层异常
-ExceptionHandlerMiddleware       # 最外层兜底，覆盖中间件层异常
-exception_logging.py             # 异常落日志（写入 exception_log 表）
-```
-
-- 业务错误必须抛 `BaseAppException` 子类，由全局处理器统一映射状态码与响应体。
-- 路由内禁止 `try/except` 吞业务异常再返回自定义格式。
+用 `BaseAppException` 子类表达业务失败，由全局处理器统一映射状态码与响应体；未处理异常由最外层 `ExceptionHandlerMiddleware` 兜底。错误码集中在 `ErrorCode` 注册表。详见 **`security.md`**「异常处理」节。
 
 ### 4.3 认证与权限（`app/middleware/rbac.py` + `app/core/security.py`）
 
-```
-JWT 签发/校验  ──→  当前用户解析  ──→  权限校验依赖
-  security.py          rbac.py            require_permission / require_role / require_superuser
-```
+鉴权用**依赖注入**（`Depends(require_permission("res","act"))`），**禁止用装饰器**；`AUTH_ENABLED=False` 时全局放行为超级用户（仅本地）。详见 **`security.md`**「鉴权与安全基础设施」节。
 
-- 鉴权用 **依赖注入**（`Depends(require_permission("res","act"))`），**禁止用装饰器**。
-- `AUTH_ENABLED=False` 时全局放行为超级用户，仅本地开发；`DEBUG=False` 时置 False 会拒绝启动。
-- Token 黑名单支持（`app/core/security_blacklist.py`），登出 / 改密后即时失效。
+### 4.4 限流与缓存
 
-### 4.4 限流与缓存（`app/core/rate_limit/` + `app/core/cache/`）
+Redis 是**增强项**，未配置/故障时自动降级内存；降级策略由 `RATE_LIMIT_FALLBACK` / `CACHE_FALLBACK` 控制。限流详见 **`security.md`**「请求限流」节，缓存详见 **`infrastructure.md`**「缓存」节。
 
-```
-                ┌── Redis 可用 ──→ Redis 后端
-后端选择器 ──────┤
-                └── Redis 未配置/故障 ──→ 内存后端（自动降级）
-```
+### 4.5 日志
 
-- Redis 是**增强项**，不是强依赖；未配置或故障自动降级到内存。
-- 降级策略由 `RATE_LIMIT_FALLBACK` / `CACHE_FALLBACK` 控制。
-- 启动时 Redis 探测任务（lifecycle `redis_probe`，见第 7 节）仅记连通性日志，**不阻断启动**。
-
-### 4.5 日志（`app/core/loguru_logger/`）
-
-- 统一入口：`from app.core.loguru_logger import get_logger`（包内按 adapter / config / context / intercept / init 拆分）。
-- **禁止 `print`、禁止直接配置 loguru handler**。
-- Profile：`LOG_PROFILE=dev`（DEBUG + 彩色控制台）/ `prod`（INFO + JSON + 文件轮转）。
+统一入口 `from app.core.loguru_logger import get_logger`；**禁止 `print`、禁止直接配置 loguru handler**。详见 **`infrastructure.md`**「可观测性」节。
 
 ---
 
@@ -158,13 +130,7 @@ JWT 签发/校验  ──→  当前用户解析  ──→  权限校验依赖
 
 ## 6. 数据库会话管理（`app/database.py`）
 
-| 使用场景 | API | 自动提交？ |
-|---|---|---|
-| 路由内（FastAPI 依赖） | `Depends(get_db)` | 否，需显式 `await db.commit()` |
-| 路由外（worker/脚本/后台任务） | `async with get_session() as db:` | 否，需显式 commit；出异常自动回滚 |
-
-- **统一不自动提交**：由调用方显式 commit，保证事务边界清晰。
-- 引擎 `create_async_engine`，会话工厂 `AsyncSessionLocal(expire_on_commit=False)`。
+路由内用 `Depends(get_db)`，路由外用 `async with get_session()`；**统一不自动提交**，由调用方显式 `await db.commit()`，保证事务边界清晰（repo 只 flush，service commit）。详见 **`infrastructure.md`**「数据库与事务」节。
 
 ---
 
@@ -174,30 +140,10 @@ JWT 签发/校验  ──→  当前用户解析  ──→  权限校验依赖
 `@register_shutdown` 自注册，`lifespan` 只调 `run_startup()` / `run_shutdown()` 遍历执行。
 新增启动任务无需回 `main.py`（与「中心注册点」哲学一致）。
 
-```
-lifespan 启动段
-  ├─ 应用级展示（不进注册表）：启动横幅、AUTH_ENABLED 告警
-  └─ run_startup() —— 按 priority 升序执行已注册任务：
-       ├─ priority=10  database      [critical] 建库 + schema(alembic upgrade/校验) + 连通性探测
-       │                                    └─ advisory lock 串行化 schema 操作（多 worker 安全）
-       ├─ priority=20  rbac_seed     [critical] 权限/角色/默认管理员（幂等；失败拒绝启动）
-       ├─ priority=30  redis_probe   [降级]   探测 Redis 连通性（未配置/故障都降级）
-       ├─ priority=40  refresh_token_gc [降级] 过期/撤销 refresh token 周期清理
-       ├─ priority=45  exception_log_retention [降级] 异常日志保留期清理
-       └─ priority=90  log_status    [降级]   输出访问地址 / 文档路径
-lifespan yield（应用运行）
-lifespan 关闭段
-  └─ run_shutdown() —— 按 priority 降序执行（后启动的先关，异常一律吞掉）：
-       ├─ priority=30  refresh_token_gc       停止 token 清理任务
-       ├─ priority=25  exception_log_retention 停止异常日志清理任务
-       ├─ priority=20  redis                  释放 Redis 连接
-       └─ priority=10  telemetry              flush 并释放 OTel providers
-```
-
 **失败语义**：`critical=True` 任务失败 → raise 中止启动（DB、RBAC seed）；`critical=False` 失败 →
-仅告警继续（Redis/OTel/RBAC seed）。关闭阶段任何异常都吞掉只记日志，绝不向外抛。
+仅告警继续（Redis/OTel）。关闭阶段任何异常都吞掉只记日志，绝不向外抛。
 
-详见 `docs/system/lifecycle.md`。
+**完整任务清单、priority 段约定与新增任务配方见 `docs/infrastructure.md`**「启动/关闭任务注册表」节（唯一权威，不在此重复）。
 
 ---
 
@@ -263,7 +209,7 @@ core/security, middleware/rbac
 7. **日志**：`get_logger`，不 `print`、不直接配 handler。
 8. **Redis 可降级**：限流/缓存把 Redis 当增强项，不是强依赖。
 9. **配置单一来源**：`Settings` + `.env*`；新增字段同步 `.env.example`。
-10. **迁移铁律**：全环境仅 Alembic 管理 schema；禁止 `Base.metadata.create_all`（`DB_AUTO_CREATE` 已废弃）。
+10. **迁移铁律**：全环境仅 Alembic 管理 schema；禁止 `Base.metadata.create_all`。建库由 `DB_AUTO_CREATE_DATABASE` 控制。
 
 ---
 
@@ -285,8 +231,8 @@ core/security, middleware/rbac
 
 ## 12. 参考文档
 
-- `CLAUDE.md` — 项目定位、技术栈、硬性禁止项、启动/配置/测试速查。
-- `AGENTS.md` — AI Agent 扩展约定、中心注册点、Alembic 迁移管理、不变量。
-- `CONVENTIONS.md` — 编码规范、命名、质量红线、安全/错误处理约定。
-- `tests/README.md` — 测试目录组织与运行方式。
-- `docs/README.md` — 模块文档索引与「系统级/业务模块级」分类约定；详解见 `docs/system/`、`docs/modules/`。
+- `../CLAUDE.md` — 项目定位、技术栈、硬性禁止项、启动/配置/测试速查。
+- `../AGENTS.md` — AI Agent 扩展约定、中心注册点、Alembic 迁移管理、不变量。
+- `conventions.md` — 编码规范、命名、质量红线、安全/错误处理约定。
+- `../tests/README.md` — 测试目录组织与运行方式。
+- `README.md` — 文档索引与分类约定；详解见 `security.md`、`infrastructure.md`、`modules.md`。

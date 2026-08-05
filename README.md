@@ -3,7 +3,7 @@
 > 计算机社团官网后端 — FastAPI + PostgreSQL
 >
 > 由原 Next.js 全栈单体（CS-Web-Frontend）按模块分离而来：前端降级为「UI + BFF 薄转发」，
-> 认证、数据、业务逻辑全部由本仓库接管。分离计划与 ADR 见 [MIGRATION_PLAN.md](MIGRATION_PLAN.md)。
+> 认证、数据、业务逻辑全部由本仓库接管。分离计划与 ADR 见 [docs/archive.md](docs/archive.md)。
 
 ## 技术栈
 
@@ -121,7 +121,7 @@ docs/                  # 验证指南（MIGRATION_VERIFICATION.md）等
 
 | 文档 | 内容 |
 |---|---|
-| `MIGRATION_PLAN.md` | 前后端分离迁移计划：模块/阶段/决策/重建记录（社区 v2 适配） |
+| `docs/archive.md` | 前后端分离迁移计划 + 特性设计稿（历史归档，不作现行方案） |
 | `docs/MIGRATION_VERIFICATION.md` | Linux/PG 环境验证指引（各 Phase 集成测试、2FA/密码兼容检查清单） |
 | `CLAUDE.md` / `AGENTS.md` | 项目定位、扩展约定、Alembic 管理、不变量 |
-| `CONVENTIONS.md` | 编码规范与质量红线 |
+| `docs/conventions.md` | 编码规范与质量红线 |

@@ -1,74 +1,62 @@
 # 文档
 
-每个模块一篇深入文档（描述 + 接口），**按"系统级 / 业务模块级"两层分类**——与错误码、异常体系
-采用同一套"框架级 vs 业务级"的划分哲学（见 `AGENTS.md`）。顶层 `ARCHITECTURE.md` / `CONVENTIONS.md`
-讲全局；本目录讲单个模块的细节。
+本目录是仓库的**全部开发文档**，已扁平化：所有现行文档平铺在 `docs/` 根级（无嵌套目录），按主题组织。
 
 ```
 docs/
-├── README.md              # 本文件：分类约定 + 文档模板 + 索引
-├── system/                # 系统级：框架/基础设施，与具体业务无关
-│   ├── exception_handling.md   # 异常体系（自定义异常 + 全局处理器 + 中间件）
-│   ├── observability.md        # 可观测性（OpenTelemetry traces/metrics）
-│   ├── lifecycle.md            # 启动/关闭任务注册表（lifecycle registry）
-│   ├── rate_limit.md           # 请求限流与可信代理
-│   └── queue.md                # 异步任务队列（arq，可选/可删除模块）
-└── modules/               # 业务模块级：与具体业务实体绑定
-    ├── auth.md            # 认证（登录/注册/刷新/登出）
-    ├── users.md           # 用户管理（CRUD）
-    ├── rbac.md            # 角色 / 权限 / 分配 / 校验
-    └── audit.md           # 审计日志查询
+├── README.md              # 本文件：文档索引 + 约定 + 模板
+├── onboarding.md          # 新手引导：快速开始/目录/开发工作流/常见坑
+├── architecture.md        # 系统架构总览（分层/中间件链/生命周期/不变量）
+├── conventions.md         # 编码规范、命名、质量红线
+├── security.md            # 安全与防护：鉴权/异常处理/请求限流
+├── infrastructure.md      # 运行基础设施：可观测性/数据库/生命周期/队列/缓存
+├── modules.md             # 业务模块：认证/用户/RBAC/审计
+├── MIGRATION_VERIFICATION.md  # 迁移验证指南（Linux/PG 环境）
+└── archive.md             # 历史归档：迁移计划 + 特性设计稿（不作现行方案）
 ```
 
-## 分类标准（一篇文档放哪？）
+## 一篇文档放哪？
 
-| 类别 | 判据 | 对应代码大致位置 | 例 |
-|---|---|---|---|
-| **系统级** `docs/system/` | 与具体业务实体无关的框架/基础设施能力，换个项目也能复用 | `app/core/`、`app/middleware/`、`app/database.py` | 异常体系、可观测性、限流、缓存、日志、认证安全原语、DB 会话 |
-| **业务模块级** `docs/modules/` | 与具体业务实体（用户、角色…）绑定的功能 | `app/api/v1/`、`app/services/`、`app/repositories/`、`app/models/` | 认证、用户管理、RBAC |
+| 文档 | 放什么内容 |
+|---|---|
+| `architecture.md` | 系统级架构：分层、中间件链、请求生命周期、关键不变量 |
+| `security.md` | 鉴权（JWT/密码/黑名单）、异常体系、请求限流 |
+| `infrastructure.md` | 日志 + 追踪/指标（可观测）、数据库/事务、启动关闭任务、队列、缓存 |
+| `modules.md` | 业务模块 API：认证 / 用户 / RBAC / 审计 |
+| `conventions.md` | 编码规范、命名、质量红线、安全/错误处理约定 |
+| `MIGRATION_VERIFICATION.md` | Linux/PG 环境迁移验证指南 |
 
-> 边界判断与「错误码归属」一致：与 HTTP/通用语义绑定的是系统级；与业务实体绑定的是业务模块级。
-> 拿不准时问一句"换一个完全不同的项目，这块还用得上吗？"——用得上 → 系统级。
+> 拿不准放哪时问一句"换一个完全不同的项目，这块还用得上吗？"——用得上 → 系统级（`security.md`/`infrastructure.md`）；
+> 与具体业务实体（用户/角色…）绑定 → `modules.md`。
 
 ## 约定（新增模块必须同步文档）
 
-- **加业务模块**（走 `AGENTS.md` 的「加一个 API 资源」配方）时，**必须**在 `docs/modules/` 建一篇同名文档；
-  加系统级能力时建在 `docs/system/`。缺哪层目录建哪层。
-- 文档文件名 = 模块名（如 `auth.md`），与 `app/api/v1/<name>.py` / 业务域名对应。
-- 每篇文档**必须含"接口"一节**（API 端点表或公共函数/类签名）——这是后期维护的对照表，不可省。
-- 接口表只记**契约**（method/path/权限/用途），字段细节**指向 `app/schemas/<x>.py`**，不在文档里重抄，
-  避免与代码漂移。
-- 文档与代码一同改：改了端点/签名/配置项，对应文档同 PR 更新（见下方检查清单）。
+- 改代码（端点/签名/配置项/模块）时，**对应文档同 PR 更新**（见下方检查清单）。
+- 每篇文档的**接口一节**是后期维护对照表，不可省。
+- 接口表只记**契约**（method/path/权限/用途），字段细节**指向 `app/schemas/<x>.py`**，不在文档重抄，避免漂移。
+- 新增**业务模块**时，在 `modules.md` 对应节追加（或在 `docs/modules/<name>.md` 新建后登记到本文件索引）。
 
 ## 文档模板
 
-新建模块文档时复制以下骨架（按需删减，但"概述 / 接口 / 测试"三节必留）：
+新建模块文档时复制以下骨架（"概述 / 接口 / 测试"三节必留）：
 
 ```markdown
 # <模块名>
 
 ## 概述
-一句话定位 + 职责边界（这个模块负责什么、不负责什么）。
+一句话定位 + 职责边界（负责什么、不负责什么）。
 
 ## 接口
-### API 端点（业务模块级）
 | Method | Path | 权限 | 说明 |
 |---|---|---|---|
 | ... | ... | ... | ... |
-入/出参 schema 见 `app/schemas/<x>.py`。
-
-### 公共函数 / 类（系统级或被复用的能力）
-| 符号 | 签名 | 用途 |
-|---|---|---|
+schema 见 `app/schemas/<x>.py`。
 
 ## 配置
 相关 `Settings` 字段（`app/core/config.py`）及默认值、降级行为。
 
-## 依赖与协作
-依赖的 service / repository / core 能力；被谁调用。
-
 ## 降级与不变量
-（如适用）故障降级策略、必须守住的约束。
+故障降级策略、必须守住的约束。
 
 ## 测试
 对应 `tests/<...>` 路径与覆盖点。
@@ -79,35 +67,38 @@ docs/
 
 ## 索引
 
-### 系统级（`docs/system/`）
-| 文档 | 覆盖代码 | 状态 |
-|---|---|---|
-| [exception_handling.md](system/exception_handling.md) | `app/core/exceptions/` | ✅ |
-| [observability.md](system/observability.md) | `app/core/observability.py`、运维端点 | ✅ |
-| [lifecycle.md](system/lifecycle.md) | `app/core/lifecycle/`（启动/关闭任务注册表） | ✅ |
-| [queue.md](system/queue.md) | `app/core/queue/`（可选模块，arq） | ✅ |
-| [rate_limit.md](system/rate_limit.md) | `app/core/rate_limit/`、`app/middleware/rate_limit.py` | ✅ |
-| [cache.md](system/cache.md) | `app/core/cache/` | ✅ |
-| [security_auth.md](system/security_auth.md) | `app/core/security.py`、`app/middleware/rbac.py` | ✅ |
-| [logging.md](system/logging.md) | `app/core/loguru_logger/` | ✅ |
-| [database.md](system/database.md) | `app/database.py` | ✅ |
-
-### 业务模块级（`docs/modules/`）
-| 文档 | 覆盖代码 | 状态 |
-|---|---|---|
-| [auth.md](modules/auth.md) | `app/api/v1/auth.py`、`app/services/auth_service.py` | ✅ |
-| [users.md](modules/users.md) | `app/api/v1/users.py`、`app/services/user_service.py` | ✅ |
-| [rbac.md](modules/rbac.md) | `app/api/v1/rbac/`、`app/services/rbac_service.py` | ✅ |
-| [audit.md](modules/audit.md) | `app/api/v1/audit.py`、`app/services/audit_service.py` | ✅ |
-
-### 迁移相关（前后端分离）
+### 全局文档
 | 文档 | 说明 |
 |---|---|
-| `../MIGRATION_PLAN.md` | 前后端分离整体迁移计划（根目录） |
-| [MIGRATION_VERIFICATION.md](MIGRATION_VERIFICATION.md) | `d1e2f3a4b5c6` 数据层迁移的 Linux/PG 环境验证指南 |
+| [onboarding.md](onboarding.md) | 新手引导：快速开始、目录、开发工作流、常见坑（新贡献者从这里入手） |
+| [architecture.md](architecture.md) | 系统架构总览（分层、目录结构、扩展配方） |
+| [conventions.md](conventions.md) | 编码规范、命名、质量红线、安全/错误处理约定 |
+
+### 系统能力
+| 文档 | 覆盖代码 |
+|---|---|
+| [security.md](security.md) | 鉴权：`app/core/security.py`、`security_blacklist.py`、`middleware/rbac.py`、`password_compat.py`；异常：`app/core/exceptions/`；限流：`app/core/rate_limit/`、`middleware/rate_limit.py` |
+| [infrastructure.md](infrastructure.md) | 日志：`app/core/loguru_logger/`；OTel：`app/core/observability.py`；DB：`app/database.py`；生命周期：`app/core/lifecycle/`；队列：`app/core/queue/`；缓存：`app/core/cache/`；运维端点 `/health` `/readyz` `/metrics/json` `/status` |
+
+### 业务模块
+| 文档 | 覆盖代码 |
+|---|---|
+| [modules.md](modules.md) | 认证：`app/api/v1/auth.py`、`services/auth_service.py`；用户：`app/api/v1/users.py`、`profile.py`；RBAC：`app/api/v1/rbac/`；审计：`app/api/v1/audit.py` |
+
+### 迁移相关
+| 文档 | 说明 |
+|---|---|
+| [MIGRATION_VERIFICATION.md](MIGRATION_VERIFICATION.md) | 数据层迁移的 Linux/PG 环境验证指南 |
+
+### 历史归档
+已完成特性的迁移计划与设计稿，仅作演进痕迹保留，**不作现行方案**。当前能力以根级正式文档为准。
+
+| 文档 | 对应实现 | 状态 |
+|---|---|---|
+| [archive.md](archive.md) | 前后端分离迁移计划 + 异常/日志系统设计稿 | ✅ 归档 |
 
 ## 提交前检查清单
-- [ ] 新增 API 端点 → 对应 `docs/modules/<x>.md` 的接口表已更新
+- [ ] 新增/修改 API 端点 → 对应文档（`security.md`/`infrastructure.md`/`modules.md`）接口表已更新
 - [ ] 新增/改名公共函数或配置项 → 对应文档已更新
-- [ ] 新建模块 → 已建文档并登记到上方索引表
+- [ ] 新建模块 → `modules.md` 登记或新建 `docs/modules/<name>.md` 并登记到本索引
 - [ ] 文档里的 schema/字段是**指向** `app/schemas/`，而非重抄

@@ -107,10 +107,14 @@ class ProfileResponse(TZModel):
 
 
 class PublicUserOut(TZModel):
-    """用户公开资料（无需登录，邮箱由 BFF 按需脱敏）。"""
+    """用户公开资料（无需登录，邮箱由 BFF 按需脱敏）。
+
+    email 用宽松 str（与 UserOut 一致）：输出序列化不应因历史/测试数据使用
+    保留域名（如 @test.local）而 422，导致公开用户资料 / 社区作者信息无法返回。
+    """
 
     id: int
-    email: EmailStr
+    email: str
     display_name: Optional[str] = None
     bio: Optional[str] = None
     avatar_url: Optional[str] = None

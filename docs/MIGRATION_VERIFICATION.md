@@ -12,7 +12,7 @@
 
 | 检查项 | 预期 |
 |---|---|
-| `alembic heads` | 单一 head：`f6a7b8c9d0e1` |
+| `alembic heads` | 单一 head：`d6e7f8g9h0i1` |
 | `alembic upgrade head` | 成功；42 张表建成（框架 8 + 业务 34，含 two_factor_auth） |
 | `alembic check` | 无 drift（模型 ↔ 数据库一致） |
 | `alembic downgrade -1 && upgrade head` | 往返成功 |
@@ -52,7 +52,7 @@ uv sync                            # 或 pip install --require-hashes -r require
 ### 1. 迁移链完整性
 
 ```bash
-uv run alembic heads          # 必须只有一行：d1e2f3a4b5c6 (head)
+uv run alembic heads          # 必须只有一行：d6e7f8g9h0i1 (head)
 uv run alembic history | head -12
 ```
 
@@ -229,7 +229,7 @@ PY
 ### 6. 回滚往返
 
 ```bash
-uv run alembic downgrade -1       # 回滚到 e6a4b91d70c2：33 张业务表应消失，users 业务列移除
+uv run alembic downgrade -1       # 回滚到 f0a1b2c3d4e5；再升级回 head 应无 drift
 uv run alembic upgrade head       # 再升级回 head
 ```
 
