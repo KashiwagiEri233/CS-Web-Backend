@@ -60,8 +60,38 @@ def _send_sync(to: str, subject: str, text: str) -> None:
 
 
 async def send_mail(to: str, subject: str, text: str) -> None:
-    """发送纯文本邮件（异步封装）。SMTP_HOST 为空时仅记日志。"""
+    """发送纯文本邮件（异步封装）。SMTP_HOST 为空时仅记日志。
+
+    QUEUE_ENABLED=True 时经 arq 队列异步发送（含自动重试）；
+    否则在线程池中同步发送（失败抛异常由调用方兜底）。
+    """
+    if _queue_enabled():
+        from app.core.queue import enqueue
+        from app.core.queue.tasks import send_email_task
+
+        await enqueue(send_email_task, to, subject, text)
+        return
     await asyncio.to_thread(_send_sync, to, subject, text)
+
+
+def _queue_enabled() -> bool:
+    """读取队列开关（与 queue/client.py 同源，但延迟 import 避免循环依赖）。"""
+    import os
+
+    val = os.getenv("QUEUE_ENABLED")
+    if val is None:
+        try:
+            from dotenv import dotenv_values
+
+            env_file = os.environ.get("ENV_FILE", ".env")
+            val = dotenv_values(env_file).get("QUEUE_ENABLED")
+        except Exception:  # noqa: BLE001
+            val = None
+    return (
+        str(val).strip().lower() in ("1", "true", "yes", "on")
+        if val is not None
+        else False
+    )
 
 
 async def send_verification_code(email: str, code: str) -> None:

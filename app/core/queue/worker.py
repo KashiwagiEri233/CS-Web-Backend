@@ -44,4 +44,5 @@ class WorkerSettings:
     redis_settings = RedisSettings.from_dsn(_BROKER_URL)
     on_startup = on_startup
     on_shutdown = on_shutdown
-    # 默认重试/超时可按需加：max_tries / job_timeout / keep_result 等。
+    max_tries = 3  # 失败任务自动重试次数（邮件发送等瞬时故障可自动恢复）
+    job_timeout = 60  # 单任务超时（秒），防止 SMTP 挂起阻塞 worker

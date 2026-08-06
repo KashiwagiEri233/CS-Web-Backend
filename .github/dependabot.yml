@@ -1,0 +1,20 @@
+# 依赖漏洞自动扫描（P1 安全项）
+# 每周一检查 Python 依赖更新，自动提安全更新 PR
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Shanghai"
+    # 仅安全更新和补丁版本更新
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "security"
+    commit-message:
+      prefix: "chore"
+      prefix-development: "chore"
+      include: "scope"

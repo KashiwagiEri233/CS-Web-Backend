@@ -191,6 +191,69 @@ async def health_check():
     return {"status": "healthy"}
 
 
+# 事件总线健康检查：返回各事件监听器数量
+@root_router.get("/health/events")
+async def health_events():
+    """返回事件总线上各事件注册的监听器数量（规划中 → 已实现）。
+    无需鉴权：供运维 / 探针快速定位事件处理链路是否正常。
+    """
+    from app.core.events import event_bus
+
+    subscribers = {}
+    for event, handlers in event_bus._subscribers.items():
+        subscribers[event] = len(handlers)
+    return {"status": "healthy", "subscribers": subscribers}
+
+
+# 安全健康检查：返回限流器/会话/迁移状态
+@root_router.get("/health/security")
+async def health_security():
+    """返回安全相关组件健康状态（规划中 → 已实现）。
+    无需鉴权：供运维探针快速定位安全组件异常。
+    """
+    from app.core.rate_limit import get_limiter
+    from app.core.config import settings
+    from app.utils.status import check_database_connection, check_redis_connection
+
+    limiter = get_limiter()
+    # 限流器后端是否 Redis（跨实例一致）
+    rate_limit_redis = limiter.using_redis
+
+    # 会话黑名单状态
+    from app.core.security_blacklist import get_blacklist
+    blacklist = get_blacklist()
+    blacklist_type = type(blacklist).__name__
+
+    # 检查数据库迁移状态
+    db_status = await check_database_connection()
+    redis_status = await check_redis_connection()
+
+    return {
+        "status": "healthy",
+        "rate_limiter": {
+            "using_redis": rate_limit_redis,
+            "redis_configured": bool(settings.REDIS_URL),
+        },
+        "token_blacklist": {
+            "backend": blacklist_type,
+            "redis_configured": bool(settings.REDIS_URL),
+        },
+        "auth": {
+            "enabled": settings.AUTH_ENABLED,
+            "totp_encryption_key_set": bool(settings.TOTP_ENCRYPTION_KEY),
+        },
+        "migration": {
+            "database": db_status.get("status", "unknown"),
+            "redis": redis_status.get("status", "unknown"),
+        },
+        "multi_instance": {
+            "enabled": os.getenv("MULTI_INSTANCE", "false").strip().lower()
+            in ("1", "true", "yes", "on"),
+            "workers": settings.WORKERS,
+        },
+    }
+
+
 # 就绪探针（readiness：依赖是否就绪，供 k8s readinessProbe）
 # DB 不通时返回 503，避免把流量打到尚未就绪/依赖故障的实例。
 @root_router.get("/readyz")

@@ -11,11 +11,12 @@ forum_post_views / blog_posts / blog_likes 等）曾作为「数据迁移源」�
     alembic upgrade 22232b182a66c --sql     # 仅打印 SQL，不执行
     pg_dump ... > pre_drop_backup.sql        # 备份
 
-本迁移为**独立可选维护迁移**（down_revision=None，不串入主链），
-如暂不清理，请勿 upgrade 到本 revision；主链 head 仍为 22232b182a66b（搜索 GIN）。
+本迁移为**高风险维护迁移**（DROP 旧表，不可逆）。
+已串入主链末尾（down_revision=22232b182a66b），生产环境 DB_AUTO_MIGRATE=False
+时不会自动执行；操作员须确认数据迁移完成后、备份后再手动 alembic upgrade head。
 
 Revision ID: 22232b182a66c
-Revises:
+Revises: 22232b182a66b
 Create Date: 2026-08-06
 
 """
@@ -27,7 +28,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "22232b182a66c"
-down_revision: Union[str, Sequence[str], None] = None  # 独立可选维护迁移，不串入主链
+down_revision: Union[str, Sequence[str], None] = "22232b182a66b"  # 串入主链末尾
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

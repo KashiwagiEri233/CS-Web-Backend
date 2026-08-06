@@ -114,6 +114,8 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     # 测试进程使用 NullPool，避免 pytest 每测试事件循环与 asyncpg 池连接交叉复用。
     TESTING: bool = False
+    # uvicorn worker 数量（run.py 写入环境变量）。用于启动时校验多 worker + 无 Redis 的限流降级风险。
+    WORKERS: int = Field(1, ge=1)
     API_V1_STR: str = "/api/v1"
     # 是否暴露 /docs、/redoc、/openapi.json。
     # None（默认）= 跟随 DEBUG：生产（DEBUG=False）自动关闭，避免未认证用户
@@ -386,6 +388,28 @@ class Settings(BaseSettings):
         # 强制 closed：Redis 故障时拒绝 access token，避免多 worker 静默降级到进程内存
         if self.TOKEN_BLACKLIST_FALLBACK != "closed":
             self.TOKEN_BLACKLIST_FALLBACK = "closed"
+        return self
+
+    @model_validator(mode="after")
+    def _warn_multi_worker_without_redis(self):
+        """多 worker 无 Redis 时发出警告：限流降级到进程内存，实际阈值变为 N×configured。
+
+        不阻止启动（系统仍可运行，只是限流精度下降），但通过 WARNING 让运维感知风险。
+        """
+        if (
+            not self.DEBUG
+            and not self.TESTING
+            and self.WORKERS > 1
+            and not self.REDIS_URL
+        ):
+            import warnings
+
+            warnings.warn(
+                f"生产环境 {self.WORKERS} workers 未配置 REDIS_URL："
+                f"限流将降级到进程内存，实际阈值约为 {self.WORKERS}×configured。"
+                "建议配置 REDIS_URL 以获得跨 worker 一致的限流。",
+                stacklevel=2,
+            )
         return self
 
     @field_validator("ALGORITHM")

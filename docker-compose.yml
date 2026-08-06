@@ -49,11 +49,31 @@ services:
       PASSWORD_RESET_DEFAULT: ${PASSWORD_RESET_DEFAULT:-}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
       REQUIRE_REDIS_FOR_SECURITY: "false"
+      # 可观测性：启用 OTel 时指向 collector（--profile observability 启动）
+      OTEL_ENABLED: ${OTEL_ENABLED:-false}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-cs-web-backend}
     ports:
       - "9000:8000"
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      - cs-net
+
+  # 可观测性 collector（可选，--profile observability 启动）
+  # docker compose --profile observability up -d
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.108.0
+    container_name: cs-otel-collector
+    restart: unless-stopped
+    profiles: ["observability"]
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./tools/otel-collector/config.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4317:4317"  # OTLP gRPC
+      - "4318:4318"  # OTLP HTTP
     networks:
       - cs-net
 

@@ -43,9 +43,25 @@ async def dispatch_event_broadcast(ctx, event: str, data: dict) -> dict:
     return {"event": event, "delivered": True}
 
 
+async def send_email_task(ctx, to: str, subject: str, text: str) -> dict:
+    """异步邮件发送任务（arq 队列投递 + 自动重试）。
+
+    由 email_service.send_mail 在 QUEUE_ENABLED 时经 enqueue 投递。
+    arq worker 按 max_tries 自动重试失败任务；eager 降级模式下就地执行（无重试）。
+    """
+    eager = ctx.get("eager", False)
+    job_try = ctx.get("job_try", 1)
+    logger.info("处理邮件发送任务", to=to, subject=subject, eager=eager, job_try=job_try)
+    from app.services.email_service import _send_sync
+
+    _send_sync(to, subject, text)
+    return {"to": to, "subject": subject, "delivered": True}
+
+
 # 任务注册表：worker 的 functions 与 enqueue 的合法性校验都依赖它。
 # 新增任务务必登记到这里，否则 enqueue 会拒绝投递（worker 也无法执行）。
 TASKS = [
     example_send_notification,
     dispatch_event_broadcast,
+    send_email_task,
 ]
