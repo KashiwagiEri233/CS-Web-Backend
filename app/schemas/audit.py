@@ -33,7 +33,9 @@ class CreateAuditLogRequest(BaseModel):
     操作者身份（actor）由当前已认证用户推导，不信任客户端传入，避免伪造。
     """
 
-    action: str = Field(..., min_length=1, max_length=128, description="动作标识，如 user.create")
+    action: str = Field(
+        ..., min_length=1, max_length=128, description="动作标识，如 user.create"
+    )
     resource_type: str = Field(
         ..., min_length=1, max_length=64, description="资源类型，如 user/role/event"
     )

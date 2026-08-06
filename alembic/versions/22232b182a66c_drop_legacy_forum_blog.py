@@ -47,9 +47,7 @@ LEGACY_TABLES = (
 def upgrade() -> None:
     # 仅 DROP 真实存在的旧表，避免 NOTICE 报错
     for table in LEGACY_TABLES:
-        op.execute(
-            sa.text(f"DROP TABLE IF EXISTS {table} CASCADE")
-        )
+        op.execute(sa.text(f"DROP TABLE IF EXISTS {table} CASCADE"))
 
 
 def downgrade() -> None:

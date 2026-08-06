@@ -19,13 +19,15 @@ def test_smtp_transport_returns_none_when_host_empty():
 
 
 def test_smtp_transport_uses_smtp_ssl_when_secure_true():
-    with patch.object(email_service.settings, "SMTP_HOST", "smtp.example.com"), \
-         patch.object(email_service.settings, "SMTP_PORT", 465), \
-         patch.object(email_service.settings, "SMTP_SECURE", True), \
-         patch.object(email_service.settings, "SMTP_TLS_SKIP_VERIFY", False), \
-         patch.object(email_service.settings, "SMTP_USER", None), \
-         patch("app.services.email_service.smtplib.SMTP_SSL") as smtp_ssl, \
-         patch("app.services.email_service.smtplib.SMTP") as smtp_plain:
+    with (
+        patch.object(email_service.settings, "SMTP_HOST", "smtp.example.com"),
+        patch.object(email_service.settings, "SMTP_PORT", 465),
+        patch.object(email_service.settings, "SMTP_SECURE", True),
+        patch.object(email_service.settings, "SMTP_TLS_SKIP_VERIFY", False),
+        patch.object(email_service.settings, "SMTP_USER", None),
+        patch("app.services.email_service.smtplib.SMTP_SSL") as smtp_ssl,
+        patch("app.services.email_service.smtplib.SMTP") as smtp_plain,
+    ):
         result = _smtp_transport()
 
     smtp_ssl.assert_called_once_with("smtp.example.com", 465, timeout=10)
@@ -34,13 +36,15 @@ def test_smtp_transport_uses_smtp_ssl_when_secure_true():
 
 
 def test_smtp_transport_uses_plain_smtp_and_starttls_when_secure_false():
-    with patch.object(email_service.settings, "SMTP_HOST", "smtp.example.com"), \
-         patch.object(email_service.settings, "SMTP_PORT", 587), \
-         patch.object(email_service.settings, "SMTP_SECURE", False), \
-         patch.object(email_service.settings, "SMTP_TLS_SKIP_VERIFY", False), \
-         patch.object(email_service.settings, "SMTP_USER", None), \
-         patch("app.services.email_service.smtplib.SMTP_SSL") as smtp_ssl, \
-         patch("app.services.email_service.smtplib.SMTP") as smtp_plain:
+    with (
+        patch.object(email_service.settings, "SMTP_HOST", "smtp.example.com"),
+        patch.object(email_service.settings, "SMTP_PORT", 587),
+        patch.object(email_service.settings, "SMTP_SECURE", False),
+        patch.object(email_service.settings, "SMTP_TLS_SKIP_VERIFY", False),
+        patch.object(email_service.settings, "SMTP_USER", None),
+        patch("app.services.email_service.smtplib.SMTP_SSL") as smtp_ssl,
+        patch("app.services.email_service.smtplib.SMTP") as smtp_plain,
+    ):
         result = _smtp_transport()
 
     smtp_plain.assert_called_once_with("smtp.example.com", 587, timeout=10)
@@ -50,13 +54,15 @@ def test_smtp_transport_uses_plain_smtp_and_starttls_when_secure_false():
 
 
 def test_smtp_transport_logs_in_when_user_set():
-    with patch.object(email_service.settings, "SMTP_HOST", "smtp.example.com"), \
-         patch.object(email_service.settings, "SMTP_PORT", 587), \
-         patch.object(email_service.settings, "SMTP_SECURE", False), \
-         patch.object(email_service.settings, "SMTP_TLS_SKIP_VERIFY", False), \
-         patch.object(email_service.settings, "SMTP_USER", "user@example.com"), \
-         patch.object(email_service.settings, "SMTP_PASS", "secret"), \
-         patch("app.services.email_service.smtplib.SMTP") as smtp_plain:
+    with (
+        patch.object(email_service.settings, "SMTP_HOST", "smtp.example.com"),
+        patch.object(email_service.settings, "SMTP_PORT", 587),
+        patch.object(email_service.settings, "SMTP_SECURE", False),
+        patch.object(email_service.settings, "SMTP_TLS_SKIP_VERIFY", False),
+        patch.object(email_service.settings, "SMTP_USER", "user@example.com"),
+        patch.object(email_service.settings, "SMTP_PASS", "secret"),
+        patch("app.services.email_service.smtplib.SMTP") as smtp_plain,
+    ):
         result = _smtp_transport()
 
     smtp_plain.return_value.login.assert_called_once_with("user@example.com", "secret")
@@ -64,12 +70,14 @@ def test_smtp_transport_logs_in_when_user_set():
 
 
 def test_smtp_transport_calls_ehlo_when_tls_skip_verify():
-    with patch.object(email_service.settings, "SMTP_HOST", "smtp.example.com"), \
-         patch.object(email_service.settings, "SMTP_PORT", 465), \
-         patch.object(email_service.settings, "SMTP_SECURE", True), \
-         patch.object(email_service.settings, "SMTP_TLS_SKIP_VERIFY", True), \
-         patch.object(email_service.settings, "SMTP_USER", None), \
-         patch("app.services.email_service.smtplib.SMTP_SSL") as smtp_ssl:
+    with (
+        patch.object(email_service.settings, "SMTP_HOST", "smtp.example.com"),
+        patch.object(email_service.settings, "SMTP_PORT", 465),
+        patch.object(email_service.settings, "SMTP_SECURE", True),
+        patch.object(email_service.settings, "SMTP_TLS_SKIP_VERIFY", True),
+        patch.object(email_service.settings, "SMTP_USER", None),
+        patch("app.services.email_service.smtplib.SMTP_SSL") as smtp_ssl,
+    ):
         _smtp_transport()
 
     smtp_ssl.return_value.ehlo.assert_called_once_with()
@@ -78,8 +86,10 @@ def test_smtp_transport_calls_ehlo_when_tls_skip_verify():
 def test_send_sync_logs_when_transport_none():
     transport_mock = MagicMock()
     transport_mock.quit = MagicMock()
-    with patch("app.services.email_service._smtp_transport", return_value=None), \
-         patch.object(email_service.logger, "info") as logger_info:
+    with (
+        patch("app.services.email_service._smtp_transport", return_value=None),
+        patch.object(email_service.logger, "info") as logger_info,
+    ):
         _send_sync("a@b.com", "subj", "body")
 
     assert logger_info.call_count == 2
@@ -88,9 +98,11 @@ def test_send_sync_logs_when_transport_none():
 
 def test_send_sync_sends_email_via_transport_sendmail():
     transport = MagicMock()
-    with patch("app.services.email_service._smtp_transport", return_value=transport), \
-         patch.object(email_service.settings, "SMTP_FROM", "no-reply@example.com"), \
-         patch.object(email_service.logger, "info") as logger_info:
+    with (
+        patch("app.services.email_service._smtp_transport", return_value=transport),
+        patch.object(email_service.settings, "SMTP_FROM", "no-reply@example.com"),
+        patch.object(email_service.logger, "info") as logger_info,
+    ):
         _send_sync("a@b.com", "subj", "body")
 
     transport.sendmail.assert_called_once()
@@ -104,8 +116,10 @@ def test_send_sync_sends_email_via_transport_sendmail():
 
 def test_send_sync_calls_transport_quit_in_finally():
     transport = MagicMock()
-    with patch("app.services.email_service._smtp_transport", return_value=transport), \
-         patch.object(email_service.settings, "SMTP_FROM", "no-reply@example.com"):
+    with (
+        patch("app.services.email_service._smtp_transport", return_value=transport),
+        patch.object(email_service.settings, "SMTP_FROM", "no-reply@example.com"),
+    ):
         _send_sync("a@b.com", "subj", "body")
 
     transport.quit.assert_called_once_with()
@@ -114,8 +128,10 @@ def test_send_sync_calls_transport_quit_in_finally():
 def test_send_sync_does_not_raise_when_quit_fails():
     transport = MagicMock()
     transport.quit.side_effect = Exception("quit failed")
-    with patch("app.services.email_service._smtp_transport", return_value=transport), \
-         patch.object(email_service.settings, "SMTP_FROM", "no-reply@example.com"):
+    with (
+        patch("app.services.email_service._smtp_transport", return_value=transport),
+        patch.object(email_service.settings, "SMTP_FROM", "no-reply@example.com"),
+    ):
         # Should not raise even though quit fails.
         _send_sync("a@b.com", "subj", "body")
 
@@ -126,8 +142,10 @@ def test_send_sync_does_not_raise_when_quit_fails():
 def test_send_sync_propagates_sendmail_failure_after_quit_attempted():
     transport = MagicMock()
     transport.sendmail.side_effect = RuntimeError("send failed")
-    with patch("app.services.email_service._smtp_transport", return_value=transport), \
-         patch.object(email_service.settings, "SMTP_FROM", "no-reply@example.com"):
+    with (
+        patch("app.services.email_service._smtp_transport", return_value=transport),
+        patch.object(email_service.settings, "SMTP_FROM", "no-reply@example.com"),
+    ):
         with pytest.raises(RuntimeError, match="send failed"):
             _send_sync("a@b.com", "subj", "body")
 
@@ -136,15 +154,21 @@ def test_send_sync_propagates_sendmail_failure_after_quit_attempted():
 
 
 async def test_send_mail_calls_asyncio_to_thread_with_send_sync():
-    with patch("app.services.email_service.asyncio.to_thread", new=AsyncMock()) as to_thread:
+    with patch(
+        "app.services.email_service.asyncio.to_thread", new=AsyncMock()
+    ) as to_thread:
         await send_mail("a@b.com", "subj", "body")
 
     to_thread.assert_awaited_once_with(_send_sync, "a@b.com", "subj", "body")
 
 
 async def test_send_verification_code_calls_send_mail_with_subject_and_code():
-    with patch.object(email_service.settings, "VERIFICATION_CODE_TTL_MINUTES", 10), \
-         patch("app.services.email_service.send_mail", new=AsyncMock()) as send_mail_mock:
+    with (
+        patch.object(email_service.settings, "VERIFICATION_CODE_TTL_MINUTES", 10),
+        patch(
+            "app.services.email_service.send_mail", new=AsyncMock()
+        ) as send_mail_mock,
+    ):
         await send_verification_code("user@example.com", "123456")
 
     send_mail_mock.assert_awaited_once()

@@ -66,8 +66,10 @@ def test_verify_state_raises_expired_for_expired_state():
         state = svc.generate_state()
 
     # 推进到 1601s（已过 TTL），校验应抛 OAUTH_STATE_EXPIRED
-    with patch("app.services.oauth_service.time.time", return_value=1601.0), \
-         pytest.raises(ValidationException) as exc:
+    with (
+        patch("app.services.oauth_service.time.time", return_value=1601.0),
+        pytest.raises(ValidationException) as exc,
+    ):
         svc.verify_state(state)
 
     assert exc.value.error_code == ErrorCode.Auth.OAUTH_STATE_EXPIRED
@@ -91,33 +93,41 @@ def test_verify_state_is_one_time():
 def test_configured_returns_false_when_client_id_empty():
     svc = OAuthService()
 
-    with patch.object(oauth_service.settings, "GITHUB_CLIENT_ID", None), \
-         patch.object(oauth_service.settings, "GITHUB_CLIENT_SECRET", "secret"):
+    with (
+        patch.object(oauth_service.settings, "GITHUB_CLIENT_ID", None),
+        patch.object(oauth_service.settings, "GITHUB_CLIENT_SECRET", "secret"),
+    ):
         assert svc.configured is False
 
 
 def test_configured_returns_true_when_both_id_and_secret_set():
     svc = OAuthService()
 
-    with patch.object(oauth_service.settings, "GITHUB_CLIENT_ID", "id123"), \
-         patch.object(oauth_service.settings, "GITHUB_CLIENT_SECRET", "secret"):
+    with (
+        patch.object(oauth_service.settings, "GITHUB_CLIENT_ID", "id123"),
+        patch.object(oauth_service.settings, "GITHUB_CLIENT_SECRET", "secret"),
+    ):
         assert svc.configured is True
 
 
 def test_authorization_url_returns_none_when_not_configured():
     svc = OAuthService()
 
-    with patch.object(oauth_service.settings, "GITHUB_CLIENT_ID", None), \
-         patch.object(oauth_service.settings, "GITHUB_CLIENT_SECRET", "secret"):
+    with (
+        patch.object(oauth_service.settings, "GITHUB_CLIENT_ID", None),
+        patch.object(oauth_service.settings, "GITHUB_CLIENT_SECRET", "secret"),
+    ):
         assert svc.authorization_url() is None
 
 
 def test_authorization_url_returns_valid_url_with_client_id_and_state():
     svc = OAuthService()
 
-    with patch.object(oauth_service.settings, "GITHUB_CLIENT_ID", "id123"), \
-         patch.object(oauth_service.settings, "GITHUB_CLIENT_SECRET", "secret"), \
-         patch.object(oauth_service.settings, "GITHUB_CALLBACK_URL", "https://cb/cb"):
+    with (
+        patch.object(oauth_service.settings, "GITHUB_CLIENT_ID", "id123"),
+        patch.object(oauth_service.settings, "GITHUB_CLIENT_SECRET", "secret"),
+        patch.object(oauth_service.settings, "GITHUB_CALLBACK_URL", "https://cb/cb"),
+    ):
         url = svc.authorization_url()
 
     assert url.startswith("https://github.com/login/oauth/authorize?")
@@ -137,9 +147,11 @@ def test_authorization_url_returns_valid_url_with_client_id_and_state():
 async def test_exchange_code_raises_not_configured_when_not_configured():
     svc = OAuthService()
 
-    with patch.object(oauth_service.settings, "GITHUB_CLIENT_ID", None), \
-         patch.object(oauth_service.settings, "GITHUB_CLIENT_SECRET", "secret"), \
-         pytest.raises(ValidationException) as exc:
+    with (
+        patch.object(oauth_service.settings, "GITHUB_CLIENT_ID", None),
+        patch.object(oauth_service.settings, "GITHUB_CLIENT_SECRET", "secret"),
+        pytest.raises(ValidationException) as exc,
+    ):
         await svc.exchange_code("code123")
 
     assert exc.value.error_code == ErrorCode.Auth.OAUTH_NOT_CONFIGURED
@@ -153,11 +165,13 @@ async def test_exchange_code_raises_error_on_non_200_response():
 
     cm = _make_httpx_client_mock(resp)
 
-    with patch.object(oauth_service.settings, "GITHUB_CLIENT_ID", "id123"), \
-         patch.object(oauth_service.settings, "GITHUB_CLIENT_SECRET", "secret"), \
-         patch.object(oauth_service.settings, "GITHUB_CALLBACK_URL", "https://cb/cb"), \
-         patch("app.services.oauth_service.httpx.AsyncClient", return_value=cm), \
-         pytest.raises(ValidationException) as exc:
+    with (
+        patch.object(oauth_service.settings, "GITHUB_CLIENT_ID", "id123"),
+        patch.object(oauth_service.settings, "GITHUB_CLIENT_SECRET", "secret"),
+        patch.object(oauth_service.settings, "GITHUB_CALLBACK_URL", "https://cb/cb"),
+        patch("app.services.oauth_service.httpx.AsyncClient", return_value=cm),
+        pytest.raises(ValidationException) as exc,
+    ):
         await svc.exchange_code("code123")
 
     assert exc.value.error_code == ErrorCode.Auth.OAUTH_ERROR
@@ -174,11 +188,13 @@ async def test_exchange_code_raises_error_when_response_has_error_field():
 
     cm = _make_httpx_client_mock(resp)
 
-    with patch.object(oauth_service.settings, "GITHUB_CLIENT_ID", "id123"), \
-         patch.object(oauth_service.settings, "GITHUB_CLIENT_SECRET", "secret"), \
-         patch.object(oauth_service.settings, "GITHUB_CALLBACK_URL", "https://cb/cb"), \
-         patch("app.services.oauth_service.httpx.AsyncClient", return_value=cm), \
-         pytest.raises(ValidationException) as exc:
+    with (
+        patch.object(oauth_service.settings, "GITHUB_CLIENT_ID", "id123"),
+        patch.object(oauth_service.settings, "GITHUB_CLIENT_SECRET", "secret"),
+        patch.object(oauth_service.settings, "GITHUB_CALLBACK_URL", "https://cb/cb"),
+        patch("app.services.oauth_service.httpx.AsyncClient", return_value=cm),
+        pytest.raises(ValidationException) as exc,
+    ):
         await svc.exchange_code("code123")
 
     assert exc.value.error_code == ErrorCode.Auth.OAUTH_ERROR
@@ -224,5 +240,7 @@ async def test_verify_callback_returns_user_info_dict_on_success():
 def test_callback_url_uses_github_callback_url_when_set():
     svc = OAuthService()
 
-    with patch.object(oauth_service.settings, "GITHUB_CALLBACK_URL", "https://custom/cb"):
+    with patch.object(
+        oauth_service.settings, "GITHUB_CALLBACK_URL", "https://custom/cb"
+    ):
         assert svc._callback_url() == "https://custom/cb"

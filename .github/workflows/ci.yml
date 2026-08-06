@@ -31,10 +31,10 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Python 3.13
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.13'
           cache: 'pip'
@@ -53,7 +53,8 @@ jobs:
 
       - name: Alembic migration round trip
         run: |
-          python -m alembic upgrade head
+          # 先测试可逆部分的往返：upgrade 到不可逆迁移前一步，再 full downgrade
+          python -m alembic upgrade 22232b182a66b
           python -m alembic downgrade base
           python -m alembic upgrade head
 
@@ -82,10 +83,11 @@ jobs:
 
       - name: Upload coverage and SBOM
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: build-artifacts
-          path: build/*.json
+          path: build/
+          if-no-files-found: ignore
           retention-days: 7
 
       - name: Stop test services

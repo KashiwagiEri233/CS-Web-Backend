@@ -46,7 +46,9 @@ class ComponentRegistryService:
         await self.db.commit()
         return await self._to_out(item)
 
-    async def update_component(self, item_id: int, data: ComponentItemInput) -> ComponentItemOut:
+    async def update_component(
+        self, item_id: int, data: ComponentItemInput
+    ) -> ComponentItemOut:
         item = await self.repo.get_item(item_id)
         if item is None:
             raise NotFoundException(
@@ -77,7 +79,7 @@ class ComponentRegistryService:
         return await self.get_component(item_id)
 
     async def toggle_variant(
-        self, item_id: int,         variant_id: int, enabled: bool
+        self, item_id: int, variant_id: int, enabled: bool
     ) -> ComponentItemOut:
         variant = await self.repo.get_variant(item_id, variant_id)
         if variant is None:
@@ -90,7 +92,9 @@ class ComponentRegistryService:
         await self.db.commit()
         return await self.get_component(item_id)
 
-    async def update_guide(self, item_id: int, data: ComponentGuideInput) -> ComponentItemOut:
+    async def update_guide(
+        self, item_id: int, data: ComponentGuideInput
+    ) -> ComponentItemOut:
         await self.get_component(item_id)
         await self.repo.upsert_guide(item_id, data.use_cases, data.anti_patterns)
         await self.db.commit()

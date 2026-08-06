@@ -40,7 +40,9 @@ def upgrade() -> None:
         "CREATE TRIGGER tsvector_update_community_posts "
         "BEFORE INSERT OR UPDATE ON community_posts "
         "FOR EACH ROW EXECUTE FUNCTION "
-        "tsvector_update_trigger(search_vector, 'pg_catalog.simple', title, content_markdown)"
+        "tsvector_update_trigger("
+        "search_vector, 'pg_catalog.simple', title, content_markdown"
+        ")"
     )
     # 回填历史数据
     op.execute(
@@ -65,7 +67,9 @@ def upgrade() -> None:
         "CREATE TRIGGER tsvector_update_users "
         "BEFORE INSERT OR UPDATE ON users "
         "FOR EACH ROW EXECUTE FUNCTION "
-        "tsvector_update_trigger(search_vector, 'pg_catalog.simple', display_name, username)"
+        "tsvector_update_trigger("
+        "search_vector, 'pg_catalog.simple', display_name, username"
+        ")"
     )
     # 回填历史数据
     op.execute(

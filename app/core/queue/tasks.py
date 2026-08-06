@@ -51,7 +51,9 @@ async def send_email_task(ctx, to: str, subject: str, text: str) -> dict:
     """
     eager = ctx.get("eager", False)
     job_try = ctx.get("job_try", 1)
-    logger.info("处理邮件发送任务", to=to, subject=subject, eager=eager, job_try=job_try)
+    logger.info(
+        "处理邮件发送任务", to=to, subject=subject, eager=eager, job_try=job_try
+    )
     from app.services.email_service import _send_sync
 
     _send_sync(to, subject, text)

@@ -18,7 +18,9 @@ from app.core.exceptions import (
 from app.services.password_reset_service import PasswordResetService
 
 
-def _make_service(monkeypatch, default_password: str = "DefaultPass123!") -> PasswordResetService:
+def _make_service(
+    monkeypatch, default_password: str = "DefaultPass123!"
+) -> PasswordResetService:
     """构造 repo/user_repo/audit 被 AsyncMock 替换的 PasswordResetService。
 
     服务在调用点读取 settings.PASSWORD_RESET_DEFAULT，这里通过 monkeypatch

@@ -211,7 +211,9 @@ async def test_disable_deletes_record_after_successful_verification(monkeypatch)
     svc.db.commit.assert_awaited_once()
 
 
-async def test_regenerate_backup_codes_returns_new_codes_after_verification(monkeypatch):
+async def test_regenerate_backup_codes_returns_new_codes_after_verification(
+    monkeypatch,
+):
     svc = _make_service(monkeypatch)
     svc._totp_core.verify_code.return_value = True
     svc._totp_core.generate_backup_codes.return_value = ["NEW1-AAAA", "NEW2-BBBB"]

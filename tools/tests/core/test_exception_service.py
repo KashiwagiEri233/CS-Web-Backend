@@ -12,7 +12,6 @@ from app.core.exceptions.exception_logging import ExceptionLogger
 from app.core.exceptions.error_builders import _serialize_validation_errors
 from tests.conftest import integration_db_unavailable
 
-
 # ------------------------------------------------------------------ ExceptionLogger
 
 

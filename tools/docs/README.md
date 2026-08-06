@@ -5,14 +5,12 @@
 ```
 docs/
 ├── README.md              # 本文件：文档索引 + 约定 + 模板
-├── BackDoc-Onboard.md          # 新手引导：快速开始/目录/开发工作流/常见坑
 ├── BackDoc-Arch.md        # 系统架构总览（分层/中间件链/生命周期/不变量）
 ├── BackDoc-Conv.md         # 编码规范、命名、质量红线
 ├── BackDoc-Sec.md            # 安全与防护：鉴权/异常处理/请求限流
 ├── BackDoc-Infra.md      # 运行基础设施：可观测性/数据库/生命周期/队列/缓存
 ├── BackDoc-Mods.md             # 业务模块：认证/用户/RBAC/审计
 ├── BackDoc-MigV.md  # 迁移验证指南（Linux/PG 环境）
-└── BackDoc-Archv.md             # 历史归档：迁移计划 + 特性设计稿（不作现行方案）
 ```
 
 ## 一篇文档放哪？
@@ -70,7 +68,6 @@ schema 见 `app/schemas/<x>.py`。
 ### 全局文档
 | 文档 | 说明 |
 |---|---|
-| [BackDoc-Onboard.md](BackDoc-Onboard.md) | 新手引导：快速开始、目录、开发工作流、常见坑（新贡献者从这里入手） |
 | [BackDoc-Arch.md](BackDoc-Arch.md) | 系统架构总览（分层、目录结构、扩展配方） |
 | [BackDoc-Conv.md](BackDoc-Conv.md) | 编码规范、命名、质量红线、安全/错误处理约定 |
 
@@ -95,8 +92,6 @@ schema 见 `app/schemas/<x>.py`。
 
 | 文档 | 对应实现 | 状态 |
 |---|---|---|
-| [BackDoc-Archv.md](BackDoc-Archv.md) | 前后端分离迁移计划 + 异常/日志系统设计稿 | ✅ 归档 |
-
 ## 提交前检查清单
 - [ ] 新增/修改 API 端点 → 对应文档（`BackDoc-Sec.md`/`BackDoc-Infra.md`/`BackDoc-Mods.md`）接口表已更新
 - [ ] 新增/改名公共函数或配置项 → 对应文档已更新

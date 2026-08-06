@@ -33,7 +33,6 @@ from typing import List, Sequence, Tuple, Union
 
 from alembic import op
 
-
 revision: str = "d52f1a6c8b73"
 down_revision: Union[str, Sequence[str], None] = "22232b182a66"
 branch_labels: Union[str, Sequence[str], None] = None

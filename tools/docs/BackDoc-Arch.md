@@ -2,7 +2,7 @@
 
 > 更新人：3yearsZ
 > 最后更新：2026-08-05（统一 BackDoc 命名）
-> 关联：编码规范见 [BackDoc-Conv.md](BackDoc-Conv.md)；扩展约定见 `../AGENTS.md`；项目定位见 `../CLAUDE.md`；安全与权限见 [BackDoc-Sec.md](BackDoc-Sec.md)；基础设施见 [BackDoc-Infra.md](BackDoc-Infra.md)；业务模块见 [BackDoc-Mods.md](BackDoc-Mods.md)；入职见 [BackDoc-Onboard.md](BackDoc-Onboard.md)
+> 关联：编码规范见 [BackDoc-Conv.md](BackDoc-Conv.md)；扩展约定见 `../AGENTS.md`；项目定位见 `../CLAUDE.md`；安全与权限见 [BackDoc-Sec.md](BackDoc-Sec.md)；基础设施见 [BackDoc-Infra.md](BackDoc-Infra.md)；业务模块见 [BackDoc-Mods.md](BackDoc-Mods.md)；入职与工程约定见根级 `docs/Onboarding.md`（附录 B）
 
 本项目（企业级 FastAPI RBAC 权限管理脚手架）的系统设计与模块关系文档。
 编码规范见 `BackDoc-Conv.md`，扩展约定见 `../AGENTS.md`，项目定位见 `../CLAUDE.md`。

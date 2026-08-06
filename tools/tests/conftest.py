@@ -14,7 +14,6 @@ import pytest
 from dotenv import dotenv_values
 from sqlalchemy.engine import make_url
 
-
 # 测试现已位于 tools/tests/，需向上三级到达仓库根。
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 TEST_ENV_FILE = ROOT_DIR / ".env.test"
@@ -95,7 +94,7 @@ def integration_redis_unavailable(message: str) -> None:
 @pytest.fixture
 async def integration_db_ready():
     """确保真实 PostgreSQL 可用且 schema 已迁移到 Alembic head。"""
-    from sqlalchemy import text
+    from sqlalchemy import select, text
 
     from app.database import get_session
     from tests._alembic_helpers import upgrade_schema_to_head
@@ -107,6 +106,28 @@ async def integration_db_ready():
         integration_db_unavailable(f"PostgreSQL 集成服务不可用: {exc}")
 
     await upgrade_schema_to_head()
+
+    # 集成测试普遍以固定 id=1 用户代表"管理员/系统创建者"
+    # （如 create_event(1, ...) / create_category(1, ...)），测试库重建后该
+    # 用户不存在会导致大量 FK 失败。幂等补齐，保证任意库态下可运行。
+    from app.models.user import User
+
+    async with get_session() as db:
+        root = (await db.execute(select(User).where(User.id == 1))).scalar_one_or_none()
+        if root is None:
+            db.add(
+                User(
+                    id=1,
+                    username="seed-root",
+                    email="root@local.test",
+                    hashed_password=(
+                        "$2b$12$dummyhashdummyhashdummyhashdummyhashdummyhashdummyh"
+                    ),
+                    is_active=True,
+                    is_superuser=True,
+                )
+            )
+            await db.commit()
     yield
 
 

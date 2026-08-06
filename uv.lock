@@ -418,7 +418,7 @@ wheels = [
 
 [[package]]
 name = "fastapi-witchcat-framework"
-version = "1.0.0"
+version = "0.9.7"
 source = { virtual = "." }
 dependencies = [
     { name = "alembic" },

@@ -5,9 +5,9 @@ follows / reports / series。搜索基于 PostgreSQL 原生全文检索（GIN + 
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import Any, Optional, Sequence
+from typing import Optional, Sequence
 
-from sqlalchemy import func, or_, select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timezone import now_utc

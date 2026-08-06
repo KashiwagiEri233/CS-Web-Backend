@@ -302,7 +302,7 @@ async def test_component_registry(integration_db_ready):
                     name=f"组件-{sfx}", slug=f"comp-{sfx}", category="button"
                 )
             )
-            assert item["slug"] == f"comp-{sfx}"
+            assert item.slug == f"comp-{sfx}"
 
             # slug 冲突
             with pytest.raises(ConflictException):
@@ -312,27 +312,28 @@ async def test_component_registry(integration_db_ready):
 
             # variants
             updated = await svc.replace_variants(
-                item["id"],
+                item.id,
                 [
                     ComponentVariantInput(size="md", color="primary", state="default"),
                     ComponentVariantInput(size="lg", color="primary", state="default"),
                 ],
             )
-            assert len(updated["variants"]) == 2
+            assert len(updated.variants) == 2
 
             # guide
             with_guide = await svc.update_guide(
-                item["id"],
+                item.id,
                 ComponentGuideInput(use_cases=["表单"], anti_patterns=["勿滥用"]),
             )
-            assert with_guide["guide"]["use_cases"] == ["表单"]
+            assert with_guide.guide is not None
+            assert with_guide.guide.use_cases == ["表单"]
 
             # toggle
-            variant_id = updated["variants"][0]["id"]
-            toggled = await svc.toggle_variant(item["id"], variant_id, False)
-            assert toggled["variants"][0]["is_enabled"] is False
+            variant_id = updated.variants[0].id
+            toggled = await svc.toggle_variant(item.id, variant_id, False)
+            assert toggled.variants[0].is_enabled is False
 
-            await svc.delete_component(item["id"])
+            await svc.delete_component(item.id)
         finally:
             await db.execute(
                 delete(ComponentRegistryItem).where(

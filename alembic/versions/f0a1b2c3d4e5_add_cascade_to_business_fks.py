@@ -1,9 +1,11 @@
 """add on delete cascade to business parent FKs
 
 考试/任务/活动等业务主体删除时级联清理子表（与测试清理与产品语义一致）：
-- exam_questions.exam_id / exam_question_options.question_id / exam_attempts.exam_id+question_id
+- exam_questions.exam_id / exam_question_options.question_id /
+  exam_attempts.exam_id+question_id
 - task_claims.task_id
-- event_registrations.event_id / event_checkins.event_id+registration_id / activity_participations.event_id
+- event_registrations.event_id / event_checkins.event_id+registration_id /
+  activity_participations.event_id
 
 Revision ID: f0a1b2c3d4e5
 Revises: e5f6g7h8i9j0

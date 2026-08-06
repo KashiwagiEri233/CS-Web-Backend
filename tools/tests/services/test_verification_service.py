@@ -61,10 +61,13 @@ def test_verify_hash_code_returns_false_for_mismatched_length():
 
 async def test_generate_invalidates_old_codes_and_creates_new_record():
     svc = _make_service()
-    with patch.object(
-        verification_service.settings, "VERIFICATION_CODE_TTL_MINUTES", 10
-    ), patch(
-        "app.services.verification_service.send_verification_code", new=AsyncMock()
+    with (
+        patch.object(
+            verification_service.settings, "VERIFICATION_CODE_TTL_MINUTES", 10
+        ),
+        patch(
+            "app.services.verification_service.send_verification_code", new=AsyncMock()
+        ),
     ):
         await svc.generate("User@Example.com")
 
@@ -79,10 +82,13 @@ async def test_generate_invalidates_old_codes_and_creates_new_record():
 
 async def test_generate_returns_6_digit_code_string():
     svc = _make_service()
-    with patch.object(
-        verification_service.settings, "VERIFICATION_CODE_TTL_MINUTES", 10
-    ), patch(
-        "app.services.verification_service.send_verification_code", new=AsyncMock()
+    with (
+        patch.object(
+            verification_service.settings, "VERIFICATION_CODE_TTL_MINUTES", 10
+        ),
+        patch(
+            "app.services.verification_service.send_verification_code", new=AsyncMock()
+        ),
     ):
         code = await svc.generate("user@example.com")
 
@@ -95,10 +101,13 @@ async def test_generate_returns_6_digit_code_string():
 async def test_generate_calls_send_verification_code():
     svc = _make_service()
     send_mock = AsyncMock()
-    with patch.object(
-        verification_service.settings, "VERIFICATION_CODE_TTL_MINUTES", 10
-    ), patch(
-        "app.services.verification_service.send_verification_code", new=send_mock
+    with (
+        patch.object(
+            verification_service.settings, "VERIFICATION_CODE_TTL_MINUTES", 10
+        ),
+        patch(
+            "app.services.verification_service.send_verification_code", new=send_mock
+        ),
     ):
         code = await svc.generate("User@Example.com")
 

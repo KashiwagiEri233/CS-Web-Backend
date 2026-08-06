@@ -3,7 +3,7 @@
 > 计算机社团官网后端 — FastAPI + PostgreSQL
 >
 > 由原 Next.js 全栈单体（CS-Web-Frontend）按模块分离而来：前端降级为「UI + BFF 薄转发」，
-> 认证、数据、业务逻辑全部由本仓库接管。分离计划与 ADR 见 [tools/docs/BackDoc-Archv.md](tools/docs/BackDoc-Archv.md)。
+> 认证、数据、业务逻辑全部由本仓库接管。分离计划与 ADR 见根级 `项目演变历史.md` 的「前后端分离迁移」一节。
 
 ## 技术栈
 
@@ -121,7 +121,6 @@ tools/docs/            # 验证指南（BackDoc-MigV.md）等
 
 | 文档 | 内容 |
 |---|---|
-| `tools/docs/BackDoc-Archv.md` | 前后端分离迁移计划 + 特性设计稿（历史归档，不作现行方案） |
 | `tools/docs/BackDoc-MigV.md` | Linux/PG 环境验证指引（各 Phase 集成测试、2FA/密码兼容检查清单） |
 | `CLAUDE.md` / `AGENTS.md` | 项目定位、扩展约定、Alembic 管理、不变量 |
 | `tools/docs/BackDoc-Conv.md` | 编码规范与质量红线 |

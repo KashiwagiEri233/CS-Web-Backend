@@ -275,11 +275,15 @@ async def admin_blog_action(
         return {"error": "缺少 post_id"}
     if sub == "publish":
         return {
-            "post": post_to_dict(await service.publish_post(current_user.id, int(post_id)))
+            "post": post_to_dict(
+                await service.publish_post(current_user.id, int(post_id))
+            )
         }
     if sub == "archive":
         return {
-            "post": post_to_dict(await service.archive_post(current_user.id, int(post_id)))
+            "post": post_to_dict(
+                await service.archive_post(current_user.id, int(post_id))
+            )
         }
     if sub == "delete":
         await service.delete_post(current_user.id, int(post_id), is_admin=True)

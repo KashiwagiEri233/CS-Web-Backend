@@ -221,6 +221,7 @@ async def health_security():
 
     # 会话黑名单状态
     from app.core.security_blacklist import get_blacklist
+
     blacklist = get_blacklist()
     blacklist_type = type(blacklist).__name__
 

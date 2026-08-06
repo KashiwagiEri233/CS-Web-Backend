@@ -150,7 +150,7 @@ async def test_two_factor_full_flow(integration_db_ready):
                 )
 
             # 备用码登录
-            backup = setup["backupCodes"][0]
+            backup = setup["backup_codes"][0]
             token3 = (
                 await svc.login_by_email(
                     email, password, {"ip_address": "1.2.3.4", "user_agent": "t"}

@@ -15,10 +15,12 @@
     - 仅导出 /api/v1 前缀的路由（API_V1_STR），冻结业务契约。
     - 比对忽略 servers/info/version 等易变字段，聚焦 path / method / 参数 / schema。
 """
+
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -29,7 +31,6 @@ if str(_BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(_BACKEND_ROOT))
 
 # 最小环境变量，避免导入期因缺失密钥报错（schema 生成不需要真实密钥）。
-import os
 
 os.environ.setdefault("SECRET_KEY", "contract-export-placeholder-32bytes-minimum")
 os.environ.setdefault("TOTP_ENCRYPTION_KEY", "contract-export-placeholder-32bytes-min")
@@ -60,9 +61,7 @@ def export_spec() -> dict:
     spec = app.openapi()
     # 仅保留 /api/v1 路由，冻结业务契约范围
     v1_prefix = settings.API_V1_STR  # 形如 /api/v1
-    paths = {
-        p: d for p, d in spec.get("paths", {}).items() if p.startswith(v1_prefix)
-    }
+    paths = {p: d for p, d in spec.get("paths", {}).items() if p.startswith(v1_prefix)}
     spec = dict(spec)
     spec["paths"] = paths
     # 移除易变字段，避免无意义 diff
@@ -99,7 +98,10 @@ def main() -> int:
     if args.baseline:
         out_path = Path(args.baseline)
         out_path.write_text(_normalize(current), encoding="utf-8")
-        print(f"[contract-baseline] 已写入基线：{out_path}（{len(current['paths'])} 个 /api/v1 路由）")
+        print(
+            f"[contract-baseline] 已写入基线：{out_path}"
+            f"（{len(current['paths'])} 个 /api/v1 路由）"
+        )
         return 0
 
     baseline_path = Path(args.check)

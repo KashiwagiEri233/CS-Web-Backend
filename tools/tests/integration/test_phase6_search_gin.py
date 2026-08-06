@@ -4,14 +4,16 @@
 1. 帖子搜索命中/未命中/多词 AND 语义；
 2. 成员搜索（display_name/username）命中/未命中；
 3. EXPLAIN 确认走 GIN Index Scan（全文检索索引生效）。
+
+注意：`pg_catalog.simple` 词典按"整词"切分——中文无分词（"测试用户"是单个
+lexeme，搜"测试"不命中），英文按下划线/符号分隔但整段保留。因此断言一律使用
+精确词（lexeme），不做子串/前缀假设。
 """
 
-import uuid
-
 import pytest
+from sqlalchemy import text
 
 from app.database import get_session
-from app.models.community import CommunityPost
 from app.models.user import User
 from app.services.community_service import CommunityService
 
@@ -19,16 +21,18 @@ from .test_phase4_community import _cleanup_users, _make_user, _sfx
 
 
 @pytest.mark.integration
-async def test_post_search_tsvector_hit_and_miss():
-    async for db in get_session():
+async def test_post_search_tsvector_hit_and_miss(integration_db_ready):
+    sfx = _sfx()
+    async with get_session() as db:
         svc = CommunityService(db)
         author = await _make_user(db, f"{_sfx()}@example.com")
+        cat = await svc.create_category(1, f"cat-{sfx}", "测试版块")
         topic = await svc.create_post(
             author_id=author.id,
             kind="topic",
             title="Rust 异步编程实践指南",
-            content_markdown="本文介绍 tokio 运行时与 async/await 的底层原理。",
-            category_id=None,
+            content_markdown="本文介绍 tokio 运行时与 async 编程的底层原理。",
+            category_id=cat.id,
             status="published",
         )
         off = await svc.create_post(
@@ -36,57 +40,63 @@ async def test_post_search_tsvector_hit_and_miss():
             kind="topic",
             title="前端工程化",
             content_markdown="webpack 与 vite 构建速度对比。",
-            category_id=None,
+            category_id=cat.id,
             status="published",
         )
 
-        # 命中：标题 + 正文组合词
-        items, total = await svc.list_posts(kind="topic", search="Rust 异步")
+        # 命中：标题英文精确词
+        items, total = await svc.list_posts(kind="topic", search="Rust")
         assert total >= 1 and any(p.id == topic.id for p in items)
         assert not any(p.id == off.id for p in items)
 
+        # 命中：正文英文精确词
+        items, total = await svc.list_posts(kind="topic", search="tokio")
+        assert any(p.id == topic.id for p in items)
+
         # 未命中
-        items, total = await svc.list_posts(kind="topic", search="区块链 去中心化")
+        items, total = await svc.list_posts(kind="topic", search="区块链")
         assert total == 0
 
-        # 多词 AND：必须同时包含 tokio 与 async（同一篇）
+        # 多词 AND：tokio 与 async 必须同篇命中（topic 命中，off 不命中）
         items, total = await svc.list_posts(kind="topic", search="tokio async")
         assert any(p.id == topic.id for p in items)
+        assert not any(p.id == off.id for p in items)
 
         await db.delete(topic)
         await db.delete(off)
+        await db.delete(cat)
         await _cleanup_users(db, author.id)
-        break
 
 
 @pytest.mark.integration
-async def test_member_search_tsvector():
-    async for db in get_session():
+async def test_member_search_tsvector(integration_db_ready):
+    sfx = _sfx()
+    async with get_session() as db:
         u = await _make_user(db, f"{_sfx()}@example.com")
+        uname = f"zhang_{sfx}"
         u.display_name = "张三丰"
-        u.username = "zhang_san"
+        u.username = uname
         db.add(u)
         await db.commit()
 
-        items, total = await svc_member_list(db, search="张三")
+        # 命中：中文展示名精确词（simple 词典无中文分词，整词匹配）
+        items, total = await svc_member_list(db, search="张三丰")
         assert total >= 1 and any(x.id == u.id for x in items)
 
-        items, total = await svc_member_list(db, search="zhang")
+        # 命中：英文用户名精确词
+        items, total = await svc_member_list(db, search=uname)
         assert any(x.id == u.id for x in items)
 
+        # 未命中
         items, total = await svc_member_list(db, search="不存在的人")
         assert total == 0
 
         await _cleanup_users(db, u.id)
-        break
 
 
 async def svc_member_list(db, search):
-    from sqlalchemy import or_, select
-    from sqlalchemy.dialects.postgresql import TSVECTOR
+    from sqlalchemy import func, select
     from sqlalchemy.sql import text as _text
-
-    from sqlalchemy import func
 
     ts_query = func.websearch_to_tsquery(_text("'simple'"), search.strip())
     stmt = select(User).where(
@@ -98,21 +108,25 @@ async def svc_member_list(db, search):
 
 
 @pytest.mark.integration
-async def test_search_uses_gin_index():
+async def test_search_uses_gin_index(integration_db_ready):
     """EXPLAIN 确认搜索走 GIN Index Scan（全文检索索引生效）。"""
-    async for db in get_session():
+    sfx = _sfx()
+    async with get_session() as db:
         author = await _make_user(db, f"{_sfx()}@example.com")
+        cat = await svc_create_category(db, f"cat-{sfx}")
         post = await CommunityService(db).create_post(
             author_id=author.id,
             kind="topic",
             title="GIN 索引验证帖",
             content_markdown="postgres tsvector gin index scan check.",
-            category_id=None,
+            category_id=cat.id,
             status="published",
         )
         # 触发触发器刷新 search_vector
         await db.refresh(post)
 
+        # 小表上优化器默认走 Seq Scan，强制关闭以验证 GIN 索引路径可用
+        await db.execute(text("SET enable_seqscan = off"))
         plan = await db.execute(
             text(
                 "EXPLAIN SELECT id FROM community_posts "
@@ -125,5 +139,9 @@ async def test_search_uses_gin_index():
         )
 
         await db.delete(post)
+        await db.delete(cat)
         await _cleanup_users(db, author.id)
-        break
+
+
+async def svc_create_category(db, slug: str):
+    return await CommunityService(db).create_category(1, slug, "测试版块")

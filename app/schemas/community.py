@@ -1,4 +1,4 @@
-﻿"""社区模块 schema：论坛 / 博客 / 成员 / Feed。"""
+"""社区模块 schema：论坛 / 博客 / 成员 / Feed。"""
 
 from __future__ import annotations
 
@@ -225,6 +225,7 @@ class HideRequest(BaseModel):
 
 # ------------------------------------------------------------------ 博客
 
+
 class BlogSeriesInput(BaseModel):
     title: str
     description: Optional[str] = None
@@ -283,7 +284,7 @@ class FeedStatsOut(BaseModel):
     member_count: int
 
 
-# ------------------------------------------------------------------ ORM → dict 序列化（路由层共享）
+# ------------------------------------------------------- ORM → dict 序列化（路由层共享）
 
 
 def post_to_dict(post) -> Dict[str, Any]:
