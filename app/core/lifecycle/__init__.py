@@ -50,6 +50,7 @@ _SERVICE_REGISTRANT_MODULES: tuple[str, ...] = (
     "app.services.rbac_init",
     "app.services.exception_retention",
     "app.services.token_gc",
+    "app.services.data_retention",
 )
 
 _registrants_loaded: bool = False

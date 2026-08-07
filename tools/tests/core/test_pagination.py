@@ -22,12 +22,26 @@ def test_paginated_response_shape():
         limit=100,
     )
     data = resp.model_dump(mode="json")
-    assert set(data.keys()) == {"items", "total", "skip", "limit"}
+    assert set(data.keys()) == {"items", "total", "skip", "limit", "total_pages"}
     assert data["total"] == 2
+    assert data["total_pages"] == 1
     assert len(data["items"]) == 2
     assert data["items"][0] == {"id": 1, "name": "a"}
 
 
 def test_paginated_response_empty():
     resp = PaginatedResponse[_Item](items=[], total=0, skip=0, limit=100)
-    assert resp.model_dump()["items"] == []
+    dumped = resp.model_dump()
+    assert dumped["items"] == []
+    assert dumped["total_pages"] == 1  # 至少 1 页
+
+
+def test_paginated_response_total_pages_multi():
+    """total=21, limit=20 → total_pages=2"""
+    resp = PaginatedResponse[_Item](
+        items=[_Item(id=1, name="a")],
+        total=21,
+        skip=0,
+        limit=20,
+    )
+    assert resp.total_pages == 2

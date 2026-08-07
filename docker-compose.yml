@@ -5,14 +5,17 @@
 #   3. 访问 http://<host>:9000/docs
 #
 # 说明：
-#   - PostgreSQL 数据持久化在 pgdata 卷
+#   - PostgreSQL（含 zhparser 中文分词）数据持久化在 pgdata 卷
 #   - 启动时自动 alembic upgrade head（DB_AUTO_MIGRATE=true）
 #   - 后端监听容器内 8000，映射宿主 9000（与前端 BFF 默认一致）
 #   - 前端容器通过 cs-net 网络直连 backend:8000（无需暴露公网）
+#   - backup sidecar 每日 03:00 自动全量备份，保留 14 天
 
 services:
   db:
-    image: postgres:16-alpine
+    build:
+      context: .
+      dockerfile: docker/db/Dockerfile
     container_name: cs-backend-db
     restart: unless-stopped
     environment:
@@ -49,12 +52,43 @@ services:
       PASSWORD_RESET_DEFAULT: ${PASSWORD_RESET_DEFAULT:-}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
       REQUIRE_REDIS_FOR_SECURITY: "false"
+      # 全文检索配置：chinese（需 zhparser，已内置于 db 镜像）
+      FTS_CONFIG: ${FTS_CONFIG:-chinese}
       # 可观测性：启用 OTel 时指向 collector（--profile observability 启动）
       OTEL_ENABLED: ${OTEL_ENABLED:-false}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
       OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-cs-web-backend}
     ports:
       - "9000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - cs-net
+
+  # 数据库备份 sidecar：每日 03:00 全量备份，保留 14 天
+  backup:
+    image: postgres:16-alpine
+    container_name: cs-backend-backup
+    restart: unless-stopped
+    environment:
+      DATABASE_HOST: db
+      DATABASE_PORT: "5432"
+      DATABASE_NAME: ${DATABASE_NAME:-domefff}
+      DATABASE_USER: ${DATABASE_USER:-postgres}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+    volumes:
+      - ./tools/scripts/backup_db.sh:/usr/local/bin/backup_db.sh:ro
+      - backups:/backups
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        chmod +x /usr/local/bin/backup_db.sh
+        echo "0 3 * * * /usr/local/bin/backup_db.sh /backups >> /var/log/backup.log 2>&1" > /etc/crontabs/root
+        echo "[backup] cron 已启动，每日 03:00 执行备份"
+        crond -f -l 2
     depends_on:
       db:
         condition: service_healthy
@@ -79,6 +113,7 @@ services:
 
 volumes:
   pgdata:
+  backups:
 
 networks:
   cs-net:

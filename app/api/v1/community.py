@@ -1,4 +1,4 @@
-﻿"""社区 v2 API（公开/用户）：posts / comments / reactions / follows / reports / drafts。"""
+"""社区 v2 API（公开/用户）：posts / comments / reactions / follows / reports / drafts。"""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.exceptions import NotFoundException, ValidationException
 from app.core.request_context import get_client_meta
 from app.database import get_db
@@ -120,7 +121,9 @@ async def list_members(
         conds.append(User.tech_tags.contains([tag]))
     if search:
         # 全文检索：search_vector @@ websearch_to_tsquery（GIN 索引加速）
-        ts_query = func.websearch_to_tsquery(text("'simple'"), search.strip())
+        ts_query = func.websearch_to_tsquery(
+            text(f"'{settings.FTS_CONFIG}'"), search.strip()
+        )
         conds.append(User.search_vector.op("@@")(ts_query))
 
     # 活跃用户需关联发帖数；普通排序可直接查用户

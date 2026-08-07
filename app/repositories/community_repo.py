@@ -10,6 +10,7 @@ from typing import Optional, Sequence
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.timezone import now_utc
 from app.models.blog import BlogSeries
 from app.models.community import (
@@ -115,7 +116,9 @@ class CommunityPostRepository:
             conditions.append(CommunityPost.author_id.in_(following_ids))
         if search and search.strip():
             # 全文检索：search_vector @@ websearch_to_tsquery（GIN 索引加速，AND 语义）
-            ts_query = func.websearch_to_tsquery(text("'simple'"), search.strip())
+            ts_query = func.websearch_to_tsquery(
+                text(f"'{settings.FTS_CONFIG}'"), search.strip()
+            )
             conditions.append(CommunityPost.search_vector.op("@@")(ts_query))
 
         total = int(

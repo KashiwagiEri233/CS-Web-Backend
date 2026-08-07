@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.login_history import LoginHistory
+from app.repositories.base import dml_rowcount
 
 
 class LoginHistoryRepository:
@@ -63,3 +65,10 @@ class LoginHistoryRepository:
         )
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
+
+    async def purge_before(self, before: datetime) -> int:
+        """批量删除早于指定时间的记录，返回删除行数。调用方负责 commit。"""
+        result = await self.db.execute(
+            delete(LoginHistory).where(LoginHistory.created_at < before)
+        )
+        return dml_rowcount(result)

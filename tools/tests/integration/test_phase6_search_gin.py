@@ -5,14 +5,15 @@
 2. 成员搜索（display_name/username）命中/未命中；
 3. EXPLAIN 确认走 GIN Index Scan（全文检索索引生效）。
 
-注意：`pg_catalog.simple` 词典按"整词"切分——中文无分词（"测试用户"是单个
-lexeme，搜"测试"不命中），英文按下划线/符号分隔但整段保留。因此断言一律使用
-精确词（lexeme），不做子串/前缀假设。
+注意：测试环境 FTS_CONFIG=simple（无 zhparser），simple 词典按"整词"切分——
+中文无分词（"测试用户"是单个 lexeme，搜"测试"不命中），英文按下划线/符号分隔
+但整段保留。因此断言一律使用精确词（lexeme），不做子串/前缀假设。
 """
 
 import pytest
 from sqlalchemy import text
 
+from app.core.config import settings
 from app.database import get_session
 from app.models.user import User
 from app.services.community_service import CommunityService
@@ -98,7 +99,7 @@ async def svc_member_list(db, search):
     from sqlalchemy import func, select
     from sqlalchemy.sql import text as _text
 
-    ts_query = func.websearch_to_tsquery(_text("'simple'"), search.strip())
+    ts_query = func.websearch_to_tsquery(_text(f"'{settings.FTS_CONFIG}'"), search.strip())
     stmt = select(User).where(
         User.deleted_at.is_(None),
         User.search_vector.op("@@")(ts_query),
@@ -130,7 +131,9 @@ async def test_search_uses_gin_index(integration_db_ready):
         plan = await db.execute(
             text(
                 "EXPLAIN SELECT id FROM community_posts "
-                "WHERE search_vector @@ websearch_to_tsquery('simple', 'GIN 索引')"
+                "WHERE search_vector @@ websearch_to_tsquery('simple', 'GIN 索引')".replace(
+                    "'simple'", f"'{settings.FTS_CONFIG}'"
+                )
             )
         )
         plan_text = "\n".join(str(r) for r in plan)

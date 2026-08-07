@@ -66,6 +66,16 @@ class Settings(BaseSettings):
     EXCEPTION_LOG_RETENTION_DAYS: int = Field(30, ge=1)
     EXCEPTION_LOG_CLEANUP_INTERVAL_SECONDS: int = Field(86400, ge=0)
 
+    # 数据保留策略（登录历史 / 审计日志）
+    LOGIN_HISTORY_RETENTION_DAYS: int = Field(90, ge=1)
+    LOGIN_HISTORY_CLEANUP_INTERVAL_SECONDS: int = Field(86400, ge=0)
+    AUDIT_LOG_RETENTION_DAYS: int = Field(365, ge=1)
+    AUDIT_LOG_CLEANUP_INTERVAL_SECONDS: int = Field(86400, ge=0)
+
+    # 全文检索配置名：默认 'chinese'（需 zhparser 扩展）；
+    # 未装 zhparser 时设为 'simple' 回退（中文无分词，仅整词匹配）。
+    FTS_CONFIG: str = "chinese"
+
     # 默认管理员（仅在数据库首次初始化、且该用户不存在时创建）
     ADMIN_USERNAME: str = "admin"
     ADMIN_EMAIL: str = "admin@example.com"
