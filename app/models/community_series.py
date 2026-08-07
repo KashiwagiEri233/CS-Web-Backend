@@ -1,6 +1,6 @@
-"""博客系列模型：blog_series（v2 社区博客系列）。
+"""社区系列模型：community_series（v2 社区系列）。
 
-注：旧 ``blog_posts`` / ``blog_likes`` 表已并入 community v2 统一表，
+注：旧 ``community_posts`` / ``community_likes`` 表已并入 community v2 统一表，
 其 ORM 映射于迁移完成后移除（详见 alembic 迁移 c8d9e0f1a2b3 的 Phase 6 说明）。
 """
 
@@ -18,10 +18,10 @@ from app.database import Base
 DateTime = _DateTime(timezone=True)
 
 
-class BlogSeries(Base):
+class CommunitySeries(Base):
     """文章系列：slug 唯一。"""
 
-    __tablename__ = "blog_series"
+    __tablename__ = "community_series"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -33,4 +33,4 @@ class BlogSeries(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
 
     def __repr__(self) -> str:
-        return f"<BlogSeries(id={self.id}, slug='{self.slug}')>"
+        return f"<CommunitySeries(id={self.id}, slug='{self.slug}')>"

@@ -69,7 +69,7 @@ async def _cleanup_users(db, *user_ids: int) -> None:
         try:
             async with db.begin_nested():
                 await db.execute(
-                    text("DELETE FROM blog_series WHERE created_by=:i"), {"i": uid}
+                    text("DELETE FROM community_series WHERE created_by=:i"), {"i": uid}
                 )
         except Exception:
             pass

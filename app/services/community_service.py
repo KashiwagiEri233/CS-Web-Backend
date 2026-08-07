@@ -791,7 +791,7 @@ class CommunityService:
         if series is None:
             raise NotFoundException(
                 message="系列不存在",
-                resource_type="blog_series",
+                resource_type="community_series",
                 resource_id=str(series_id),
             )
         if user_id != series.created_by and not is_admin:

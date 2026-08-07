@@ -2,7 +2,7 @@
 
 > 更新人：3yearsZ
 > 最后更新：2026-08-05（统一 BackDoc 命名；通用条款改为锚点引用根级）
-> 关联：通用工程规范见根 [`RootDoc-EngConv.md`](../../docs/RootDoc-EngConv.md)；扩展约定见 `../AGENTS.md`；项目定位见 `../CLAUDE.md`；架构见 [BackDoc-Arch.md](BackDoc-Arch.md)
+> 关联：通用工程规范见根 [`RootDoc-EngConv.md`](../../docs/RootDoc-EngConv.md)；扩展约定见 `../AGENTS.md`；项目定位见 `../CLAUDE.md`；架构见 [BackDoc-01-Arch.md](BackDoc-01-Arch.md)
 
 本项目的编码规范、目录组织与通用约定。**所有贡献者（含 AI Agent）在写代码前必须先读本文档**。
 
@@ -102,7 +102,7 @@ api (路由)  →  service (业务)  →  repository (数据)  →  model (ORM)
 ### 4.2 后端单一事实源
 
 - **版本号**：唯一定义在 `app/__init__.py` 的 `__version__`；`FastAPI(version=)`、OTel `service.version`、启动日志等一律引用它，升级只改一处。
-- **不硬编码 host:port**：绑定地址由 `run.py --host/--port`（uvicorn）决定，代码/日志**不要写死** `0.0.0.0:8000`——真实地址由 uvicorn 自行打印。
+- **不硬编码 host:port**：绑定地址由 `run.py --host/--port`（uvicorn）决定，代码/日志**不要写死** 端口——`run.py` 默认 `--port 8000`，本地 `Makefile` 显式传 `--port 9000`；容器编排内 `docker-compose.yml` 用 `expose: 8000`。真实地址以 uvicorn 启动日志为准。
 - **错误码**：用 `ErrorCode.*` 常量（见 `../AGENTS.md` 「错误码注册表」），禁止裸字符串。
 - **边界**：`Settings` 里带注释的默认值本身就是单一来源，不算魔法值；本地化、仅 1–2 处的字面量按三次法则可不抽。
 

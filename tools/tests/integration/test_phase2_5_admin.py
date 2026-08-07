@@ -53,7 +53,7 @@ async def test_role_admin_crud_flow(integration_db_ready):
                     name=role_key,
                     display_name="自定义角色",
                     description="测试",
-                    permissions=["forum_topic:hide", "event:create"],
+                    permissions=["community_topic:hide", "event:create"],
                 )
             )
             assert role.display_name == "自定义角色"
@@ -62,7 +62,7 @@ async def test_role_admin_crud_flow(integration_db_ready):
             # 列表含权限名与用户数
             listed = await svc.list_roles_admin()
             item = next(r for r in listed if r["name"] == role_key)
-            assert set(item["permissions"]) == {"forum_topic:hide", "event:create"}
+            assert set(item["permissions"]) == {"community_topic:hide", "event:create"}
             assert item["user_count"] == 0
             assert item["is_system"] is False
 

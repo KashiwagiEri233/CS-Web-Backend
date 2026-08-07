@@ -2,7 +2,7 @@
 
 > 更新人：3yearsZ
 > 最后更新：2026-08-05（统一 BackDoc 命名）
-> 关联：架构见 [BackDoc-Arch.md](BackDoc-Arch.md)；安全见 [BackDoc-Sec.md](BackDoc-Sec.md)
+> 关联：架构见 [BackDoc-01-Arch.md](BackDoc-01-Arch.md)；安全见 [BackDoc-02-Sec.md](BackDoc-02-Sec.md)
 > 本文件合并了原 `modules/auth.md`、`modules/users.md`、`modules/rbac.md`、`modules/audit.md`，
 > 统一阐述与具体业务实体绑定的四个核心模块。
 
@@ -132,7 +132,7 @@ Phase 1 新增（全部登记 `.env.example`）：
 | POST | `/profile/avatar/preset` | 活跃用户 | 预设头像（preset_id 1-6） |
 | POST | `/profile/avatar/upload` | 活跃用户 | 上传头像（≤2MB，JPEG/PNG/WebP/GIF，魔数校验） |
 | GET | `/avatars/{filename}` | 公开 | 头像静态服务（文件名严格校验防路径遍历） |
-| GET | `/users/{user_id}` | 公开 | 用户公开主页 + 论坛/考试统计 |
+| GET | `/users/{user_id}` | 公开 | 用户公开主页 + 社区/考试统计 |
 
 ### 安全
 

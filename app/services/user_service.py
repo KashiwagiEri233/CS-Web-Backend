@@ -4,7 +4,7 @@
 - 本服务管用户实体增删改查与字段校验。
 - 改密时在同一事务内撤销 refresh（组合 Auth/Refresh 仓储，一次 commit）。
 - 删除为软删除（deleted_at），列表默认不返回已删用户。
-- 个人资料：profile 读写、预设/上传头像、公开主页（含论坛/考试统计）。
+- 个人资料：profile 读写、预设/上传头像、公开主页（含社区/考试统计）。
 """
 
 from __future__ import annotations

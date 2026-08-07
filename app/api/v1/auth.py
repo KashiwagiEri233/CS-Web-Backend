@@ -270,6 +270,16 @@ async def delete_session(
     return {"ok": True}
 
 
+@router.delete("/sessions/all")
+async def revoke_all_sessions(
+    auth_service: AuthService = Depends(get_auth_service),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """一键登出全部设备：撤销当前用户所有 refresh token（含当前设备）。"""
+    revoked = await auth_service.revoke_all_user_tokens(current_user.id)
+    return {"ok": True, "revoked": revoked}
+
+
 @router.post("/refresh", response_model=TokenPair)
 async def refresh_token(
     body: RefreshRequest,

@@ -24,7 +24,7 @@ from app.models.event import (
     EventCheckin,
     ActivityParticipation,
 )
-from app.models.blog import BlogSeries
+from app.models.community_series import CommunitySeries
 from app.models.community import (
     CommunityCategory,
     CommunityPost,
@@ -66,7 +66,7 @@ __all__ = [
     "EventRegistration",
     "EventCheckin",
     "ActivityParticipation",
-    "BlogSeries",
+    "CommunitySeries",
     "CommunityCategory",
     "CommunityPost",
     "CommunityComment",

@@ -2,7 +2,9 @@
 
 > 更新人：3yearsZ
 > 最后更新：2026-08-05（统一 BackDoc 命名）
-> 关联：编码规范见 [BackDoc-Conv.md](BackDoc-Conv.md)；扩展约定见 `../AGENTS.md`；项目定位见 `../CLAUDE.md`；安全与权限见 [BackDoc-Sec.md](BackDoc-Sec.md)；基础设施见 [BackDoc-Infra.md](BackDoc-Infra.md)；业务模块见 [BackDoc-Mods.md](BackDoc-Mods.md)；入职与工程约定见根级 `docs/Onboarding.md`（附录 B）
+> 关联：编码规范见 [BackDoc-Conv.md](BackDoc-Conv.md)；扩展约定见 `../AGENTS.md`；项目定位见 `../CLAUDE.md`；安全与权限见 [BackDoc-02-Sec.md](BackDoc-02-Sec.md)；基础设施见 [BackDoc-Infra.md](BackDoc-Infra.md)；业务模块见 [BackDoc-Mods.md](BackDoc-Mods.md)；入职与工程约定见根级 `docs/Onboarding.md`（附录 B）
+
+> **文档定位**：后端系统设计与模块关系权威文档（reference）。Source of truth：分层架构、横切关注点、请求生命周期、目录职责矩阵、关键不变量、扩展指引。前端 BFF 架构与 API 契约见 `CS-Web-Frontend/tools/docs/FrontDoc-01-Arch.md`。
 
 本项目（企业级 FastAPI RBAC 权限管理脚手架）的系统设计与模块关系文档。
 编码规范见 `BackDoc-Conv.md`，扩展约定见 `../AGENTS.md`，项目定位见 `../CLAUDE.md`。
@@ -96,15 +98,15 @@ CORS → ExceptionHandler → SecurityHeaders → Logging → Metrics → RateLi
 
 ### 4.2 异常处理（`app/core/exceptions/`）
 
-用 `BaseAppException` 子类表达业务失败，由全局处理器统一映射状态码与响应体；未处理异常由最外层 `ExceptionHandlerMiddleware` 兜底。错误码集中在 `ErrorCode` 注册表。详见 **`BackDoc-Sec.md`**「异常处理」节。
+用 `BaseAppException` 子类表达业务失败，由全局处理器统一映射状态码与响应体；未处理异常由最外层 `ExceptionHandlerMiddleware` 兜底。错误码集中在 `ErrorCode` 注册表。详见 **`BackDoc-02-Sec.md`**「异常处理」节。
 
 ### 4.3 认证与权限（`app/middleware/rbac.py` + `app/core/security.py`）
 
-鉴权用**依赖注入**（`Depends(require_permission("res","act"))`），**禁止用装饰器**；`AUTH_ENABLED=False` 时全局放行为超级用户（仅本地）。详见 **`BackDoc-Sec.md`**「鉴权与安全基础设施」节。
+鉴权用**依赖注入**（`Depends(require_permission("res","act"))`），**禁止用装饰器**；`AUTH_ENABLED=False` 时全局放行为超级用户（仅本地）。详见 **`BackDoc-02-Sec.md`**「鉴权与安全基础设施」节。
 
 ### 4.4 限流与缓存
 
-Redis 是**增强项**，未配置/故障时自动降级内存；降级策略由 `RATE_LIMIT_FALLBACK` / `CACHE_FALLBACK` 控制。限流详见 **`BackDoc-Sec.md`**「请求限流」节，缓存详见 **`BackDoc-Infra.md`**「缓存」节。
+Redis 是**增强项**，未配置/故障时自动降级内存；降级策略由 `RATE_LIMIT_FALLBACK` / `CACHE_FALLBACK` 控制。限流详见 **`BackDoc-02-Sec.md`**「请求限流」节，缓存详见 **`BackDoc-Infra.md`**「缓存」节。
 
 ### 4.5 日志
 
@@ -239,4 +241,4 @@ core/security, middleware/rbac
 - `../AGENTS.md` — AI Agent 扩展约定、中心注册点、Alembic 迁移管理、不变量。
 - `BackDoc-Conv.md` — 编码规范、命名、质量红线、安全/错误处理约定。
 - `../tools/tests/README.md` — 测试目录组织与运行方式。
-- `README.md` — 文档索引与分类约定；详解见 `BackDoc-Sec.md`、`BackDoc-Infra.md`、`BackDoc-Mods.md`。
+- `README.md` — 文档索引与分类约定；详解见 `BackDoc-02-Sec.md`、`BackDoc-Infra.md`、`BackDoc-Mods.md`。

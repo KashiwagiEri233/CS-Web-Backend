@@ -1,4 +1,4 @@
-"""社区模块 schema：论坛 / 博客 / 成员 / Feed。"""
+"""社区模块 schema：社区 / 社区 / 成员 / Feed。"""
 
 from __future__ import annotations
 
@@ -9,9 +9,9 @@ from pydantic import BaseModel, ConfigDict, field_validator
 
 from app.schemas.base import TZModel
 
-# ------------------------------------------------------------------ 论坛
+# ------------------------------------------------------------------ 社区
 
-FORUM_LIMITS = {
+COMMUNITY_LIMITS = {
     "TITLE_MAX": 100,
     "TOPIC_CONTENT_MAX": 10000,
     "REPLY_CONTENT_MAX": 5000,
@@ -49,9 +49,9 @@ class CategoryInput(BaseModel):
         v = v.strip()
         if not v:
             raise ValueError("版块名称不能为空")
-        if len(v) > FORUM_LIMITS["CATEGORY_NAME_MAX"]:
+        if len(v) > COMMUNITY_LIMITS["CATEGORY_NAME_MAX"]:
             raise ValueError(
-                f"版块名称不能超过 {FORUM_LIMITS['CATEGORY_NAME_MAX']} 字符"
+                f"版块名称不能超过 {COMMUNITY_LIMITS['CATEGORY_NAME_MAX']} 字符"
             )
         return v
 
@@ -82,8 +82,8 @@ class TopicInput(BaseModel):
         v = v.strip()
         if not v:
             raise ValueError("标题不能为空")
-        if len(v) > FORUM_LIMITS["TITLE_MAX"]:
-            raise ValueError(f"标题不能超过 {FORUM_LIMITS['TITLE_MAX']} 字符")
+        if len(v) > COMMUNITY_LIMITS["TITLE_MAX"]:
+            raise ValueError(f"标题不能超过 {COMMUNITY_LIMITS['TITLE_MAX']} 字符")
         return v
 
     @field_validator("content_markdown")
@@ -92,8 +92,8 @@ class TopicInput(BaseModel):
         v = v.strip()
         if not v:
             raise ValueError("内容不能为空")
-        if len(v) > FORUM_LIMITS["TOPIC_CONTENT_MAX"]:
-            raise ValueError(f"内容不能超过 {FORUM_LIMITS['TOPIC_CONTENT_MAX']} 字符")
+        if len(v) > COMMUNITY_LIMITS["TOPIC_CONTENT_MAX"]:
+            raise ValueError(f"内容不能超过 {COMMUNITY_LIMITS['TOPIC_CONTENT_MAX']} 字符")
         return v
 
 
@@ -109,8 +109,8 @@ class TopicUpdate(BaseModel):
             v = v.strip()
             if not v:
                 raise ValueError("标题不能为空")
-            if len(v) > FORUM_LIMITS["TITLE_MAX"]:
-                raise ValueError(f"标题不能超过 {FORUM_LIMITS['TITLE_MAX']} 字符")
+            if len(v) > COMMUNITY_LIMITS["TITLE_MAX"]:
+                raise ValueError(f"标题不能超过 {COMMUNITY_LIMITS['TITLE_MAX']} 字符")
         return v
 
     @field_validator("content_markdown")
@@ -120,9 +120,9 @@ class TopicUpdate(BaseModel):
             v = v.strip()
             if not v:
                 raise ValueError("内容不能为空")
-            if len(v) > FORUM_LIMITS["TOPIC_CONTENT_MAX"]:
+            if len(v) > COMMUNITY_LIMITS["TOPIC_CONTENT_MAX"]:
                 raise ValueError(
-                    f"内容不能超过 {FORUM_LIMITS['TOPIC_CONTENT_MAX']} 字符"
+                    f"内容不能超过 {COMMUNITY_LIMITS['TOPIC_CONTENT_MAX']} 字符"
                 )
         return v
 
@@ -180,8 +180,8 @@ class ReplyInput(BaseModel):
         v = v.strip()
         if not v:
             raise ValueError("内容不能为空")
-        if len(v) > FORUM_LIMITS["REPLY_CONTENT_MAX"]:
-            raise ValueError(f"内容不能超过 {FORUM_LIMITS['REPLY_CONTENT_MAX']} 字符")
+        if len(v) > COMMUNITY_LIMITS["REPLY_CONTENT_MAX"]:
+            raise ValueError(f"内容不能超过 {COMMUNITY_LIMITS['REPLY_CONTENT_MAX']} 字符")
         return v
 
 
@@ -223,10 +223,10 @@ class HideRequest(BaseModel):
     reason: Optional[str] = None
 
 
-# ------------------------------------------------------------------ 博客
+# ------------------------------------------------------------------ 社区
 
 
-class BlogSeriesInput(BaseModel):
+class CommunitySeriesInput(BaseModel):
     title: str
     description: Optional[str] = None
     model_config = ConfigDict(str_strip_whitespace=True)
@@ -240,7 +240,7 @@ class BlogSeriesInput(BaseModel):
         return v
 
 
-class BlogSeriesOut(TZModel):
+class CommunitySeriesOut(TZModel):
     id: int
     title: str
     description: Optional[str] = None

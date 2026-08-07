@@ -1,4 +1,4 @@
-"""Phase 6 集成测试：论坛/成员全文检索（GIN + tsvector）。
+"""Phase 6 集成测试：社区/成员全文检索（GIN + tsvector）。
 
 覆盖：
 1. 帖子搜索命中/未命中/多词 AND 语义；

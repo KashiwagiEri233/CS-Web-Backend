@@ -1,16 +1,16 @@
-"""社区 v2 统一模型（上游重构：论坛 + 博客合并为 community_* 系列）。
+"""社区 v2 统一模型（上游重构：社区 + 社区合并为 community_* 系列）。
 
-- community_categories：统一分类（论坛版块 + 博客分类）
+- community_categories：统一分类（社区版块 + 社区分类）
 - community_posts：统一内容（kind = topic | post）
-- community_comments：统一评论（替代 forum_replies）
+- community_comments：统一评论（替代 community_replies）
 - community_reactions：多态点赞（target_type = post | comment）
 - community_favorites：多态收藏
 - community_post_views / community_mentions
 - community_follows：用户关注
 - community_reports：举报
-- blog_series：文章系列（保留）
+- community_series：文章系列（保留）
 
-旧表（forum_* / blog_posts / blog_likes）保留在库中作数据迁移源，不再建模使用。
+旧表（community_* / community_posts / community_likes）保留在库中作数据迁移源，不再建模使用。
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ DateTime = _DateTime(timezone=True)
 
 
 class CommunityCategory(Base):
-    """统一分类：论坛版块 + 博客分类。"""
+    """统一分类：社区版块 + 社区分类。"""
 
     __tablename__ = "community_categories"
 
@@ -103,13 +103,13 @@ class CommunityPost(Base):
     )
     hidden_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     hidden_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    # 博客字段（kind = post 时使用）
+    # 社区字段（kind = post 时使用）
     slug: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, unique=True)
     excerpt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     cover_image: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
     tags: Mapped[Optional[list]] = mapped_column(JSONDict, nullable=True, default=list)
     series_id: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey("blog_series.id", ondelete="SET NULL"), nullable=True
+        Integer, ForeignKey("community_series.id", ondelete="SET NULL"), nullable=True
     )
     series_order: Mapped[Optional[int]] = mapped_column(Integer, default=0)
     published_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
@@ -131,7 +131,7 @@ class CommunityPost(Base):
 
 
 class CommunityComment(Base):
-    """统一评论（替代论坛回复）。"""
+    """统一评论（替代社区回复）。"""
 
     __tablename__ = "community_comments"
 

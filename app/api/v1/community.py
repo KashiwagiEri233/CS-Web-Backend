@@ -26,14 +26,14 @@ from app.utils.image_validate import is_valid_image_mime
 
 router = APIRouter()
 
-FORUM_IMAGE_MAX_SIZE = 5 * 1024 * 1024
-FORUM_IMAGE_ALLOWED_MIME = {"image/jpeg", "image/png", "image/webp", "image/gif"}
-FORUM_IMAGE_ALLOWED_EXT = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
-FORUM_IMAGE_FILENAME_RE = re.compile(
+COMMUNITY_IMAGE_MAX_SIZE = 5 * 1024 * 1024
+COMMUNITY_IMAGE_ALLOWED_MIME = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+COMMUNITY_IMAGE_ALLOWED_EXT = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+COMMUNITY_IMAGE_FILENAME_RE = re.compile(
     r"^[a-f0-9-]{36}-\d+\.(jpg|jpeg|png|webp|gif)$", re.IGNORECASE
 )
 
-_IMAGES_DIR = Path("data") / "forum-images"
+_IMAGES_DIR = Path("data") / "community-images"
 
 POST_KINDS = {"topic", "post"}
 
@@ -149,7 +149,7 @@ async def list_members(
 # ------------------------------------------------------------------ 分类
 
 
-@router.get("/forum/categories")
+@router.get("/categories")
 async def list_categories(
     service: CommunityService = Depends(get_community_service),
 ) -> Any:
@@ -503,14 +503,14 @@ async def submit_report(
 # ------------------------------------------------------------------ 系列
 
 
-@router.get("/blog/series")
+@router.get("/series")
 async def list_series(
     service: CommunityService = Depends(get_community_service),
 ) -> Any:
     return await service.list_series()
 
 
-@router.post("/blog/series", response_model=dict, status_code=201)
+@router.post("/series", response_model=dict, status_code=201)
 async def create_series(
     body: dict,
     service: CommunityService = Depends(get_community_service),
@@ -527,7 +527,7 @@ async def create_series(
 # ------------------------------------------------------------------ 用户数据
 
 
-@router.get("/forum/users/{user_id}/topics", response_model=PaginatedResponse[dict])
+@router.get("/users/{user_id}/topics", response_model=PaginatedResponse[dict])
 async def list_user_topics(
     user_id: int,
     pagination: PaginationParams = Depends(),
@@ -544,7 +544,7 @@ async def list_user_topics(
     )
 
 
-@router.get("/forum/users/{user_id}/replies", response_model=PaginatedResponse[dict])
+@router.get("/users/{user_id}/replies", response_model=PaginatedResponse[dict])
 async def list_user_replies(
     user_id: int,
     pagination: PaginationParams = Depends(),
@@ -565,24 +565,24 @@ async def list_user_replies(
 # ------------------------------------------------------------------ 上传
 
 
-@router.post("/forum/upload")
-async def upload_forum_image(
+@router.post("/upload")
+async def upload_community_image(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     content = await file.read()
-    if len(content) > FORUM_IMAGE_MAX_SIZE:
+    if len(content) > COMMUNITY_IMAGE_MAX_SIZE:
         raise ValidationException(
             message="文件大小不能超过 5MB", error_code="FILE_TOO_LARGE"
         )
     mime = file.content_type or ""
-    if mime not in FORUM_IMAGE_ALLOWED_MIME:
+    if mime not in COMMUNITY_IMAGE_ALLOWED_MIME:
         raise ValidationException(
             message="仅支持 JPEG / PNG / WebP / GIF 格式",
             error_code="INVALID_FILE_TYPE",
         )
     ext = Path(file.filename or "").suffix.lower()
-    if ext not in FORUM_IMAGE_ALLOWED_EXT:
+    if ext not in COMMUNITY_IMAGE_ALLOWED_EXT:
         raise ValidationException(
             message="文件扩展名不被允许", error_code="INVALID_FILE_TYPE"
         )
@@ -600,19 +600,19 @@ async def upload_forum_image(
         raise ValidationException(
             message="图片保存失败", error_code="FILE_SAVE_FAILED"
         ) from exc
-    return {"url": f"/api/community/forum/images/{filename}"}
+    return {"url": f"/api/community/community/images/{filename}"}
 
 
-@router.get("/forum/images/{filename}")
-async def serve_forum_image(filename: str) -> Any:
-    if not FORUM_IMAGE_FILENAME_RE.match(filename):
+@router.get("/images/{filename}")
+async def serve_community_image(filename: str) -> Any:
+    if not COMMUNITY_IMAGE_FILENAME_RE.match(filename):
         raise NotFoundException(
-            message="图片不存在", resource_type="forum_image", resource_id=filename
+            message="图片不存在", resource_type="community_image", resource_id=filename
         )
     path = _IMAGES_DIR / filename
     if not path.is_file():
         raise NotFoundException(
-            message="图片不存在", resource_type="forum_image", resource_id=filename
+            message="图片不存在", resource_type="community_image", resource_id=filename
         )
     mime_map = {
         ".jpg": "image/jpeg",

@@ -3,7 +3,7 @@
 > 计算机社团官网后端 — FastAPI + PostgreSQL
 >
 > 由原 Next.js 全栈单体（CS-Web-Frontend）按模块分离而来：前端降级为「UI + BFF 薄转发」，
-> 认证、数据、业务逻辑全部由本仓库接管。分离计划与 ADR 见根级 `项目演变历史.md` 的「前后端分离迁移」一节。
+> 认证、数据、业务逻辑全部由本仓库接管。分离计划与 ADR 见 `docs/项目演变历史.md` 的「前后端分离迁移」一节。
 
 ## 技术栈
 
@@ -30,7 +30,8 @@ alembic upgrade head
 
 # 4. 启动（--env 1 开发热重载 / --prod 生产 4 workers）
 python run.py --env 1
-# 或直接：uvicorn app.main:app --reload --port 9000
+# 或直接（uvicorn 默认 :8000；本地联调端口见仓库根 Makefile 的 BACKEND_PORT=9000）：
+uvicorn app.main:app --reload
 ```
 
 | --env | 配置文件 | 说明 |
@@ -56,7 +57,7 @@ python run.py --env 1
 | 入社申请 | 游客+登录提交、管理员审批（→ 通知） | `/join` `/admin/join` |
 | 管理员 | 用户管理（禁用/启封/重置密码，含 SELF/ROOT/LAST_ADMIN 保护）、角色/权限/操作审计、密码重置审批 | `/admin/*` |
 | 活动 | CRUD + 筛选、报名（限额/去重）、签到核销、自动归档、批量/统计、设置 | `/events` |
-| 社区 v2 | 统一内容（topic/post 一表）、评论/楼中楼、多态点赞收藏、浏览去重、@提及、审核（隐藏/恢复/置顶/加精/硬删）、关注流、举报处理、博客系列、草稿、上传、搜索（ILIKE 降级，GIN 优化见 Phase 6） | `/community/*` |
+| 社区 v2 | 统一内容（topic/post 一表）、评论/楼中楼、多态点赞收藏、浏览去重、@提及、审核（隐藏/恢复/置顶/加精/硬删）、关注流、举报处理、社区系列、草稿、上传、搜索（ILIKE 降级，GIN 优化见 Phase 6） | `/community/*` |
 | 工具集 | 考试（组卷/自动判分/排名）、资源（提交/审核/上传）、任务（认领限额/审核 + 积分联动）、积分（流水/排行榜/7 级等级）、Auxilio 学习助手（薄弱标签→资源推荐）、组件注册表（item/variants/guide） | `/tools/*` `/admin/tools/*` |
 | 系统 | 健康检查、异常日志、RBAC（角色-权限）、审计日志 | `/health` `/exceptions` `/admin/*` |
 
@@ -91,7 +92,7 @@ uv run mypy app
 # 单元测试（268 个，本机即可全跑）
 uv run python -m pytest -q --no-cov -m "not integration and not queue_integration"
 
-# PG 集成测试（需 Linux + PostgreSQL，验证流程见 tools/docs/BackDoc-MigV.md）
+# PG 集成测试（需 Linux + PostgreSQL，验证流程见 tools/docs/BackDoc-Infra.md §六 迁移验证）
 uv run python -m pytest tools/tests/integration -v --no-cov
 ```
 
@@ -114,13 +115,13 @@ app/
 └── main.py            # 应用入口（lifespan + 中间件）
 alembic/               # 迁移（单一 head 链）
 tools/tests/           # 单元测试 + integration/（PG 集成）
-tools/docs/            # 验证指南（BackDoc-MigV.md）等
+tools/docs/            # 验证指南（BackDoc-Infra.md §六 迁移验证）等
 ```
 
 ## 参考文档
 
 | 文档 | 内容 |
 |---|---|
-| `tools/docs/BackDoc-MigV.md` | Linux/PG 环境验证指引（各 Phase 集成测试、2FA/密码兼容检查清单） |
+| `tools/docs/BackDoc-Infra.md §六 迁移验证` | Linux/PG 环境验证指引（各 Phase 集成测试、2FA/密码兼容检查清单） |
 | `CLAUDE.md` / `AGENTS.md` | 项目定位、扩展约定、Alembic 管理、不变量 |
 | `tools/docs/BackDoc-Conv.md` | 编码规范与质量红线 |

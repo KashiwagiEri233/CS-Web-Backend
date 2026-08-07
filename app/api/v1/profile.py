@@ -132,7 +132,7 @@ async def get_public_user(
     user_id: int,
     user_service: UserService = Depends(get_user_service),
 ) -> Any:
-    """用户公开主页（无需登录）：公开资料 + 论坛/考试统计。"""
+    """用户公开主页（无需登录）：公开资料 + 社区/考试统计。"""
     profile = await user_service.get_public_profile(user_id)
     if profile is None:
         raise NotFoundException(

@@ -128,7 +128,7 @@ class PublicUserOut(TZModel):
 
 
 class PublicUserProfileResponse(TZModel):
-    """GET /users/{id} 响应：公开资料 + 论坛/考试统计。"""
+    """GET /users/{id} 响应：公开资料 + 社区/考试统计。"""
 
     user: PublicUserOut
     stats: dict = {}

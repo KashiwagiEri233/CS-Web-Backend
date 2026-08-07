@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.timezone import now_utc
-from app.models.blog import BlogSeries
+from app.models.community_series import CommunitySeries
 from app.models.community import (
     CommunityCategory,
     CommunityComment,
@@ -596,21 +596,21 @@ class CommunitySeriesRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def list_all(self) -> list[BlogSeries]:
-        stmt = select(BlogSeries).order_by(BlogSeries.created_at.desc())
+    async def list_all(self) -> list[CommunitySeries]:
+        stmt = select(CommunitySeries).order_by(CommunitySeries.created_at.desc())
         rows = await self.db.execute(stmt)
         return list(rows.scalars().all())
 
-    async def get_by_id(self, series_id: int) -> Optional[BlogSeries]:
-        return await self.db.get(BlogSeries, series_id)
+    async def get_by_id(self, series_id: int) -> Optional[CommunitySeries]:
+        return await self.db.get(CommunitySeries, series_id)
 
     async def slug_exists(self, slug: str) -> bool:
-        stmt = select(BlogSeries.id).where(BlogSeries.slug == slug).limit(1)
+        stmt = select(CommunitySeries.id).where(CommunitySeries.slug == slug).limit(1)
         rows = await self.db.execute(stmt)
         return rows.scalar_one_or_none() is not None
 
-    async def create(self, data: dict) -> BlogSeries:
-        obj = BlogSeries(**data)
+    async def create(self, data: dict) -> CommunitySeries:
+        obj = CommunitySeries(**data)
         self.db.add(obj)
         await self.db.flush()
         return obj

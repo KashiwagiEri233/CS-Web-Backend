@@ -1,4 +1,4 @@
-"""社区 v2 管理 API：审核（posts/comments）+ 分类 + 举报处理 + 博客管理。"""
+"""社区 v2 管理 API：审核（posts/comments）+ 分类 + 举报处理 + 社区管理。"""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ router = APIRouter()
 # ------------------------------------------------------------------ 内容审核
 
 
-@router.get("/forum/topics")
+@router.get("/topics")
 async def admin_list_posts(
     kind: Optional[str] = None,
     status: Optional[str] = None,
@@ -27,7 +27,7 @@ async def admin_list_posts(
     skip: int = 0,
     limit: int = 50,
     service: CommunityService = Depends(get_community_service),
-    current_user: User = Depends(require_permission("forum", "read")),
+    current_user: User = Depends(require_permission("community", "read")),
 ) -> Any:
     """内容列表（管理视图：published + hidden，排除 deleted）。"""
     posts, total = await service.list_posts(
@@ -42,110 +42,110 @@ async def admin_list_posts(
     return {"items": [post_to_dict(p) for p in posts], "total": total}
 
 
-@router.put("/forum/topics/{post_id}")
+@router.put("/topics/{post_id}")
 async def admin_update_post(
     post_id: int,
     body: dict,
     service: CommunityService = Depends(get_community_service),
-    current_user: User = Depends(require_permission("forum", "update")),
+    current_user: User = Depends(require_permission("community", "update")),
 ) -> Any:
     post = await service.update_post(current_user.id, post_id, body, is_admin=True)
     return post_to_dict(post)
 
 
-@router.delete("/forum/topics/{post_id}")
+@router.delete("/topics/{post_id}")
 async def admin_hard_delete_post(
     post_id: int,
     service: CommunityService = Depends(get_community_service),
-    current_user: User = Depends(require_permission("forum", "delete")),
+    current_user: User = Depends(require_permission("community", "delete")),
 ) -> Any:
     await service.hard_delete_post(current_user.id, post_id)
     return {"ok": True}
 
 
-@router.post("/forum/topics/{post_id}/hide")
+@router.post("/topics/{post_id}/hide")
 async def hide_post(
     post_id: int,
     body: Optional[dict] = None,
     service: CommunityService = Depends(get_community_service),
-    current_user: User = Depends(require_permission("forum", "hide")),
+    current_user: User = Depends(require_permission("community", "hide")),
 ) -> Any:
     reason = (body or {}).get("reason")
     await service.hide_post(current_user.id, post_id, reason)
     return {"ok": True}
 
 
-@router.post("/forum/topics/{post_id}/restore")
+@router.post("/topics/{post_id}/restore")
 async def restore_post(
     post_id: int,
     service: CommunityService = Depends(get_community_service),
-    current_user: User = Depends(require_permission("forum", "restore")),
+    current_user: User = Depends(require_permission("community", "restore")),
 ) -> Any:
     await service.restore_post(current_user.id, post_id)
     return {"ok": True}
 
 
-@router.post("/forum/topics/{post_id}/pin")
+@router.post("/topics/{post_id}/pin")
 async def pin_post(
     post_id: int,
     service: CommunityService = Depends(get_community_service),
-    current_user: User = Depends(require_permission("forum", "pin")),
+    current_user: User = Depends(require_permission("community", "pin")),
 ) -> Any:
     post = await service.get_post(post_id)
     await service.set_post_pinned(current_user.id, post_id, not post.is_pinned)
     return {"ok": True}
 
 
-@router.post("/forum/topics/{post_id}/feature")
+@router.post("/topics/{post_id}/feature")
 async def feature_post(
     post_id: int,
     service: CommunityService = Depends(get_community_service),
-    current_user: User = Depends(require_permission("forum", "feature")),
+    current_user: User = Depends(require_permission("community", "feature")),
 ) -> Any:
     post = await service.get_post(post_id)
     await service.set_post_featured(current_user.id, post_id, not post.is_featured)
     return {"ok": True}
 
 
-@router.put("/forum/replies/{comment_id}")
+@router.put("/replies/{comment_id}")
 async def admin_update_comment(
     comment_id: int,
     body: dict,
     service: CommunityService = Depends(get_community_service),
-    current_user: User = Depends(require_permission("forum", "update")),
+    current_user: User = Depends(require_permission("community", "update")),
 ) -> Any:
     content = body.get("contentMarkdown", body.get("content_markdown", ""))
     comment = await service.update_comment(current_user.id, True, comment_id, content)
     return {"id": comment.id, "content_markdown": comment.content_markdown}
 
 
-@router.delete("/forum/replies/{comment_id}")
+@router.delete("/replies/{comment_id}")
 async def admin_hard_delete_comment(
     comment_id: int,
     service: CommunityService = Depends(get_community_service),
-    current_user: User = Depends(require_permission("forum", "delete")),
+    current_user: User = Depends(require_permission("community", "delete")),
 ) -> Any:
     await service.hard_delete_comment(current_user.id, comment_id)
     return {"ok": True}
 
 
-@router.post("/forum/replies/{comment_id}/hide")
+@router.post("/replies/{comment_id}/hide")
 async def hide_comment(
     comment_id: int,
     body: Optional[dict] = None,
     service: CommunityService = Depends(get_community_service),
-    current_user: User = Depends(require_permission("forum", "hide")),
+    current_user: User = Depends(require_permission("community", "hide")),
 ) -> Any:
     reason = (body or {}).get("reason")
     await service.hide_comment(current_user.id, comment_id, reason)
     return {"ok": True}
 
 
-@router.post("/forum/replies/{comment_id}/restore")
+@router.post("/replies/{comment_id}/restore")
 async def restore_comment(
     comment_id: int,
     service: CommunityService = Depends(get_community_service),
-    current_user: User = Depends(require_permission("forum", "restore")),
+    current_user: User = Depends(require_permission("community", "restore")),
 ) -> Any:
     await service.restore_comment(current_user.id, comment_id)
     return {"ok": True}
@@ -154,19 +154,19 @@ async def restore_comment(
 # ------------------------------------------------------------------ 分类管理
 
 
-@router.get("/forum/categories")
+@router.get("/categories")
 async def admin_list_categories(
     service: CommunityService = Depends(get_community_service),
-    current_user: User = Depends(require_permission("forum", "read")),
+    current_user: User = Depends(require_permission("community", "read")),
 ) -> Any:
     return await service.list_categories()
 
 
-@router.post("/forum/categories", response_model=dict, status_code=201)
+@router.post("/categories", response_model=dict, status_code=201)
 async def create_category(
     body: dict,
     service: CommunityService = Depends(get_community_service),
-    current_user: User = Depends(require_permission("forum", "category_create")),
+    current_user: User = Depends(require_permission("community", "category_create")),
 ) -> Any:
     return await service.create_category(
         current_user.id,
@@ -178,12 +178,12 @@ async def create_category(
     )
 
 
-@router.put("/forum/categories/{category_id}", response_model=dict)
+@router.put("/categories/{category_id}", response_model=dict)
 async def update_category(
     category_id: int,
     body: dict,
     service: CommunityService = Depends(get_community_service),
-    current_user: User = Depends(require_permission("forum", "category_update")),
+    current_user: User = Depends(require_permission("community", "category_update")),
 ) -> Any:
     return await service.update_category(
         current_user.id,
@@ -196,11 +196,11 @@ async def update_category(
     )
 
 
-@router.delete("/forum/categories/{category_id}")
+@router.delete("/categories/{category_id}")
 async def delete_category(
     category_id: int,
     service: CommunityService = Depends(get_community_service),
-    current_user: User = Depends(require_permission("forum", "category_delete")),
+    current_user: User = Depends(require_permission("community", "category_delete")),
 ) -> Any:
     await service.delete_category(current_user.id, category_id)
     return {"ok": True}
@@ -215,7 +215,7 @@ async def list_reports(
     skip: int = 0,
     limit: int = 20,
     service: CommunityService = Depends(get_community_service),
-    current_user: User = Depends(require_permission("forum", "read")),
+    current_user: User = Depends(require_permission("community", "read")),
 ) -> Any:
     reports, total = await service.list_reports(status=status, skip=skip, limit=limit)
     return {
@@ -242,7 +242,7 @@ async def list_reports(
 async def resolve_report(
     report_id: int,
     service: CommunityService = Depends(get_community_service),
-    current_user: User = Depends(require_permission("forum", "read")),
+    current_user: User = Depends(require_permission("community", "read")),
 ) -> Any:
     await service.resolve_report(current_user.id, report_id, "resolved")
     return {"ok": True}
@@ -252,22 +252,22 @@ async def resolve_report(
 async def dismiss_report(
     report_id: int,
     service: CommunityService = Depends(get_community_service),
-    current_user: User = Depends(require_permission("forum", "read")),
+    current_user: User = Depends(require_permission("community", "read")),
 ) -> Any:
     await service.resolve_report(current_user.id, report_id, "dismissed")
     return {"ok": True}
 
 
-# ------------------------------------------------------------------ 博客管理
+# ------------------------------------------------------------------ 社区管理
 
 
-@router.post("/blog")
-async def admin_blog_action(
+@router.post("/community")
+async def admin_community_action(
     request: Request,
     service: CommunityService = Depends(get_community_service),
-    current_user: User = Depends(require_permission("blog", "update")),
+    current_user: User = Depends(require_permission("community", "update")),
 ) -> Any:
-    """博客管理操作：{sub: publish|archive|delete, post_id}。"""
+    """社区管理操作：{sub: publish|archive|delete, post_id}。"""
     body = await request.json()
     sub = body.get("sub")
     post_id = body.get("post_id")
