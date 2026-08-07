@@ -7,8 +7,8 @@
 FROM python:3.13-slim AS builder
 
 # 中国境内镜像源（可通过 --build-arg 覆盖）
-ARG APT_MIRROR=https://mirrors.aliyun.com/debian
-ARG APT_SECURITY_MIRROR=https://mirrors.aliyun.com/debian-security
+ARG APT_MIRROR=http://mirrors.aliyun.com/debian
+ARG APT_SECURITY_MIRROR=http://mirrors.aliyun.com/debian-security
 ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 
 # 替换 Debian 软件源；当前阶段后续如需 apt 安装也会使用国内镜像
@@ -36,8 +36,8 @@ RUN python -m venv /opt/venv \
 # ---------------------------------------------------------------------------
 FROM python:3.13-slim AS runtime
 
-ARG APT_MIRROR=https://mirrors.aliyun.com/debian
-ARG APT_SECURITY_MIRROR=https://mirrors.aliyun.com/debian-security
+ARG APT_MIRROR=http://mirrors.aliyun.com/debian
+ARG APT_SECURITY_MIRROR=http://mirrors.aliyun.com/debian-security
 RUN if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
       sed -i \
         -e "s#https\?://deb.debian.org/debian-security#${APT_SECURITY_MIRROR}#g" \

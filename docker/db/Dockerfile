@@ -6,8 +6,8 @@
 FROM postgres:16
 
 # 中国境内 Debian 镜像源（可通过 --build-arg 覆盖）
-ARG APT_MIRROR=https://mirrors.aliyun.com/debian
-ARG APT_SECURITY_MIRROR=https://mirrors.aliyun.com/debian-security
+ARG APT_MIRROR=http://mirrors.aliyun.com/debian
+ARG APT_SECURITY_MIRROR=http://mirrors.aliyun.com/debian-security
 RUN if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
       sed -i \
         -e "s#https\?://deb.debian.org/debian-security#${APT_SECURITY_MIRROR}#g" \
