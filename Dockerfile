@@ -6,7 +6,21 @@
 # ---------------------------------------------------------------------------
 FROM python:3.13-slim AS builder
 
-ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
+# 中国境内镜像源（可通过 --build-arg 覆盖）
+ARG APT_MIRROR=https://mirrors.aliyun.com/debian
+ARG APT_SECURITY_MIRROR=https://mirrors.aliyun.com/debian-security
+ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+
+# 替换 Debian 软件源；当前阶段后续如需 apt 安装也会使用国内镜像
+RUN if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+      sed -i \
+        -e "s#https\?://deb.debian.org/debian-security#${APT_SECURITY_MIRROR}#g" \
+        -e "s#https\?://deb.debian.org/debian#${APT_MIRROR}#g" \
+        /etc/apt/sources.list.d/debian.sources; \
+    fi
+
+ENV PIP_INDEX_URL=${PIP_INDEX_URL} \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
@@ -21,6 +35,15 @@ RUN python -m venv /opt/venv \
 # runtime：只拷 venv 和应用代码，不带构建产物
 # ---------------------------------------------------------------------------
 FROM python:3.13-slim AS runtime
+
+ARG APT_MIRROR=https://mirrors.aliyun.com/debian
+ARG APT_SECURITY_MIRROR=https://mirrors.aliyun.com/debian-security
+RUN if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+      sed -i \
+        -e "s#https\?://deb.debian.org/debian-security#${APT_SECURITY_MIRROR}#g" \
+        -e "s#https\?://deb.debian.org/debian#${APT_MIRROR}#g" \
+        /etc/apt/sources.list.d/debian.sources; \
+    fi
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \

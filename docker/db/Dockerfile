@@ -5,6 +5,16 @@
 
 FROM postgres:16
 
+# 中国境内 Debian 镜像源（可通过 --build-arg 覆盖）
+ARG APT_MIRROR=https://mirrors.aliyun.com/debian
+ARG APT_SECURITY_MIRROR=https://mirrors.aliyun.com/debian-security
+RUN if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+      sed -i \
+        -e "s#https\?://deb.debian.org/debian-security#${APT_SECURITY_MIRROR}#g" \
+        -e "s#https\?://deb.debian.org/debian#${APT_MIRROR}#g" \
+        /etc/apt/sources.list.d/debian.sources; \
+    fi
+
 # 编译安装 SCWS + zhparser；完成后清理编译依赖以减小镜像体积
 RUN apt-get update && apt-get install -y --no-install-recommends \
         gcc make postgresql-server-dev-16 curl ca-certificates \
