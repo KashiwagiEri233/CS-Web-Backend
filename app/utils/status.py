@@ -37,22 +37,11 @@ async def check_database_connection() -> Dict[str, Any]:
             if not (row and row[0] == 1):
                 return {"status": "error", "message": "Database query failed"}
 
-            db_url = settings.DATABASE_URL or ""
-            if "postgresql" in db_url:
-                db_type = "PostgreSQL"
-                version_result = await session.execute(text("SELECT version()"))
-                version_row = version_result.fetchone()
-                version = version_row[0] if version_row else "Unknown"
-            elif "sqlite" in db_url:
-                db_type = "SQLite"
-                version_result = await session.execute(text("SELECT sqlite_version()"))
-                version_row = version_result.fetchone()
-                version = (
-                    f"SQLite {version_row[0]}" if version_row else "SQLite Unknown"
-                )
-            else:
-                db_type = "Unknown"
-                version = "Unknown"
+            # 后端仅支持 PostgreSQL（config.py 强制 postgresql+asyncpg），不再保留 SQLite 分支
+            db_type = "PostgreSQL"
+            version_result = await session.execute(text("SELECT version()"))
+            version_row = version_result.fetchone()
+            version = version_row[0] if version_row else "Unknown"
 
             return {
                 "status": "connected",

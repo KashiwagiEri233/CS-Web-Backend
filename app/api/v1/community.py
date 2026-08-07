@@ -646,3 +646,32 @@ async def _is_admin(service: CommunityService, user: User) -> bool:
         .all()
     )
     return "admin" in roles or "content_moderator" in roles
+
+
+@router.get("/tags", response_model=dict)
+async def list_tags(
+    db: AsyncSession = Depends(get_db),
+) -> Any:
+    """聚合公开文章（published）中出现过的全部标签，去重排序后返回。
+
+    供前端 Feed 页标签云使用；标签云为空时不视为错误。
+    """
+    from app.models.community import CommunityPost
+
+    result = (
+        await db.execute(
+            select(CommunityPost.tags).where(CommunityPost.status == "published")
+        )
+    ).scalars().all()
+
+    collected: list[str] = []
+    seen: set[str] = set()
+    for tag_list in result:
+        if not tag_list:
+            continue
+        for tag in tag_list:
+            if isinstance(tag, str) and tag.strip() and tag not in seen:
+                seen.add(tag)
+                collected.append(tag)
+    collected.sort()
+    return {"tags": collected}

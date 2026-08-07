@@ -1,3 +1,46 @@
+# ============ CS-Web-Backend .gitignore ============
+# 公共段与根级 / 前端共享同一套规范；下方为本项目 Python 后端专属忽略项。
+
+# ---- 公共段（根级 / 后端 / 前端 三者一致）----
+
+# 环境变量（密钥不入库；模板 .env.example 需提交）
+.env
+.env.local
+.env.*.local
+
+# 日志
+*.log
+
+# IDE / 编辑器 / 工具数据
+.vscode/
+.idea/
+*.iml
+*.swp
+*.swo
+*~
+.codebuddy/
+
+# OS
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+._*
+
+# 运行时数据 / 备份（由 compose 卷挂载到根级 data/ backups/）
+data/
+backups/
+
+# Redis 快照（运行时数据；可能含会话态，不入库）
+dump.rdb
+*.rdb
+appendonlydir/
+
+# 注：pgdata / caddy_data / caddy_config 等为 Docker 命名卷，由 Docker 管理，
+# 不落在工作区目录，无需在此忽略。
+
+# ---- Python 专属段 ----
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -54,7 +97,6 @@ coverage.xml
 *.pot
 
 # Django stuff:
-*.log
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
@@ -95,11 +137,7 @@ celerybeat.pid
 # SageMath parsed files
 *.sage.py
 
-# Environments
-# 生产/本机密钥文件不入库；开发/测试模板与 .env.example 可跟踪（仅放非生产占位凭据）
-.env
-.env.local
-.env.*.local
+# Environments（生产/本机密钥文件不入库；开发/测试模板可跟踪）
 .venv
 env/
 venv/
@@ -126,8 +164,6 @@ dmypy.json
 .pyre/
 
 # IDE
-.idea/
-.vscode/
 *.swp
 *.swo
 *~
@@ -138,6 +174,3 @@ Thumbs.db
 
 # Alembic：迁移脚本是 schema 的版本化资产，必须提交（线上靠它建表）！只忽略缓存。
 alembic/versions/__pycache__/
-
-# 运行时数据（上传的头像/论坛图片/资源文件等），不入库，仅本地/卷挂载
-data/

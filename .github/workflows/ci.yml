@@ -65,6 +65,12 @@ jobs:
           python -m flake8 app tools/tests alembic tools/scripts run.py
           python -m mypy
 
+      - name: Security static scan (2FA Origin guard + hardcoded secrets)
+        run: |
+          # G1 发布门禁补充：阻断敏感端点缺 Origin 守卫 / 硬编码密钥。
+          # 误报经安全评审后可在此步骤加白名单逻辑豁免。
+          python tools/scripts/scan_security.py --root app
+
       - name: API contract freeze (G3)
         run: |
           python tools/scripts/export_openapi.py --check openapi.baseline.json
