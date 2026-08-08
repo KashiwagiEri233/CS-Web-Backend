@@ -4,7 +4,7 @@
 > 受众：安全审计人员 / 后端开发工程师 / 运维 / 权限设计者
 > Source of truth：**后端**的鉴权基础设施、异常处理契约、请求限流配置
 > 关联：架构见 [BackDoc-01-Arch.md](BackDoc-01-Arch.md)；基础设施见 [BackDoc-Infra.md](BackDoc-Infra.md)；编码规范见 [BackDoc-Conv.md](BackDoc-Conv.md)；前端 BFF 层安全与 UI 路由保护见 [FrontDoc-02-Sec.md](../../CS-Web-Frontend/tools/docs/FrontDoc-02-Sec.md)
-> 最后更新：2026-08-05（统一 BackDoc 命名）
+> 最后更新：2026-08-08（0.9.8 同步：学习助手 LLM / api_usage 隐私 / GitHub OAuth / RBAC / 新表迁移）
 > 更新人：3yearsZ
 > 变更触发：后端鉴权契约变更 / 安全配置变更 / 限流策略变更 / 新增权限点
 > Stale 信号：接口签名与 `app/core/security.py` 等实现不一致 / 配置项未随环境变量变更更新 / 仍把前端 BFF 职责（Origin 校验/UI 角色兜底）写成后端职责
@@ -253,3 +253,71 @@
 验证结果：
 备注：
 ```
+
+---
+
+## 5. 学习助手与可观测性安全（0.9.8 新增）
+
+> 新增范围：Auxilio 学习助手（LLM）、API 调用埋点中间件、GitHub OAuth 登录、RBAC 默认管理员。
+> 既有 §1–§4 安全条款（JWT 签发校验 / 密码哈希 / 黑名单 / RBAC 依赖 / 限流 / 密钥轮换）继续有效，本节为其补充，不替代。
+
+### 5.1 Auxilio 学习助手 LLM 可选配置与安全降级
+
+Auxilio 是面向**已登录用户**的学习助手，提供 SSE 流式对话与 Skills 工具调用（代码：`app/api/v1/auxilio.py`、`app/services/auxilio_agent.py`）。LLM 能力**完全可选，默认关闭**。
+
+配置项（`app/core/config.py`）：
+
+| 环境变量 | 默认值 | 说明 |
+|---|---|---|
+| `LLM_PROVIDER` | `none` | `openai` / `anthropic` / `none`；`none` = 不发起任何外部 LLM 请求 |
+| `LLM_API_KEY` | 空 | 仅存于 `.env`，绝不落库 / 日志 / 前端 |
+| `LLM_BASE_URL` | 空 | OpenAI 兼容网关（DeepSeek / 通义 / Kimi / 本地 vLLM） |
+| `LLM_MODEL` | `gpt-4o-mini` | 模型名 |
+| `LLM_TIMEOUT` | `60` | 单次调用超时（秒），透传 httpx |
+| `LLM_MAX_TOKENS` | `1024` | 单轮最大生成 token，透传请求体 |
+| `LLM_DAILY_BUDGET` | `200` | 单用户每日 LLM 调用预算（0 = 不限制） |
+
+安全降级（核心不变量）：
+
+- `LLM_PROVIDER=none`（默认）或 `LLM_API_KEY` 缺失时，`llm_client.check_enabled()` 在 `run_chat` 入口抛 `LLMConfigError`，**直接走规则模式**：仅基于本地 `analyze_learning_profile` 返回薄弱知识点与资源推荐摘要，**不发起任何外部 HTTP 请求**。
+- 即便全局未配置，登录用户也可在「API 调用统计」模块自行接入个人 API Key（见 5.2）；用户级配置优先级高于全局 `.env`。
+- 系统提示词明确禁止编造数字、要求工具返回真实数据；工具结果视为用户生成内容（UGC），仅作参考。
+- 所有 Auxilio 接口均经 `get_current_active_user` 鉴权；未登录不可调用（规则模式亦需登录）。
+- `LLM_DAILY_BUDGET` 已在配置中定义，但当前代码中未发现基于该值的调用拦截逻辑（[待填写]：预算强制是否已在 0.9.8 接入待确认）。
+
+### 5.2 用户级 LLM 配置（llm_configs）与密钥安全
+
+用户可存储自有 LLM 配置于 `llm_configs` 表（`app/models/llm_config.py`，迁移 `d3e4f5a6b7c8`）：
+
+- `api_key_encrypted`（最长 500 字符）以加密形式落库，读取经 `app.core.totp_encryption.decrypt_secret` 解密；**明文 Key 永不返回客户端、不写日志**。
+- 该密钥仅用于发起该用户本人的模型调用，不用于后端聚合计费或其他用途。
+- `llm_configs` 以 `user_id` 为主键，属应用数据（非凭证表），但含敏感密钥材料，须按 PII / 密钥同等标准保护。
+
+### 5.3 api_usage 埋点中间件隐私边界
+
+`app/middleware/api_usage.py` 为纯 ASGI 中间件，对每个 HTTP 请求异步写入 `api_call_logs`（`asyncio.create_task` fire-and-forget，失败静默、绝不阻断响应）。
+
+隐私边界（强制）：
+
+- **仅记录匿名调用计数**：落库字段为 `endpoint / method / status / latency_ms / created_at`，`user_id` 恒为 `NULL`——中间件不解析、不存储任何用户身份。
+- **不记录请求体 / 响应体 / 查询参数 / Header / 客户端 IP**：无 PII、无令牌、无业务数据写入 `api_call_logs`。
+- 端点路径归一化（`/api/v1/tools/exam/123` → `/api/v1/tools/exam/{id}`），既避免按资源 ID 炸开统计维度，也避免把具体资源 ID 落库。
+- 跳过自身与运维端点：`/health`、`/readyz`、`/docs`、`/openapi.json`、`/workbench/stats/api-usage`，避免自指噪声。
+- 与 §2.3 一致：观测埋点不得引入 PII；异常 / 结构化日志同样禁止记录密码、token、连接口令与原始校验输入。
+
+> `api_call_logs`（匿名流量埋点）与 `llm_usage_logs`（按用户记录 token 消耗，见 5.2 对应迁移）用途不同：后者经 `get_current_active_user` 关联用户，属用量计量；前者为纯匿名流量统计。
+
+### 5.4 GitHub OAuth 现状
+
+GitHub OAuth 登录已实现（`app/api/v1/auth.py` 的 `/oauth/github`、`/oauth/github/callback`，`app/services/oauth_service.py`），用户标识落 `users.github_id`。
+
+- **默认未启用**：`oauth_service.authorization_url()` 在 `GITHUB_CLIENT_ID` 未配置时返回 `None`，入口直接返回 `OAUTH_NOT_CONFIGURED`（400）。
+- 启用需同时配置 `GITHUB_CLIENT_ID`、`GITHUB_CLIENT_SECRET`（可选 `GITHUB_CALLBACK_URL`，默认 `{SITE_URL}/api/auth/oauth/github/callback`）。
+- 回调流程：校验 `state` → 换 token → `login_with_github` 登录 / 注册，与既有 JWT 体系一致。
+- OAuth 登录同样受 §1 RBAC 与 §3 限流约束，不引入额外信任边界。
+
+### 5.5 RBAC 与默认管理员
+
+- 权限模型见 §1.2 `require_permission(resource, action)`；权限 / 角色由 `app/services/rbac_seed_data.py` 定义，经 `resource:action` 唯一约束登记。
+- 启动任务 `rbac_seed`（priority 20，critical=True）在首次启动创建默认权限、角色与**默认管理员账号**（`ADMIN_USERNAME` / `ADMIN_EMAIL`，密码 `ADMIN_PASSWORD`，仅首次创建且永不写日志）；多 worker 经 PostgreSQL advisory lock 串行化，失败拒绝启动。
+- 管理员账号属高权限主体，其创建 / 禁用受后端管理员保护规则（SELF_DISABLE / ROOT_PROTECTED / FORBIDDEN / LAST_ADMIN / NO_CHANGE）约束，相关密钥见 §4 密钥清单。

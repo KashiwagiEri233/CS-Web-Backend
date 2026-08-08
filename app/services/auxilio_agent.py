@@ -11,18 +11,15 @@
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, timedelta
+from datetime import datetime
 from typing import AsyncIterator, Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.models.api_usage import ApiCallLog
-from app.models.exam import Exam
-from app.models.resource import Resource
-from app.models.task import Task, TaskClaim
 from app.models.user import User
+from app.repositories.auxilio_tool_repo import AuxilioToolRepository
 from app.services import llm_client
 from app.services.auxilio_service import AuxilioService
 
@@ -105,11 +102,17 @@ TOOL_NAMES = [t["name"] for t in TOOL_SCHEMAS]
 
 
 async def execute_tool(name: str, arguments: str, db: AsyncSession, user: User) -> str:
-    """执行工具，返回可注入上下文的 JSON 字符串。"""
+    """执行工具，返回可注入上下文的 JSON 字符串。
+
+    数据访问统一收敛到 `AuxilioToolRepository`（见 app/repositories/auxilio_tool_repo.py），
+    本函数只负责参数解析与结果序列化。
+    """
     try:
         args = json.loads(arguments) if arguments else {}
     except json.JSONDecodeError:
         args = {}
+
+    repo = AuxilioToolRepository(db)
 
     if name == "analyze_learning_profile":
         profile = await AuxilioService(db).analyze_learning_profile(user.id)
@@ -117,14 +120,7 @@ async def execute_tool(name: str, arguments: str, db: AsyncSession, user: User) 
 
     if name == "get_exam_countdown":
         now = datetime.utcnow()
-        rows = (
-            await db.execute(
-                select(Exam)
-                .where(Exam.status == "published", Exam.end_time > now)
-                .order_by(Exam.end_time.asc())
-                .limit(3)
-            )
-        ).scalars().all()
+        rows = await repo.upcoming_exams(limit=3)
         return json.dumps(
             [
                 {
@@ -140,14 +136,7 @@ async def execute_tool(name: str, arguments: str, db: AsyncSession, user: User) 
         )
 
     if name == "list_tasks":
-        rows = (
-            await db.execute(
-                select(Task)
-                .where(Task.status == "published")
-                .order_by(Task.created_at.desc())
-                .limit(10)
-            )
-        ).scalars().all()
+        rows = await repo.published_tasks(limit=10)
         return json.dumps(
             [
                 {
@@ -163,15 +152,7 @@ async def execute_tool(name: str, arguments: str, db: AsyncSession, user: User) 
         )
 
     if name == "list_my_claims":
-        rows = (
-            await db.execute(
-                select(Task, TaskClaim)
-                .join(TaskClaim, TaskClaim.task_id == Task.id)
-                .where(TaskClaim.user_id == user.id)
-                .order_by(TaskClaim.created_at.desc())
-                .limit(10)
-            )
-        ).all()
+        rows = await repo.my_claims(user.id, limit=10)
         return json.dumps(
             [
                 {"id": t.id, "title": t.title, "category": t.category, "points": t.points}
@@ -185,17 +166,7 @@ async def execute_tool(name: str, arguments: str, db: AsyncSession, user: User) 
         limit = min(int(args.get("limit", 5) or 5), 10)
         if not keyword:
             return json.dumps({"error": "keyword is required"}, ensure_ascii=False)
-        rows = (
-            await db.execute(
-                select(Resource)
-                .where(
-                    Resource.status == "approved",
-                    Resource.title.ilike(f"%{keyword}%"),
-                )
-                .order_by(Resource.view_count.desc())
-                .limit(limit)
-            )
-        ).scalars().all()
+        rows = await repo.search_resources(keyword, limit)
         return json.dumps(
             [
                 {
@@ -211,85 +182,22 @@ async def execute_tool(name: str, arguments: str, db: AsyncSession, user: User) 
         )
 
     if name == "get_llm_usage_stats":
-        from app.models.llm_usage import LlmUsageLog
-
-        total_calls = (
-            await db.execute(
-                select(func.count()).where(LlmUsageLog.user_id == user.id)
-            )
-        ).scalar_one()
-        total_tokens = (
-            await db.execute(
-                select(func.coalesce(func.sum(LlmUsageLog.total_tokens), 0)).where(
-                    LlmUsageLog.user_id == user.id
-                )
-            )
-        ).scalar_one()
-        today_start = datetime.combine(date.today(), datetime.min.time())
-        today_calls = (
-            await db.execute(
-                select(func.count()).where(
-                    LlmUsageLog.user_id == user.id,
-                    LlmUsageLog.created_at >= today_start,
-                )
-            )
-        ).scalar_one()
+        stats = await repo.llm_usage_stats(user.id)
         return json.dumps(
-            {
-                "total_calls": int(total_calls),
-                "today_calls": int(today_calls),
-                "total_tokens": int(total_tokens),
-                "note": "来自 llm_usage_logs 埋点（每次模型调用记录 token 消耗）",
-            },
+            {**stats, "note": "来自 llm_usage_logs 埋点（每次模型调用记录 token 消耗）"},
             ensure_ascii=False,
         )
 
     if name == "get_api_usage_stats":
-        today_start = datetime.combine(date.today(), datetime.min.time())
-        since = today_start - timedelta(days=29)
-        total = (
-            await db.execute(select(func.count()).where(ApiCallLog.created_at >= since))
-        ).scalar_one()
-        today = (
-            await db.execute(select(func.count()).where(ApiCallLog.created_at >= today_start))
-        ).scalar_one()
+        stats = await repo.api_usage_stats()
         return json.dumps(
-            {
-                "today": int(today),
-                "last_30_days_total": int(total),
-                "note": "统计来自 api_call_logs 埋点，含 LLM 调用",
-            },
+            {**stats, "note": "统计来自 api_call_logs 埋点，含 LLM 调用"},
             ensure_ascii=False,
         )
 
     if name == "get_pomodoro_stats":
-        from app.models.focus import FocusSession
-
-        total_sessions = (
-            await db.execute(
-                select(func.count()).where(
-                    FocusSession.user_id == user.id,
-                    FocusSession.phase == "focus",
-                )
-            )
-        ).scalar_one()
-        today_start = datetime.combine(date.today(), datetime.min.time())
-        today_minutes = (
-            await db.execute(
-                select(func.coalesce(func.sum(FocusSession.duration_seconds), 0) / 60.0).where(
-                    FocusSession.user_id == user.id,
-                    FocusSession.phase == "focus",
-                    FocusSession.created_at >= today_start,
-                )
-            )
-        ).scalar_one()
-        return json.dumps(
-            {
-                "total_focus_sessions": int(total_sessions),
-                "today_focus_minutes": int(today_minutes),
-            },
-            ensure_ascii=False,
-        )
+        stats = await repo.pomodoro_stats(user.id)
+        return json.dumps(stats, ensure_ascii=False)
 
     return json.dumps({"error": f"unknown tool: {name}"}, ensure_ascii=False)
 
@@ -374,6 +282,20 @@ async def run_chat(
         }
         yield {"type": "done"}
         return
+
+    # 每日 token 预算拦截（LLM_DAILY_BUDGET，单位：千 tokens/日；默认 200 = 20 万 tokens/日；0 = 不限制）
+    if settings.LLM_DAILY_BUDGET > 0:
+        today_tokens = await AuxilioToolRepository(db).llm_usage_today_tokens(user.id)
+        if today_tokens >= settings.LLM_DAILY_BUDGET * 1000:
+            yield {
+                "type": "delta",
+                "text": (
+                    f"（已达今日模型用量上限 {settings.LLM_DAILY_BUDGET}K tokens，已停止调用模型）\n\n"
+                    "今日 LLM 调用配额已用完，明天再来继续对话吧；也可在「LLM 用量」设置中调整每日预算。"
+                ),
+            }
+            yield {"type": "done"}
+            return
 
     for _round in range(MAX_TOOL_ROUNDS):
         tool_calls: list[dict] = []

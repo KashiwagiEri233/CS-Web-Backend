@@ -1,7 +1,7 @@
 # 运行基础设施（可观测 / 数据 / 会话）（BackDoc-Infra）
 
 > 更新人：3yearsZ
-> 最后更新：2026-08-05（统一 BackDoc 命名）
+> 最后更新：2026-08-08（0.9.8 同步：应用数据表 / 运行环境 / Alembic head 校正）
 > 关联：架构见 [BackDoc-01-Arch.md](BackDoc-01-Arch.md)；安全见 [BackDoc-02-Sec.md](BackDoc-02-Sec.md)；迁移验证见本文 §六
 > 本文件合并了原 `docs/observability.md` 与 `docs/data_and_tasks.md`，统一阐述应用**运行期的基础设施**：
 > 如何被观察（日志/追踪/指标）、数据如何存取（数据库/事务）、应用如何启停（生命周期）、
@@ -77,6 +77,8 @@ otel-collector 等）。**默认关闭**：`OTEL_ENABLED=False` 时完全 no-op�
 | GET | `/readyz` | 公开 readiness，仅返回 `ready/not_ready`；不通返回 **503** |
 | GET | `/metrics/json` | 需超级用户；单实例内存指标 JSON（非 Prometheus 格式） |
 | GET | `/status` | 需超级用户；应用各组件状态明细 |
+| GET | `/health/events` | 无需鉴权；事件总线各监听器数量，供运维定位事件链路 |
+| GET | `/health/security` | 无需鉴权；限流 / 会话 / 迁移等安全组件状态 |
 
 > 标准 OTel 指标不走 HTTP 端点，而是经 OTLP **推送**到 collector，再由 Grafana 等消费。
 
@@ -161,6 +163,23 @@ otel-collector 等）。**默认关闭**：`OTEL_ENABLED=False` 时完全 no-op�
 ### 扩展指引
 
 修改模型后新增增量迁移，检查单一 head；不得修改历史迁移或调用 `Base.metadata.create_all`。
+
+### 应用数据表（工作台 / 学习助手，0.9.8 新增）
+
+0.9.8 新增一批**应用数据表**（非凭证表），用于工作台统计、学习助手对话与番茄钟专注。全部由 Alembic 维护，禁止 `create_all`。当前 Alembic 单一 head 为 `d3e4f5a6b7c8`（线性链、无分支）。
+
+| 表 | 用途 | 迁移 revision | 关键字段 |
+|---|---|---|---|
+| `contribution_cache` | 贡献 / 活动年度统计缓存（user+platform+year 唯一） | `b0b1c2d3e4f5` | user_id, platform, year, data(jsonb), total, streak, fetched_at |
+| `api_call_logs` | API 调用匿名埋点（隐私边界见安全文档 §5.3） | `b0b1c2d3e4f5` | user_id(恒 NULL), endpoint, method, status, latency_ms, created_at |
+| `conversations` | 学习助手会话 | `b0b1c2d3e4f5` | user_id, title, created_at, updated_at |
+| `chat_messages` | 学习助手消息（含 tool_calls jsonb） | `b0b1c2d3e4f5` | conversation_id, role, content, tool_calls(jsonb) |
+| `focus_sessions` | 番茄钟专注记录 | `c2d3e4f5a6b7` | user_id, duration_seconds, phase, sound_source, started_at |
+| `llm_usage_logs` | LLM 调用用量计量（按用户） | `d3e4f5a6b7c8` | user_id, provider, model, prompt_tokens, completion_tokens, total_tokens, latency_ms, status |
+| `llm_configs` | 用户级 LLM 配置（API Key 加密） | `d3e4f5a6b7c8` | user_id(PK), provider, api_key_encrypted, base_url, model |
+
+> 这些表与凭证无关；`users` 等用户表、token 表（`refresh_tokens`）、2FA 表（`two_factor_auth`）见各自模块与安全文档 §1。
+> 迁移链（节选）：`… → a3b4c5d6e7f8`（zhparser）→ `b0b1c2d3e4f5` → `c2d3e4f5a6b7` → `d3e4f5a6b7c8`（head）。
 
 ---
 
@@ -329,12 +348,14 @@ otel-collector 等）。**默认关闭**：`OTEL_ENABLED=False` 时完全 no-op�
 
 | 检查项 | 预期 |
 |---|---|
-| `alembic heads` | 单一 head：`d6e7f8g9h0i1` |
+| `alembic heads` | 单一 head：`d3e4f5a6b7c8` |
 | `alembic upgrade head` | 成功；42 张表建成（框架 8 + 业务 34，含 two_factor_auth） |
 | `alembic check` | 无 drift（模型 ↔ 数据库一致） |
 | `alembic downgrade -1 && upgrade head` | 往返成功 |
 | Phase 1 集成测试 | `tools/tests/integration/test_auth_phase1.py` 全绿（注册/2FA/懒升级/会话/重置流） |
 | pytest | 全绿（除标记 integration 且无 Redis 时跳过的用例） |
+
+> ⚠️ **版本说明**：本节为历史基线（42 张表）验证快照；0.9.8 新增工作台 / LLM 等 7 张应用数据表后，当前 Alembic 单一 head 为 `d3e4f5a6b7c8`（线性链、无分支，见 §二「应用数据表」）。执行验证时请以 `alembic heads` 实际输出为准。表总数：历史基线 42 张 + 0.9.8 新增 7 张应用数据表，精确值 [待填写]（需 `alembic upgrade head` 后 `\dt` 实测）。
 
 ### 6.2 准备环境
 
@@ -557,3 +578,25 @@ uv run python -m pytest -x -q --no-cov -m "not integration"
 3. `alembic upgrade head` 耗时与日志尾部
 4. 如有 drift：autogenerate 差异内容
 5. pytest 汇总行（passed/skipped）
+
+---
+
+## 七、运行环境与部署（0.9.8 补充）
+
+### 运行环境
+
+- Python >= 3.13（`pyproject.toml` `target-version = ["py313"]`；`Dockerfile` 基础镜像 `python:3.13-slim`）。
+- 包管理：本地开发用 **uv**（`uv sync` 依据 `uv.lock` / `pyproject.toml`）；容器镜像以 venv + `uvicorn app.main:app` 运行。
+- 多 worker：生产经 `run.py --prod --workers N` 或编排层管理；`WORKERS` 仅用于启动期限流降级风险提示，不单独控制并发。
+
+### 健康检查端点
+
+- 进程存活（liveness）：`GET /health`（**根路径，无 `/api/v1` 前缀**），返回 `{"status":"healthy"}`，无需鉴权，供 k8s `livenessProbe`。
+- 就绪：`GET /readyz`（不通返回 503）。
+- 扩展探针：`/health/events`（事件总线监听器计数）、`/health/security`（限流 / 会话 / 迁移状态），均无需鉴权。
+- ⚠️ 健康检查在 `/health`，**不是** `/api/v1/health`。
+
+### 环境变量（节选）
+
+- 既有 4 个认证 / 加密密钥（启动必需）：`SECRET_KEY`、`TOTP_ENCRYPTION_KEY`、`DATABASE_PASSWORD`、`COMMUNITY_IP_HASH_SECRET`（见安全文档 §4.1）。
+- 新增 LLM_* 可选环境变量（缺失不阻断启动，默认 `LLM_PROVIDER=none` 走规则模式）：`LLM_PROVIDER` / `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL` / `LLM_TIMEOUT` / `LLM_MAX_TOKENS` / `LLM_DAILY_BUDGET`。完整说明与安全降级见安全文档 §5.1。

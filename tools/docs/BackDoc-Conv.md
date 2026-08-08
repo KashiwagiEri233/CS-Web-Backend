@@ -1,15 +1,18 @@
 # 后端编码规范（BackDoc-Conv）
 
 > 更新人：3yearsZ
-> 最后更新：2026-08-05（统一 BackDoc 命名；通用条款改为锚点引用根级）
+> 最后更新：2026-08-08（对齐代码约定 v0.9.8：补充 ASGI 中间件、LLM 双协议客户端与无 key 降级、Agent 工具循环、后台 asyncio 任务、camelCase 响应、迁移命名/head 等约定）
 > 关联：通用工程规范见根 [`RootDoc-EngConv.md`](../../docs/RootDoc-EngConv.md)；扩展约定见 `../AGENTS.md`；项目定位见 `../CLAUDE.md`；架构见 [BackDoc-01-Arch.md](BackDoc-01-Arch.md)
 
 本项目的编码规范、目录组织与通用约定。**所有贡献者（含 AI Agent）在写代码前必须先读本文档**。
 
 > 框架无关的通用工程规范（命名 / DRY / 圈复杂度 / 错误处理 / 安全 / 配置 / 测试 / Git）已提炼到根仓库 `../../docs/RootDoc-EngConv.md`，本文档侧重 Python/FastAPI 强相关的分层、会话、迁移等约定。
-项目级扩展约定（如何加模块、中心注册点、Alembic 迁移）见 `../AGENTS.md`；项目定位与硬性禁止项见 `../CLAUDE.md`。
+> 项目级扩展约定（如何加模块、中心注册点、Alembic 迁移）见 `../AGENTS.md`；项目定位与硬性禁止项见 `../CLAUDE.md`。
+> **约定类文档边界**：后端专项约定以本文档为权威；前端专项见 `CS-Web-Frontend/tools/docs/FrontDoc-01-Arch.md`；`docs/Onboarding.md` 附录 A 为新人聚合摘要（非权威），细则指回本文件与 RootDoc-EngConv。
 
 > 文档优先级：场景内具体指令 > `../AGENTS.md` > `../CLAUDE.md` > 本文件 > 通用工作流。
+
+> 术语统一：本文档中「**子仓库 / submodule**」专指 git 外部子仓库；app 内部的代码模块统称「**子模块**」。数据访问层仍称「**repositories/（数据访问层）**」，不混用「子仓库」一词，以免与 submodule 混淆。
 
 ---
 
@@ -87,6 +90,25 @@ api (路由)  →  service (业务)  →  repository (数据)  →  model (ORM)
 - **时间列**：ORM 时间列一律带时区，使用 `DateTime = _DateTime(timezone=True)` 别名模式（参考现有 models）。
 - **日志**：`from app.core.loguru_logger import get_logger`；**禁止 `print`、禁止直接配置 loguru handler**。
 
+### 3.1 后台异步任务约定（asyncio 循环）
+
+周期性 / 常驻后台任务（如 `app/services/token_gc.py` 的 refresh token 清理）遵循以下可复用模式：
+
+- **注册方式**：用 `app/core/lifecycle`（包）的 `@register_startup` / `@register_shutdown` 装饰器自注册——装饰器定义在 `app/core/lifecycle/registry.py`，经 `app/core/lifecycle/__init__.py` 再导出，业务代码从 `app.core.lifecycle` 导入（如 `from app.core.lifecycle import register_startup, register_shutdown`）；`main.py` 的 `lifespan` 只调用 `run_startup()` / `run_shutdown()` 统一遍历执行，不手写启动序列。带 `priority`（启动顺序）与 `critical`（失败是否中止启动）参数。
+- **循环体**：`asyncio.create_task(_gc_loop(interval))` 启动；循环内用 `asyncio.Event` 作停止信号，`await stop.wait()` 配合 `timeout=interval` 实现可打断的周期等待（勿用空转 `sleep`）。
+- **单实例幂等**：需要「仅一个实例执行」的任务（如 GC、统计）用 Postgres 咨询锁 `pg_try_advisory_xact_lock` 抢占，未抢到则跳过本轮。
+- **会话边界**：循环体内用 `async with get_session() as db:` 取会话，事务内 `await db.commit()`；禁止复用路由的 `Depends(get_db)`。
+- **容错**：循环体单层 `try/except` 吞掉异常并 `logger.warning`，保证一轮失败不终止整个后台任务；`shutdown` 中 `stop.set()` 后 `await` 任务优雅退出（带超时，超时则 `cancel`）。
+
+### 3.2 响应序列化约定（camelCase 传输）
+
+API 的 JSON 入/出参统一 **camelCase 传输**，Python 属性名保持 snake_case：
+
+- **出参 DTO**：继承 `app/schemas/base.py` 的 `TZModel`（内置 `alias_generator=to_camel` + `populate_by_name=True`，并统一把 `datetime` 转 `settings.TIMEZONE` 本地时区输出 ISO 字符串）。凡是经 `response_model` 返回的模型都应继承 `TZModel`（如 `AnnouncementOut`）。
+- **入参 DTO**：请求体同样接受 camelCase（alias）与 snake_case（属性名）两种键名（`populate_by_name=True`），迁移期旧客户端用 snake_case 提交仍兼容。
+- **错误响应**：统一 `ErrorResponse`（继承 `TZModel`），在 `ExceptionHandlerMiddleware` 中以 `model_dump(by_alias=True)` 输出 camelCase（`errorCode` / `statusCode` / `success` 等）。
+- **裸 dict / SSE 响应**：未走 `response_model` 的路由（如 `auxilio.py` 的 `StreamingResponse`、字典返回）须**手动**使用 camelCase 键（如 `createdAt`、`toolCalls`），且 Python 内部变量保持 snake_case。
+
 ---
 
 ## 4. 代码质量红线
@@ -138,6 +160,7 @@ api (路由)  →  service (业务)  →  repository (数据)  →  model (ORM)
   - `.env.test`（测试，同样走 Alembic）
   - `.env`（生产，`DB_AUTO_MIGRATE` 按部署策略）
 - **`SECRET_KEY` 必须从环境变量设置，禁止占位值**。
+- 新增「可选功能」的开关与参数（如 LLM 学习助手 `LLM_PROVIDER` / `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL` / `LLM_TIMEOUT` / `LLM_MAX_TOKENS` / `LLM_DAILY_BUDGET`）**必须集中在 `Settings`**，且默认值应使功能「默认关闭 / 安全降级」（如 `LLM_PROVIDER="none"` 即禁用，调用方捕获 `LLMConfigError` 降级为规则推荐）。切勿把可选功能的开关散落到模块级常量。
 - 例外：队列开关 `QUEUE_ENABLED` 由可选队列模块自读环境/.env（不在 `Settings`），见 `BackDoc-Infra.md`。
 
 ---
@@ -167,6 +190,8 @@ api (路由)  →  service (业务)  →  repository (数据)  →  model (ORM)
 - **铁律**：全环境 **仅 Alembic**；禁止 `Base.metadata.create_all`。建库由 `DB_AUTO_CREATE_DATABASE` 控制，schema 仍只由 Alembic 管理。
 - **启动**：`DB_AUTO_MIGRATE=True` 自动 `upgrade head`；`False` 仅校验版本不一致则 fail fast。
 - **改模型流程**：改 model → 登记 `models/__init__.py` → `alembic revision --autogenerate -m "..."` → 检查 upgrade() → 确认单一 head → upgrade。
+- **文件命名约定**：`alembic/versions/<revision_id>_<snake_case_描述>.py`（如 `d3e4f5a6b7c8_add_llm_usage_and_config.py`）。`revision_id` 由 autogenerate 生成（12 位十六进制）；`_描述` 用动词开头、下划线分隔，说明本次变更。禁止无描述或含空格的文件名。
+- **当前单一 head**：`d3e4f5a6b7c8`（add_llm_usage_and_config）。每次合入前用 `alembic heads` 确认仍只有这一个 head；出现多 head 须先 `alembic merge` 再升级。
 - **禁止**修改 baseline 或已有迁移文件（历史事实不可改）。
 - **专属库**：本项目用 PG 库 `domefff`，**勿与其它项目共用一个库**。
 
@@ -194,3 +219,63 @@ api (路由)  →  service (业务)  →  repository (数据)  →  model (ORM)
 - [ ] 测试已补？`python -m pytest` 通过？
 - [ ] 新增配置项已同步 `.env.example`？
 - [ ] 改了公共签名已扫调用点，并用默认值保持兼容？
+- [ ] 新增 ASGI 中间件是否纯 ASGI（非 BaseHTTPMiddleware）、埋点为 fire-and-forget 不阻塞主流程？
+- [ ] 新增 LLM 调用点是否沿用双协议客户端 + 无 key 降级规则模式（捕获 `LLMConfigError`）？
+- [ ] 出参 DTO 是否继承 `TZModel`（camelCase 传输）？裸 dict / SSE 是否手动 camelCase 键？
+- [ ] 新增配置项（含可选功能开关）是否已同步 `.env.example` 与 `.env.development`？
+- [ ] 新迁移文件是否遵循 `<revision_id>_<snake_case_描述>.py` 命名、合入前确认单一 head？
+
+---
+
+## 13. ASGI 中间件约定（横切关注点）
+
+新增横切关注点（埋点、监控、限流、安全头等）默认以**纯 ASGI 中间件**实现，参考 `app/middleware/api_usage.py` 与 `app/middleware/monitoring.py`。
+
+- **纯 ASGI，不用 BaseHTTPMiddleware**：直接实现 `async def __call__(self, scope, receive, send)`，避免 `BaseHTTPMiddleware` 在每个请求上的额外开销与缓冲。
+- **注册**：在 `app/main.py` 的 `create_app()` 中用 `app.add_middleware(MiddlewareClass, ...)` 注册。Starlette 后注册的中间件处于更外层，故按「内 → 外」顺序添加（见 `main.py` 现有顺序：体积闸门最内、CORS 最外）。
+- **fire-and-forget 埋点**：观测性写入（如 `api_usage` 落库）必须**不阻塞主响应**——在 `finally` 中用 `asyncio.create_task(self._log(...))` 异步写库，写入失败仅 `logger.debug` 吞掉，绝不抛出（观测性不能影响主流程）。
+- **跳过自指噪声**：对 `/health`、`/readyz`、`/docs`、`/openapi.json` 及中间件自身统计接口设 `SILENT_PREFIXES`，`path.startswith(...)` 直接透传，避免统计自我引用与文档接口被埋点。
+- **短路与异常**：中间件内要短路就 `return JSONResponse(...)`（或包一层 `send`），**禁止 `raise HTTPException`**——异常处理器只覆盖路由层，中间件异常由最外层 `ExceptionHandlerMiddleware` 兜底。
+- **仅处理 http**：`__call__` 开头判断 `scope["type"] != "http"` 时直接 `await self.app(...)` 透传，避免影响 WebSocket / lifespan。
+
+---
+
+## 14. LLM 学习助手约定（Auxilio Agent）
+
+LLM 相关代码集中在 `app/services/llm_client.py`（客户端）与 `app/services/auxilio_agent.py`（编排），配置在 `Settings` 的 `LLM_*` 字段。
+
+### 14.1 客户端双协议 + 无 key 降级规则模式
+
+`llm_client.stream_chat()` 是统一流式入口，对上层屏蔽底层协议差异：
+
+- **双协议适配**：`provider=openai` → 走 OpenAI 兼容 `/chat/completions`（支持 DeepSeek / 通义 / Kimi / 本地 vLLM，经 `LLM_BASE_URL` 自定义网关）；`provider=anthropic` → 走 `https://api.anthropic.com/v1/messages`。两者都走 SSE 流式，并在内部做**消息格式互转**（`_to_anthropic_messages` 把 OpenAI 风格 `tool_calls` / `role=tool` 转 Anthropic 的 `tool_use` / `tool_result` blocks）。
+- **统一事件流**：流式产出事件 dict——`delta`（增量文本）/ `tool_calls`（工具调用）/ `usage`（token 计量）/ `done` / `error`，上层（Agent / 路由）只消费这套事件，不感知协议。
+- **配置优先级**：用户级配置 `overrides`（来自 `LlmConfig`，API Key 经 `totp_encryption` 解密）> 全局 `Settings`（`.env`）。`overrides` 缺省时回落全局。
+- **无 key 降级规则模式**：`check_enabled(overrides)` 在 `LLM_PROVIDER="none"` 或无 `LLM_API_KEY` 时抛 `LLMConfigError`；调用方（`auxilio_agent.run_chat`）捕获后**降级为规则推荐摘要**（直接基于 `analyze_learning_profile` 等已有数据给出文字建议），而非报错。新增 LLM 调用点必须沿用此降级路径，禁止在 LLM 未配置时让接口 500。
+- **流式错误**：上游 `httpx` 异常在客户端内转为 `{"type":"error",...}` 事件 yield，不向上抛，由编排层决定如何降级。
+
+### 14.2 Agent 工具循环约定
+
+`auxilio_agent.run_chat()` 编排「系统提示词注入 + Skills 工具调用 + 流式产出」：
+
+- **固定轮数**：常量 `MAX_TOOL_ROUNDS = 3`（定义在 `auxilio_agent.py`），`for _round in range(MAX_TOOL_ROUNDS)` 控制工具循环上限，**禁止**改成无上限 `while True`，避免模型失控循环。
+- **工具注册表**：可用工具在 `TOOL_SCHEMAS`（list[dict]，含 `name` / `description` / `parameters`）集中声明，并同时提供 OpenAI 与 Anthropic 两套 schema 转换（`_oai_tool_schema` / `_anthropic_tool_schema`）。新增工具须在此登记并补全两个协议的 schema。
+- **执行与回填**：每轮消费 `tool_calls` → 逐个 `execute_tool(name, arguments, db, user)` 执行（异常转 `{"error":...}` 结果文本，不中断循环）→ 把 `assistant`（含 `tool_calls`）与 `tool` 消息回填 `messages`，进入下一轮。
+- **事件透传**：向 SSE 透传 `delta` / `tool_call` / `tool_result` / `done` / `error` 事件；`done` 携带 `title`（会话标题候选）与 `usage`。
+- **收尾**：若最后一轮只有工具调用无文本，补一句总结性 `delta`；最终 `yield {"type":"done","title":...}`。
+
+### 14.3 用量计量与成本护栏
+
+- **用量落库**：每次模型调用在路由层（如 `auxilio.py` 的 `event_stream` 的 `finally`）写 `LlmUsageLog`（provider / model / prompt_tokens / completion_tokens / total_tokens / latency_ms），供工作台统计与 `get_llm_usage_stats` 工具查询。
+- **预算配置**：`LLM_DAILY_BUDGET` 为单用户单日调用预算（0 = 不限制），意图防止成本失控（落实状态见第 15 章信息缺口声明）。
+
+---
+
+## 15. 信息缺口声明
+
+以下为本次对齐代码时发现、但代码 / 配置尚未完全落实或存在偏差的项，需后续补齐或由负责人确认；未落实项以 `[待填写]` 标注。
+
+1. ~~**`LLM_DAILY_BUDGET` 未强制**~~ → **已落实（2026-08-08）**：在 `auxilio_agent.run_chat` 调用模型前按用户维度累加当日 `llm_usage_logs.total_tokens`，达 `LLM_DAILY_BUDGET`（单位：千 tokens/日，默认 200 = 20 万 tokens；0 = 不限制）即停止调用并提示。配置注释已同步（`config.py`）。
+2. ~~**`LLM_*` 未同步环境样板**~~ → **已补齐（2026-08-08）**：`.env.example`、`.env.docker.example`、`.env.development` 均已增加 `LLM_*` 可选段（含默认值与 `LLM_PROVIDER=none` 降级说明）。
+3. ~~**`auxilio_agent` 直连 DB 与分层规则偏差**~~ → **已收敛（2026-08-08）**：`execute_tool` 的查询全部迁移至新仓储 `app/repositories/auxilio_tool_repo.py`（`AuxilioToolRepository`，只读），service 层不再直发 SQL，符合第 1 章分层铁律；SQL 语义与重构前一致。
+4. **术语确认**：本文「子仓库 / submodule」仅指 git 外部子仓库，「子模块」指 app 内代码模块；数据访问层沿用「repositories/（数据访问层）」称谓，未改称「子仓库」。若团队另有约定请指正。
