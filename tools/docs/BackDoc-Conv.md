@@ -2,11 +2,11 @@
 
 > 更新人：3yearsZ
 > 最后更新：2026-08-08（对齐代码约定 v0.9.8：补充 ASGI 中间件、LLM 双协议客户端与无 key 降级、Agent 工具循环、后台 asyncio 任务、camelCase 响应、迁移命名/head 等约定）
-> 关联：通用工程规范见根 [`RootDoc-EngConv.md`](../../docs/RootDoc-EngConv.md)；扩展约定见 `../AGENTS.md`；项目定位见 `../CLAUDE.md`；架构见 [BackDoc-01-Arch.md](BackDoc-01-Arch.md)
+> 关联：通用工程规范见根 [`RootDoc-EngConv.md`](../../../docs/RootDoc-EngConv.md)；扩展约定见 `../AGENTS.md`；项目定位见 `../CLAUDE.md`；架构见 [BackDoc-01-Arch.md](BackDoc-01-Arch.md)
 
 本项目的编码规范、目录组织与通用约定。**所有贡献者（含 AI Agent）在写代码前必须先读本文档**。
 
-> 框架无关的通用工程规范（命名 / DRY / 圈复杂度 / 错误处理 / 安全 / 配置 / 测试 / Git）已提炼到根仓库 `../../docs/RootDoc-EngConv.md`，本文档侧重 Python/FastAPI 强相关的分层、会话、迁移等约定。
+> 框架无关的通用工程规范（命名 / DRY / 圈复杂度 / 错误处理 / 安全 / 配置 / 测试 / Git）已提炼到根仓库 `../../../docs/RootDoc-EngConv.md`，本文档侧重 Python/FastAPI 强相关的分层、会话、迁移等约定。
 > 项目级扩展约定（如何加模块、中心注册点、Alembic 迁移）见 `../AGENTS.md`；项目定位与硬性禁止项见 `../CLAUDE.md`。
 > **约定类文档边界**：后端专项约定以本文档为权威；前端专项见 `CS-Web-Frontend/tools/docs/FrontDoc-01-Arch.md`；`docs/Onboarding.md` 附录 A 为新人聚合摘要（非权威），细则指回本文件与 RootDoc-EngConv。
 
@@ -113,7 +113,7 @@ API 的 JSON 入/出参统一 **camelCase 传输**，Python 属性名保持 snak
 
 ## 4. 代码质量红线
 
-> 通用红线（文件大小 ~300 行、函数单一职责、DRY 三次法则、圈复杂度 ≤10、禁止散落魔法值）见根 [`RootDoc-EngConv.md`](../../docs/RootDoc-EngConv.md) §二。本节只列后端专属补充。
+> 通用红线（文件大小 ~300 行、函数单一职责、DRY 三次法则、圈复杂度 ≤10、禁止散落魔法值）见根 [`RootDoc-EngConv.md`](../../../docs/RootDoc-EngConv.md) §二。本节只列后端专属补充。
 
 ### 4.1 后端专属补充
 
@@ -132,7 +132,7 @@ API 的 JSON 入/出参统一 **camelCase 传输**，Python 属性名保持 snak
 
 ## 5. 错误处理约定
 
-> 通用约定（禁止空 catch / 静默吞错、系统边界校验、不泄露敏感信息）见根 [`RootDoc-EngConv.md`](../../docs/RootDoc-EngConv.md) §三。本节只列后端专属补充。
+> 通用约定（禁止空 catch / 静默吞错、系统边界校验、不泄露敏感信息）见根 [`RootDoc-EngConv.md`](../../../docs/RootDoc-EngConv.md) §三。本节只列后端专属补充。
 
 - **业务错误**：抛 `BaseAppException` 子类（`app/core/exceptions/base_exceptions.py`），由全局处理器统一映射状态码。
 - **禁止**：在路由里 `try/except` 吞掉业务异常再返回自定义格式——绕过统一异常处理体系。
@@ -142,7 +142,7 @@ API 的 JSON 入/出参统一 **camelCase 传输**，Python 属性名保持 snak
 
 ## 6. 安全约定
 
-> 通用安全约定（禁止硬编码密钥/令牌/密码、参数化查询、日志禁止记录敏感信息）见根 [`RootDoc-EngConv.md`](../../docs/RootDoc-EngConv.md) §四。本节只列后端专属补充。
+> 通用安全约定（禁止硬编码密钥/令牌/密码、参数化查询、日志禁止记录敏感信息）见根 [`RootDoc-EngConv.md`](../../../docs/RootDoc-EngConv.md) §四。本节只列后端专属补充。
 
 - **密码**：使用 `app/core/security.py` 的哈希函数，禁止自实现加密。
 - **权限**：用依赖 `require_permission / require_role / require_superuser`（`app/middleware/rbac.py`），**禁止用装饰器**。
@@ -177,7 +177,7 @@ API 的 JSON 入/出参统一 **camelCase 传输**，Python 属性名保持 snak
 
 ## 9. Git 与提交
 
-> 通用 Git 约定（提交格式 `<type>(<scope>): <subject>`、不主动 commit / push、侵入性操作先说明范围）见根 [`RootDoc-EngConv.md`](../../docs/RootDoc-EngConv.md) §七。本节只列后端专属补充。
+> 通用 Git 约定（提交格式 `<type>(<scope>): <subject>`、不主动 commit / push、侵入性操作先说明范围）见根 [`RootDoc-EngConv.md`](../../../docs/RootDoc-EngConv.md) §七。本节只列后端专属补充。
 
 - **禁止提交**：`*.db`、`logs/`。本私有仓库允许跟踪环境配置文件；个人覆盖写入 `.env.local` / `.env.*.local`，不要提交。
 

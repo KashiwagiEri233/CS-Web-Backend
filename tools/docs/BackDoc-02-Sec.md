@@ -3,7 +3,7 @@
 > 文档定位：**后端**的安全与防护权威文档（reference）
 > 受众：安全审计人员 / 后端开发工程师 / 运维 / 权限设计者
 > Source of truth：**后端**的鉴权基础设施、异常处理契约、请求限流配置
-> 关联：架构见 [BackDoc-01-Arch.md](BackDoc-01-Arch.md)；基础设施见 [BackDoc-Infra.md](BackDoc-Infra.md)；编码规范见 [BackDoc-Conv.md](BackDoc-Conv.md)；前端 BFF 层安全与 UI 路由保护见 [FrontDoc-02-Sec.md](../../CS-Web-Frontend/tools/docs/FrontDoc-02-Sec.md)
+> 关联：架构见 [BackDoc-01-Arch.md](BackDoc-01-Arch.md)；基础设施见 [BackDoc-Infra.md](BackDoc-Infra.md)；编码规范见 [BackDoc-Conv.md](BackDoc-Conv.md)；前端 BFF 层安全与 UI 路由保护见 [FrontDoc-02-Sec.md](../../../CS-Web-Frontend/tools/docs/FrontDoc-02-Sec.md)
 > 最后更新：2026-08-08（0.9.8 同步：学习助手 LLM / api_usage 隐私 / GitHub OAuth / RBAC / 新表迁移）
 > 更新人：3yearsZ
 > 变更触发：后端鉴权契约变更 / 安全配置变更 / 限流策略变更 / 新增权限点

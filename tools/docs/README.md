@@ -83,7 +83,7 @@ schema 见 `app/schemas/<x>.py`。
 ### 迁移相关
 | 文档 | 说明 |
 |---|---|
-| [BackDoc-Infra.md §六 迁移验证](BackDoc-Infra.md#六迁移验证) | 数据层迁移的 Linux/PG 环境验证指南（原 BackDoc-MigV.md 已并入） |
+| [BackDoc-Infra.md §六 迁移验证](BackDoc-Infra.md#六迁移验证migration_verification) | 数据层迁移的 Linux/PG 环境验证指南（原 BackDoc-MigV.md 已并入） |
 
 ### 历史归档
 已完成特性的迁移计划与设计稿，仅作演进痕迹保留，**不作现行方案**。当前能力以根级正式文档为准。

@@ -17,6 +17,7 @@ from app.database import get_db
 from app.services.announcement_service import AnnouncementService
 from app.services.audit_service import AuditService
 from app.services.auth_service import AuthService
+from app.services.feature_visibility_service import FeatureVisibilityService
 from app.services.auxilio_service import AuxilioService
 from app.services.community_service import CommunityService
 from app.services.component_registry_service import ComponentRegistryService
@@ -103,3 +104,9 @@ def get_exception_service(db: AsyncSession = Depends(get_db)) -> ExceptionServic
 
 def get_audit_service(db: AsyncSession = Depends(get_db)) -> AuditService:
     return AuditService(db)
+
+
+def get_feature_visibility_service(
+    db: AsyncSession = Depends(get_db),
+) -> FeatureVisibilityService:
+    return FeatureVisibilityService(db)

@@ -12,6 +12,7 @@ from app.api.v1 import (
     community,
     events,
     exceptions,
+    feature_visibility,
     join,
     notifications,
     password_resets,
@@ -52,6 +53,7 @@ api_router.include_router(
 api_router.include_router(tools.router, prefix="/tools", tags=["工具集"])
 api_router.include_router(auxilio.router, tags=["学习助手"])
 api_router.include_router(workbench.router, tags=["工作台"])
+api_router.include_router(feature_visibility.router, tags=["功能模块可见性"])
 
 if settings.DEBUG:
     from app.api.v1 import dev_exceptions
