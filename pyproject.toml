@@ -41,3 +41,10 @@ test = [
 
 [tool.black]
 target-version = ["py313"]
+
+# 基于pyright：显式声明执行环境，确保 `from app.xxx` 按绝对导入解析
+# （避免把 app 顶层包误判为隐式相对导入；与 mypy.ini 的 files=app 一致）
+[tool.basedpyright]
+include = ["app"]
+pythonVersion = "3.13"
+typeCheckingMode = "standard"

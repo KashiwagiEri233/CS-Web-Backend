@@ -6,11 +6,12 @@ SQL 语义与重构前完全一致（仅迁移位置，不改变行为）。
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.timezone import local_to_utc, now_local, now_utc
 from app.models.api_usage import ApiCallLog
 from app.models.exam import Exam
 from app.models.focus import FocusSession
@@ -23,11 +24,25 @@ class AuxilioToolRepository:
     """学习助手工具查询仓储（只读查询，无写入）。"""
 
     def __init__(self, db: AsyncSession):
-        self.db = db
+        self.db: AsyncSession = db
+
+    @staticmethod
+    def _today_start_utc() -> datetime:
+        """配置时区当日的零点（UTC aware），供各统计方法共用。
+
+        存储层时间列均为 ``DateTime(timezone=True)``（UTC），比较必须用 aware UTC；
+        不能用 ``date.today()``（服务器本地日期）拼 naive 零点，否则在
+        ``TIMEZONE`` 与服务器时区不一致时统计口径会偏移。
+        """
+        start = local_to_utc(
+            datetime.combine(now_local().date(), datetime.min.time())
+        )
+        assert start is not None  # 入参恒非 None，local_to_utc 必返回非 None
+        return start
 
     async def upcoming_exams(self, limit: int = 3) -> list[Exam]:
         """最近进行中的考试（已发布且未结束，按截止时间升序）。"""
-        now = datetime.utcnow()
+        now = now_utc()
         rows = await self.db.execute(
             select(Exam)
             .where(Exam.status == "published", Exam.end_time > now)
@@ -55,53 +70,49 @@ class AuxilioToolRepository:
             .order_by(TaskClaim.created_at.desc())
             .limit(limit)
         )
-        return list(rows.all())
+        return list(rows.tuples().all())
 
     async def search_resources(self, keyword: str, limit: int = 5) -> list[Resource]:
         """按标题模糊搜索已审核的学习资源（按浏览量倒序）。"""
+        # 转义 LIKE 通配符，避免用户输入中的 % / _ 被当作模式
+        escaped = keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         rows = await self.db.execute(
             select(Resource)
             .where(
                 Resource.status == "approved",
-                Resource.title.ilike(f"%{keyword}%"),
+                Resource.title.ilike(f"%{escaped}%", escape="\\"),
             )
             .order_by(Resource.view_count.desc())
             .limit(limit)
         )
         return list(rows.scalars().all())
 
-    async def llm_usage_stats(self, user_id: int) -> dict:
-        """LLM 调用用量统计（累计 + 今日）。"""
-        today_start = datetime.combine(date.today(), datetime.min.time())
-        total_calls = (
+    async def llm_usage_stats(self, user_id: int) -> dict[str, int]:
+        """LLM 调用用量统计（累计 + 今日），单次聚合查询。"""
+        today_start = self._today_start_utc()
+        row = (
             await self.db.execute(
-                select(func.count()).where(LlmUsageLog.user_id == user_id)
+                select(
+                    func.count().label("total_calls"),
+                    func.coalesce(func.sum(LlmUsageLog.total_tokens), 0).label(
+                        "total_tokens"
+                    ),
+                    # FILTER 子句：仅统计今日记录，与全量聚合同扫一次表
+                    func.count()
+                    .filter(LlmUsageLog.created_at >= today_start)
+                    .label("today_calls"),
+                ).where(LlmUsageLog.user_id == user_id)
             )
-        ).scalar_one()
-        total_tokens = (
-            await self.db.execute(
-                select(func.coalesce(func.sum(LlmUsageLog.total_tokens), 0)).where(
-                    LlmUsageLog.user_id == user_id
-                )
-            )
-        ).scalar_one()
-        today_calls = (
-            await self.db.execute(
-                select(func.count()).where(
-                    LlmUsageLog.user_id == user_id,
-                    LlmUsageLog.created_at >= today_start,
-                )
-            )
-        ).scalar_one()
+        ).one()
         return {
-            "total_calls": int(total_calls),
-            "today_calls": int(today_calls),
-            "total_tokens": int(total_tokens),
+            "total_calls": int(row.total_calls),
+            "today_calls": int(row.today_calls),
+            "total_tokens": int(row.total_tokens),
         }
 
     async def llm_usage_today_tokens(self, user_id: int) -> int:
         """用户今日累计消耗 token（用于每日预算拦截）。"""
-        today_start = datetime.combine(date.today(), datetime.min.time())
+        today_start = self._today_start_utc()
         total = (
             await self.db.execute(
                 select(func.coalesce(func.sum(LlmUsageLog.total_tokens), 0)).where(
@@ -112,9 +123,9 @@ class AuxilioToolRepository:
         ).scalar_one()
         return int(total)
 
-    async def api_usage_stats(self) -> dict:
+    async def api_usage_stats(self) -> dict[str, int]:
         """API 调用统计（今日 + 近 30 天，全站）。"""
-        today_start = datetime.combine(date.today(), datetime.min.time())
+        today_start = self._today_start_utc()
         since = today_start - timedelta(days=29)
         total = (
             await self.db.execute(
@@ -128,9 +139,9 @@ class AuxilioToolRepository:
         ).scalar_one()
         return {"today": int(today), "last_30_days_total": int(total)}
 
-    async def pomodoro_stats(self, user_id: int) -> dict:
+    async def pomodoro_stats(self, user_id: int) -> dict[str, int]:
         """番茄钟专注统计（累计专注次数 + 今日专注分钟）。"""
-        today_start = datetime.combine(date.today(), datetime.min.time())
+        today_start = self._today_start_utc()
         total_sessions = (
             await self.db.execute(
                 select(func.count()).where(
@@ -150,5 +161,5 @@ class AuxilioToolRepository:
         ).scalar_one()
         return {
             "total_focus_sessions": int(total_sessions),
-            "today_focus_minutes": int(today_minutes),
+            "today_focus_minutes": round(today_minutes),
         }

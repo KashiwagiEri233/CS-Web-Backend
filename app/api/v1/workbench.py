@@ -10,6 +10,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
+from app.core.timezone import local_to_utc, now_local, now_utc
 from app.dependencies import get_current_active_user
 from app.dependencies import get_db
 from app.models.api_usage import ApiCallLog
@@ -38,6 +40,18 @@ def _github_username(user: User) -> Optional[str]:
     # 支持 https://github.com/xxx 与 https://github.com/xxx/ 以及裸用户名
     last = url.rsplit("/", 1)[-1]
     return last if last and last != "github.com" else None
+
+
+def _local_today() -> date:
+    """配置时区的今天（替代 ``date.today()``，避免服务器本地时区漂移）。"""
+    return now_local().date()
+
+
+def _local_day_start_utc(d: date) -> datetime:
+    """配置时区某日的零点，转换为 UTC aware（存储层比较口径）。"""
+    start = local_to_utc(datetime.combine(d, datetime.min.time()))
+    assert start is not None  # 入参恒非 None
+    return start
 
 
 @router.get("/contributions/github")
@@ -73,14 +87,14 @@ async def get_api_usage_stats(
     days: int = Query(default=30, ge=1, le=90),
 ):
     """API 调用统计：今日计数 + 近 N 天趋势 + endpoint 分布。"""
-    today = date.today()
-    since = datetime.combine(today - timedelta(days=days - 1), datetime.min.time())
+    today = _local_today()
+    since = _local_day_start_utc(today - timedelta(days=days - 1))
 
-    # 近 N 天按日聚合
+    # 近 N 天按日聚合（按配置时区取日，与 today/since 口径一致）
     daily_rows = (
         await db.execute(
             select(
-                func.date(ApiCallLog.created_at).label("d"),
+                func.date(func.timezone(settings.TIMEZONE, ApiCallLog.created_at)).label("d"),
                 func.count().label("c"),
             )
             .where(ApiCallLog.created_at >= since)
@@ -101,7 +115,7 @@ async def get_api_usage_stats(
     ).all()
 
     # 今日统计
-    today_start = datetime.combine(today, datetime.min.time())
+    today_start = _local_day_start_utc(today)
     today_total = (
         await db.execute(
             select(func.count()).where(ApiCallLog.created_at >= today_start)
@@ -152,7 +166,7 @@ async def record_focus_session(
     user: User = Depends(get_current_active_user),
 ):
     """番茄钟完成一轮专注后上报记录（幂等不校验重复，前端只报完成轮）。"""
-    now = datetime.utcnow()
+    now = now_utc()
     session = FocusSession(
         user_id=user.id,
         duration_seconds=payload.duration_seconds,
@@ -172,8 +186,8 @@ async def get_pomodoro_stats(
     days: int = Query(default=30, ge=1, le=90),
 ):
     """番茄钟专注统计：总轮数 / 总时长 / 今日 / 近 N 天分布（喂给学习助手 Skill）。"""
-    today = date.today()
-    since = datetime.combine(today - timedelta(days=days - 1), datetime.min.time())
+    today = _local_today()
+    since = _local_day_start_utc(today - timedelta(days=days - 1))
 
     total_sessions = (
         await db.execute(
@@ -191,7 +205,7 @@ async def get_pomodoro_stats(
             )
         )
     ).scalar_one()
-    today_start = datetime.combine(today, datetime.min.time())
+    today_start = _local_day_start_utc(today)
     today_minutes = (
         await db.execute(
             select(func.coalesce(func.sum(FocusSession.duration_seconds), 0) / 60.0).where(
@@ -202,11 +216,11 @@ async def get_pomodoro_stats(
         )
     ).scalar_one()
 
-    # 近 N 天按日聚合专注分钟
+    # 近 N 天按日聚合专注分钟（按配置时区取日）
     daily_rows = (
         await db.execute(
             select(
-                func.date(FocusSession.created_at).label("d"),
+                func.date(func.timezone(settings.TIMEZONE, FocusSession.created_at)).label("d"),
                 (func.coalesce(func.sum(FocusSession.duration_seconds), 0) / 60.0).label("m"),
             )
             .where(
@@ -245,8 +259,8 @@ async def get_llm_usage_stats(
     days: int = Query(default=30, ge=1, le=90),
 ):
     """学习助手 LLM 用量：调用次数 / token 消耗 / 近 N 天趋势 / 模型分布。"""
-    today = date.today()
-    since = datetime.combine(today - timedelta(days=days - 1), datetime.min.time())
+    today = _local_today()
+    since = _local_day_start_utc(today - timedelta(days=days - 1))
 
     # 总计
     total_calls = (
@@ -263,7 +277,7 @@ async def get_llm_usage_stats(
     ).scalar_one()
 
     # 今日
-    today_start = datetime.combine(today, datetime.min.time())
+    today_start = _local_day_start_utc(today)
     today_calls = (
         await db.execute(
             select(func.count()).where(
@@ -289,11 +303,11 @@ async def get_llm_usage_stats(
         )
     ).scalar_one()
 
-    # 近 N 天按日聚合 tokens
+    # 近 N 天按日聚合 tokens（按配置时区取日）
     daily_rows = (
         await db.execute(
             select(
-                func.date(LlmUsageLog.created_at).label("d"),
+                func.date(func.timezone(settings.TIMEZONE, LlmUsageLog.created_at)).label("d"),
                 func.coalesce(func.sum(LlmUsageLog.total_tokens), 0).label("tk"),
                 func.count().label("c"),
             )
@@ -413,7 +427,7 @@ async def update_llm_config(
     cfg.base_url = (payload.base_url or "").strip() or None
     if payload.api_key and payload.api_key.strip():
         cfg.api_key_encrypted = encrypt_secret(payload.api_key.strip())
-    cfg.updated_at = datetime.utcnow()
+    cfg.updated_at = now_utc()
     await db.commit()
 
     return {
