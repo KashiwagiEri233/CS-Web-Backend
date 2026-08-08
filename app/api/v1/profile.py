@@ -32,7 +32,7 @@ AVATAR_MAX_SIZE = 2 * 1024 * 1024
 AVATAR_ALLOWED_MIME = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 AVATAR_ALLOWED_EXT = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 AVATAR_FILENAME_RE = re.compile(
-    r"^[a-f0-9-]{36}-\d+\.(jpg|jpeg|png|webp|gif)$", re.IGNORECASE
+    r"^(?:user\d+|[a-f0-9-]{36})-\d+\.(jpg|jpeg|png|webp|gif)$", re.IGNORECASE
 )
 
 # 数据目录（相对仓库根；与前端 data/ 语义一致，未来可切换对象存储）
