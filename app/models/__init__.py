@@ -40,6 +40,12 @@ from app.models.notification import Notification, Announcement
 from app.models.exam import Exam, ExamQuestion, ExamQuestionOption, ExamAttempt
 from app.models.task import Task, TaskClaim
 from app.models.points import PointsTransaction
+from app.models.contribution import ContributionCache
+from app.models.api_usage import ApiCallLog
+from app.models.conversation import Conversation, ChatMessage
+from app.models.focus import FocusSession
+from app.models.llm_usage import LlmUsageLog
+from app.models.llm_config import LlmConfig
 
 __all__ = [
     "Base",
@@ -85,4 +91,11 @@ __all__ = [
     "Task",
     "TaskClaim",
     "PointsTransaction",
+    "ContributionCache",
+    "ApiCallLog",
+    "Conversation",
+    "ChatMessage",
+    "FocusSession",
+    "LlmUsageLog",
+    "LlmConfig",
 ]

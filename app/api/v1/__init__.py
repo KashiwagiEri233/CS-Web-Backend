@@ -8,6 +8,7 @@ from app.api.v1 import (
     announcements,
     audit,
     auth,
+    auxilio,
     community,
     events,
     exceptions,
@@ -18,6 +19,7 @@ from app.api.v1 import (
     rbac,
     tools,
     users,
+    workbench,
 )
 from app.core.config import settings
 
@@ -48,6 +50,8 @@ api_router.include_router(
     admin_community.router, prefix="/admin/community", tags=["管理员-社区"]
 )
 api_router.include_router(tools.router, prefix="/tools", tags=["工具集"])
+api_router.include_router(auxilio.router, tags=["学习助手"])
+api_router.include_router(workbench.router, tags=["工作台"])
 
 if settings.DEBUG:
     from app.api.v1 import dev_exceptions

@@ -21,6 +21,7 @@ from app.middleware.monitoring import (
 )
 from app.middleware.body_limit import BodySizeLimitMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware, AuthRateLimitMiddleware
+from app.middleware.api_usage import ApiUsageMiddleware
 from app.core.exceptions import setup_exception_handlers, ExceptionHandlerMiddleware
 from app.core.observability import setup_telemetry
 from app.middleware.rbac import require_permission
@@ -152,6 +153,7 @@ def create_app() -> FastAPI:
     )
     application.add_middleware(MetricsMiddleware)
     application.add_middleware(LoggingMiddleware)
+    application.add_middleware(ApiUsageMiddleware)
     application.add_middleware(SecurityHeadersMiddleware)
     application.add_middleware(ExceptionHandlerMiddleware)
     application.add_middleware(

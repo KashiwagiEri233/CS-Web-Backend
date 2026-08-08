@@ -149,6 +149,17 @@ class Settings(BaseSettings):
     # True 时多 worker 下仍有 advisory lock 串行化，但更稳妥是独立迁移步骤。
     DB_AUTO_MIGRATE: bool = False
 
+    # LLM 学习助手配置（Auxilio Agent）
+    # LLM_PROVIDER: openai（OpenAI 兼容协议）/ anthropic / none（禁用，回退规则推荐）
+    LLM_PROVIDER: str = "none"
+    LLM_API_KEY: Optional[str] = None  # 密钥只存 .env，绝不落库/日志/前端
+    LLM_BASE_URL: Optional[str] = None  # OpenAI 兼容自定义网关（DeepSeek/通义/Kimi/本地 vLLM）
+    LLM_MODEL: str = "gpt-4o-mini"
+    LLM_TIMEOUT: float = Field(60, gt=0)
+    LLM_MAX_TOKENS: int = Field(1024, gt=0)
+    # 单日每用户 LLM 调用预算（0 = 不限制），防成本失控
+    LLM_DAILY_BUDGET: int = Field(200, ge=0)
+
     # CORS配置（.env 文件里写逗号分隔字符串，如 ALLOWED_ORIGINS=http://a,http://b）
     # 用 str 类型 + validator 转 list，避免 pydantic-settings v2 对 list 字段强制 JSON 解析
     ALLOWED_ORIGINS: str = (
