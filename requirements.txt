@@ -21,7 +21,7 @@ arq==0.28.0
 
 # 认证相关
 PyJWT[crypto]==2.13.0
-bcrypt>=4.1,<5.0
+bcrypt>=5.0.0,<6.0
 python-multipart==0.0.31
 # TOTP secret 加密（HKDF + AES-256-GCM，与前端迁移算法一致）
 cryptography>=43.0,<46.0
