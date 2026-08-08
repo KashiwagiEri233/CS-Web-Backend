@@ -10,7 +10,7 @@ asyncpg==0.30.0
 greenlet>=3.0,<4.0
 # alembic 迁移用的同步驱动（env.py 把 +asyncpg 去掉后用 psycopg2）；缺它 alembic 在容器内无法运行
 psycopg2-binary==2.9.10
-alembic==1.13.1
+alembic==1.19.0
 
 # 缓存 / 限流分布式后端（可选，未配置 REDIS_URL 时不会被加载）
 redis==5.0.4
