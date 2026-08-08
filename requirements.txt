@@ -13,7 +13,7 @@ psycopg2-binary==2.9.10
 alembic==1.13.1
 
 # 缓存 / 限流分布式后端（可选，未配置 REDIS_URL 时不会被加载）
-redis==5.0.4
+redis==8.1.0
 
 # 异步任务队列（arq）+ 跨实例事件广播（ADR-014，app/core/queue/）
 # 事件总线默认 MULTI_INSTANCE=false（单实例零开销）；多实例部署置 true 经 redis 广播。
