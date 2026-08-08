@@ -26,7 +26,7 @@ python-multipart==0.0.31
 # TOTP secret 加密（HKDF + AES-256-GCM，与前端迁移算法一致）
 cryptography>=43.0,<46.0
 # GitHub OAuth 回调 / 用户信息获取
-httpx>=0.27,<1.0
+httpx>=0.28.1,<1.0
 
 # 环境变量管理
 python-dotenv==1.2.2
