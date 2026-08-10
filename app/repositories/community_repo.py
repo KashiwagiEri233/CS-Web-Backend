@@ -7,7 +7,8 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Optional, Sequence
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select, text, type_coerce
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -110,7 +111,12 @@ class CommunityPostRepository:
             # ER-01 / ER-23：参数化 JSONB 包含查询。
             # 传入列表由 SQLAlchemy 绑定为参数，不再把用户输入拼进 SQL 字面量；
             # 与 community.py:121 的 User.tech_tags.contains([tag]) 写法保持一致。
-            conditions.append(CommunityPost.tags.contains([tag.strip()]))
+            # 注意：tags 列类型为 JSON().with_variant(JSONB)，ColumnElement.contains
+            # 会退化成字符串 LIKE（运行时报 invalid input syntax for type json）；
+            # 用 type_coerce 显式按 JSONB 比较，走 @> 包含（2026-08-10 回归修复）。
+            conditions.append(
+                type_coerce(CommunityPost.tags, JSONB).contains([tag.strip()])
+            )
         if series_id:
             conditions.append(CommunityPost.series_id == series_id)
         if author_id:

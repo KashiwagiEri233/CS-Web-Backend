@@ -64,10 +64,13 @@ def export_spec() -> dict:
     paths = {p: d for p, d in spec.get("paths", {}).items() if p.startswith(v1_prefix)}
     spec = dict(spec)
     spec["paths"] = paths
-    # 移除易变字段，避免无意义 diff
+    # 移除易变字段，避免无意义 diff（servers 不参与契约判定）
     spec.pop("servers", None)
     info = dict(spec.get("info", {}))
-    info.pop("version", None)
+    # 写入四源版本（app/__init__.py __version__），保留「四源版本 → 冻结契约」追溯链；
+    # 比对侧 (check_spec) 仍忽略 info.version，不参与契约差异判定（见下方 check 分支）。
+    from app import __version__ as app_version
+    info["version"] = app_version
     spec["info"] = info
     return spec
 
@@ -112,9 +115,13 @@ def main() -> int:
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
     # 与生成侧一致：比对时忽略 info.version（基线文件保留 version 用于人工追溯，
     # 但 version 不参与契约差异判定，避免「四源版本」更新引发无意义 diff）。
+    # 当前契约与基线对称剥离，否则导出侧写入的 version 会导致比对恒不等。
     baseline_info = dict(baseline.get("info", {}))
     baseline_info.pop("version", None)
     baseline["info"] = baseline_info
+    cur_info = dict(current.get("info", {}))
+    cur_info.pop("version", None)
+    current["info"] = cur_info
     cur = json.loads(_normalize(current))
     base = json.loads(_normalize(baseline))
 

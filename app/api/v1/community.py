@@ -8,7 +8,8 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
 from fastapi.responses import FileResponse
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select, text, type_coerce
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -118,7 +119,10 @@ async def list_members(
     conds = [User.deleted_at.is_(None)]
 
     if tag:
-        conds.append(User.tech_tags.contains([tag]))
+        # ER-23 回归修复：tech_tags 列类型为 JSON().with_variant(JSONB)，
+        # ColumnElement.contains 会退化成字符串 LIKE（运行时报错）；用 type_coerce
+        # 显式按 JSONB 比较，走 @> 包含（2026-08-10，与 community_repo.py 同源修复）。
+        conds.append(type_coerce(User.tech_tags, JSONB).contains([tag]))
     if search:
         # 全文检索：search_vector @@ websearch_to_tsquery（GIN 索引加速）
         ts_query = func.websearch_to_tsquery(

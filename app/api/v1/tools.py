@@ -603,12 +603,16 @@ async def get_component(
     return await service.get_component(item_id)
 
 
-@router.post("/component-registry", response_model=dict, status_code=201)
+@router.post("/component-registry", status_code=201)
 async def create_component(
     body: ComponentItemInput,
     service: ComponentRegistryService = Depends(get_component_registry_service),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
+    # 2026-08-10 修复：原 response_model=dict 与 service 返回的 ComponentItemOut
+    # （Pydantic 模型）不匹配，任何真实 POST 都会 ResponseValidationError 500。
+    # 与 update/delete/variants/toggle/guide 等兄弟路由一致，去掉 response_model，
+    # 由 FastAPI 直接序列化返回模型。
     return await service.create_component(body)
 
 

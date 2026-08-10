@@ -5,7 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select, type_coerce, update
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timezone import now_utc
@@ -37,7 +38,9 @@ class ExamRepository:
         if status:
             conditions.append(Exam.status == status)
         if tag and tag.strip():
-            conditions.append(Exam.tech_tags.contains(f'"{tag.strip()}"'))
+            # 2026-08-10 修复：Exam.tech_tags 为 JSON().with_variant(JSONB())（Variant），
+            # contains 退化成字符串 LIKE 且实际调用报错；type_coerce(JSONB) 走 @> 包含。
+            conditions.append(type_coerce(Exam.tech_tags, JSONB).contains([tag.strip()]))
         total = int(
             (
                 await self.db.execute(
@@ -232,7 +235,11 @@ class ResourceRepository:
         if resource_type:
             conditions.append(Resource.resource_type == resource_type)
         if tag and tag.strip():
-            conditions.append(Resource.tech_tags.contains(f'"{tag.strip()}"'))
+            # 2026-08-10 修复：Resource.tech_tags 为 JSON().with_variant(JSONB())（Variant），
+            # contains 退化成字符串 LIKE 且实际调用报错；type_coerce(JSONB) 走 @> 包含。
+            conditions.append(
+                type_coerce(Resource.tech_tags, JSONB).contains([tag.strip()])
+            )
         if submitted_by:
             conditions.append(Resource.submitted_by == submitted_by)
         total = int(

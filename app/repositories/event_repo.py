@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import Optional, Sequence
 
-from sqlalchemy import Integer, func, or_, select, update
+from sqlalchemy import Integer, func, or_, select, type_coerce, update
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timezone import now_utc
@@ -33,7 +34,13 @@ class EventRepository:
             kw = f"%{search.strip()}%"
             conditions.append(or_(Event.title.ilike(kw), Event.description.ilike(kw)))
         if tag and tag.strip():
-            conditions.append(Event.tags.contains(f'"{tag.strip()}"'))
+            # 2026-08-10 修复：Event.tags 为 JSON().with_variant(JSONB(),"postgresql")
+            # （Variant），ColumnElement.contains 会退化成通用字符串 LIKE（编译为
+            # `col LIKE '%' || $n::JSONB || '%'`），实际调用抛 invalid input syntax
+            # for type json。type_coerce(..., JSONB).contains([tag]) 走 JSONB `@>`。
+            conditions.append(
+                type_coerce(Event.tags, JSONB).contains([tag.strip()])
+            )
 
         total = int(
             (

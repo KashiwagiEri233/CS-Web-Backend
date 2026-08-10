@@ -1,6 +1,6 @@
 [project]
 name = "fastapi-witchcat-framework"
-version = "0.9.8"
+version = "0.9.9"
 requires-python = ">=3.13"
 dependencies = [
     "alembic==1.13.1",
