@@ -7,6 +7,9 @@ from collections import defaultdict
 from sqlalchemy import ARRAY, String, cast, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.timezone import now_utc
+
+from app.models.conversation import ChatMessage, Conversation
 from app.models.exam import Exam, ExamAttempt, ExamQuestion
 from app.models.resource import Resource
 
@@ -91,3 +94,45 @@ class AuxilioService:
             ]
 
         return {"weak_tags": weak_tags, "recommended_resources": recommended}
+
+    async def create_conversation_with_user_msg(
+        self, user_id: int, user_msg_content: str
+    ) -> Conversation:
+        """新会话：建会话(flush 取 id) + 落用户消息 + 同事务提交，返回会话。"""
+        conv = Conversation(user_id=user_id, title="新会话")
+        self.db.add(conv)
+        await self.db.flush()
+        self.db.add(
+            ChatMessage(conversation_id=conv.id, role="user", content=user_msg_content)
+        )
+        await self.db.commit()
+        return conv
+
+    async def append_user_message(self, conversation_id: int, user_msg_content: str) -> None:
+        """既有会话：仅追加一条用户消息并提交。"""
+        self.db.add(
+            ChatMessage(conversation_id=conversation_id, role="user", content=user_msg_content)
+        )
+        await self.db.commit()
+
+    async def persist_assistant_message(
+        self, conv, assistant_text, tool_records, new_title
+    ) -> None:
+        """SSE 结束时落库助手消息 + 会话标题（失败不影响已输出内容）。"""
+        try:
+            async with self.db.begin():
+                if new_title and conv.title == "新会话":
+                    conv.title = new_title
+                    conv.updated_at = now_utc()
+                if assistant_text:
+                    self.db.add(
+                        ChatMessage(
+                            conversation_id=conv.id,
+                            role="assistant",
+                            content="".join(assistant_text),
+                            tool_calls=tool_records or None,
+                        )
+                    )
+                conv.updated_at = now_utc()
+        except Exception:  # noqa: BLE001 - 持久化失败不影响已输出内容
+            pass

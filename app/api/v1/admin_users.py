@@ -16,13 +16,13 @@ from fastapi import APIRouter, Depends, Query, Request
 
 from app.core.request_context import get_client_meta
 from app.dependencies_services import get_user_service
-from app.middleware.rbac import require_permission
+from app.middleware.rbac import require_admin_2fa, require_permission
 from app.models.user import User
 from app.schemas.auth import UserOut
 from app.schemas.user import AdminUserListOut, AdminUserOut, AdminUserUpdate
 from app.services.user_service import UserService
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_admin_2fa)])
 
 
 def _to_admin_out(user: User) -> dict:

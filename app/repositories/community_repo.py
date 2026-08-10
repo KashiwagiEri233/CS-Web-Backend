@@ -107,7 +107,10 @@ class CommunityPostRepository:
                 )
             )
         if tag and tag.strip():
-            conditions.append(CommunityPost.tags.contains(f'"{tag.strip()}"'))
+            # ER-01 / ER-23：参数化 JSONB 包含查询。
+            # 传入列表由 SQLAlchemy 绑定为参数，不再把用户输入拼进 SQL 字面量；
+            # 与 community.py:121 的 User.tech_tags.contains([tag]) 写法保持一致。
+            conditions.append(CommunityPost.tags.contains([tag.strip()]))
         if series_id:
             conditions.append(CommunityPost.series_id == series_id)
         if author_id:
@@ -362,6 +365,44 @@ class CommunityInteractionRepository:
         rows = await self.db.execute(stmt)
         return rows.scalar_one_or_none()
 
+    async def get_interaction_target_ids(
+        self, user_id: int, target_type: str, target_ids: list[int]
+    ) -> dict[str, set[int]]:
+        """批量取回某用户对一批目标的点赞/收藏存在集合，消除 N+1。
+
+        返回 {"reaction": set[int], "favorite": set[int]}，值为命中的 target_id 集合。
+        target_ids 为空时直接短路返回空集合，避免生成 IN () 空查询。
+        """
+        if not target_ids:
+            return {"reaction": set(), "favorite": set()}
+        reaction_ids = set(
+            (
+                await self.db.execute(
+                    select(CommunityReaction.target_id).where(
+                        CommunityReaction.user_id == user_id,
+                        CommunityReaction.target_type == target_type,
+                        CommunityReaction.target_id.in_(target_ids),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        favorite_ids = set(
+            (
+                await self.db.execute(
+                    select(CommunityFavorite.target_id).where(
+                        CommunityFavorite.user_id == user_id,
+                        CommunityFavorite.target_type == target_type,
+                        CommunityFavorite.target_id.in_(target_ids),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return {"reaction": reaction_ids, "favorite": favorite_ids}
+
     async def add_favorite(
         self, user_id: int, target_type: str, target_id: int
     ) -> None:
@@ -525,6 +566,55 @@ class CommunityFollowRepository:
             ).scalar_one()
         )
         return list(rows.scalars().all()), total
+
+    async def bulk_counts(
+        self, user_ids: list[int]
+    ) -> dict[int, tuple[int, int]]:
+        """批量取回一组用户的 (following, followers) 计数，消除逐用户 N+1。
+
+        返回 {user_id: (following_count, follower_count)}；未出现在聚合结果中的
+        用户记为 (0, 0)。user_ids 为空时直接短路返回空字典。
+        """
+        if not user_ids:
+            return {}
+        following_stmt = (
+            select(CommunityFollow.follower_id, func.count())
+            .where(CommunityFollow.follower_id.in_(user_ids))
+            .group_by(CommunityFollow.follower_id)
+        )
+        follower_stmt = (
+            select(CommunityFollow.following_id, func.count())
+            .where(CommunityFollow.following_id.in_(user_ids))
+            .group_by(CommunityFollow.following_id)
+        )
+        following_rows = (await self.db.execute(following_stmt)).all()
+        follower_rows = (await self.db.execute(follower_stmt)).all()
+        result: dict[int, tuple[int, int]] = {uid: (0, 0) for uid in user_ids}
+        for uid, cnt in following_rows:
+            result[uid] = (cnt, result[uid][1])
+        for uid, cnt in follower_rows:
+            prev = result.get(uid, (0, 0))
+            result[uid] = (prev[0], cnt)
+        return result
+
+    async def bulk_is_following(
+        self, follower_id: int, target_ids: list[int]
+    ) -> set[int]:
+        """批量取回 follower_id 已关注的 target 集合，消除逐用户 N+1。
+
+        返回 {target_id} 集合；target_ids 为空时直接短路返回空集合。
+        """
+        if not target_ids:
+            return set()
+        rows = (
+            await self.db.execute(
+                select(CommunityFollow.following_id).where(
+                    CommunityFollow.follower_id == follower_id,
+                    CommunityFollow.following_id.in_(target_ids),
+                )
+            )
+        ).scalars().all()
+        return set(rows)
 
     async def counts(self, user_id: int) -> tuple[int, int]:
         following = int(

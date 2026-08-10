@@ -89,6 +89,9 @@ class Settings(BaseSettings):
     # TOTP 2FA：secret 加密密钥（≥32 字节，必须从环境变量设置，与 SECRET_KEY 同标准）。
     # 迁移兼容：密钥派生算法（HKDF-SHA256 + AES-256-GCM）与前端一致，见 app/core/totp_encryption.py。
     TOTP_ENCRYPTION_KEY: Optional[str] = None
+    # 社区浏览去重 IP 哈希密钥（≥16 字节，与 SECRET_KEY 同标准 fail-fast）。
+    # 用于匿名化访客 IP 以做浏览去重计数；硬编码常量会令匿名化可逆，故强制从环境读取。
+    COMMUNITY_IP_HASH_SECRET: Optional[str] = None
     TOTP_ISSUER: str = "FZTBUCS"
     # TOTP 时间步长（秒）与允许的时钟偏移窗口（步）
     TOTP_STEP_SECONDS: int = Field(30, gt=0)
@@ -302,6 +305,24 @@ class Settings(BaseSettings):
             )
         if len(v.encode("utf-8")) < 32:
             raise ValueError("TOTP_ENCRYPTION_KEY must contain at least 32 UTF-8 bytes")
+        return v
+
+    @field_validator("COMMUNITY_IP_HASH_SECRET", mode="before")
+    @classmethod
+    def validate_community_ip_hash_secret(cls, v):
+        """社区浏览去重 IP 哈希密钥：必须 ≥16 UTF-8 字节。
+
+        与 SECRET_KEY 同标准——缺失会导致 IP 匿名化回退到源码内硬编码常量，
+        令匿名化可逆（任何拿到源码的人都能反推访客 IP），必须 fail-fast。
+        """
+        if v is None or v == "":
+            raise ValueError(
+                "COMMUNITY_IP_HASH_SECRET must be set from environment variables"
+            )
+        if len(v.encode("utf-8")) < 16:
+            raise ValueError(
+                "COMMUNITY_IP_HASH_SECRET must contain at least 16 UTF-8 bytes"
+            )
         return v
 
     @field_validator("TRUSTED_PROXY_CIDRS")

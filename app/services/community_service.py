@@ -42,7 +42,6 @@ from app.services.notification_service import NotificationService
 from app.utils.mask import mask_email
 
 MENTION_PATTERN = r"@([a-zA-Z0-9_-]{3,50})"
-_IP_HASH_SECRET = "community-ip-hash"
 
 COMMUNITY_LIMITS = {
     "TITLE_MAX": 120,
@@ -57,7 +56,16 @@ COMMUNITY_LIMITS = {
 
 
 def hash_ip_for_view(ip: str) -> str:
-    secret = getattr(settings, "COMMUNITY_IP_HASH_SECRET", None) or _IP_HASH_SECRET
+    """匿名化访客 IP 用于浏览去重计数。
+
+    密钥来自 COMMUNITY_IP_HASH_SECRET（强制从环境读取，缺失即 fail-fast）。
+    绝不使用硬编码常量——否则匿名化对掌握源码者可逆。
+    """
+    secret = settings.COMMUNITY_IP_HASH_SECRET
+    if not secret:
+        raise RuntimeError(
+            "COMMUNITY_IP_HASH_SECRET 未配置：拒绝处理访客 IP 匿名化"
+        )
     return hmac.new(secret.encode(), ip.encode(), hashlib.sha256).hexdigest()
 
 
@@ -833,6 +841,11 @@ class CommunityService:
                 .scalars()
                 .all()
             }
+        interaction_ids = {"reaction": set(), "favorite": set()}
+        if current_user_id:
+            interaction_ids = await self.interaction_repo.get_interaction_target_ids(
+                current_user_id, "post", [p.id for p in posts]
+            )
         for post in posts:
             user = users.get(post.author_id)
             setattr(
@@ -846,29 +859,16 @@ class CommunityService:
                 "category",
                 {"id": cat.id, "slug": cat.slug, "name": cat.name} if cat else None,
             )
-            setattr(post, "is_liked_by_me", False)
-            setattr(post, "is_favorited_by_me", False)
-            if current_user_id:
-                setattr(
-                    post,
-                    "is_liked_by_me",
-                    (
-                        await self.interaction_repo.get_reaction(
-                            current_user_id, "post", post.id
-                        )
-                    )
-                    is not None,
-                )
-                setattr(
-                    post,
-                    "is_favorited_by_me",
-                    (
-                        await self.interaction_repo.get_favorite(
-                            current_user_id, "post", post.id
-                        )
-                    )
-                    is not None,
-                )
+            setattr(
+                post,
+                "is_liked_by_me",
+                post.id in interaction_ids["reaction"],
+            )
+            setattr(
+                post,
+                "is_favorited_by_me",
+                post.id in interaction_ids["favorite"],
+            )
 
     async def _load_author_summaries(self, comments: list[CommunityComment]) -> None:
         if not comments:
@@ -911,13 +911,15 @@ class CommunityService:
         self, users: list[User], total: int, current_user_id: Optional[int]
     ) -> dict:
         items = []
+        user_ids = [u.id for u in users]
+        counts_map = await self.follow_repo.bulk_counts(user_ids)
+        following_set = (
+            await self.follow_repo.bulk_is_following(current_user_id, user_ids)
+            if current_user_id
+            else set()
+        )
         for user in users:
-            following_count, follower_count = await self.follow_repo.counts(user.id)
-            is_following = (
-                (await self.follow_repo.get(current_user_id, user.id)) is not None
-                if current_user_id
-                else False
-            )
+            following_count, follower_count = counts_map.get(user.id, (0, 0))
             items.append(
                 {
                     "id": user.id,
@@ -928,7 +930,7 @@ class CommunityService:
                     "tech_tags": user.tech_tags or [],
                     "following_count": following_count,
                     "follower_count": follower_count,
-                    "is_following": is_following,
+                    "is_following": user.id in following_set,
                 }
             )
         return {"items": items, "total": total}

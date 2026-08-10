@@ -45,7 +45,7 @@ uvicorn app.main:app --reload
 **关键环境变量**（遗漏会启动失败或功能降级）：
 
 - `SECRET_KEY`（≥32 字节）、`DATABASE_PASSWORD`、`ALLOWED_ORIGINS`（前端地址，如 `http://localhost:2333`）
-- `TOTP_ENCRYPTION_KEY`（2FA 加密）、`FORUM_IP_HASH_SECRET`（浏览去重 IP 哈希）、`PASSWORD_RESET_DEFAULT`（默认重置密码）
+- `TOTP_ENCRYPTION_KEY`（2FA 加密）、`COMMUNITY_IP_HASH_SECRET`（浏览去重 IP 哈希，≥16 字节必填）、`PASSWORD_RESET_DEFAULT`（默认重置密码）
 - `BACKEND_URL` 是前端侧配置（BFF 指向本仓库，默认 `http://localhost:9000`）
 
 ## 模块清单

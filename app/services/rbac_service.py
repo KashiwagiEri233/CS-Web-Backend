@@ -24,27 +24,47 @@ def _user_perm_cache_key(user_id: int) -> str:
     return f"rbac:user_perms:{user_id}"
 
 
-async def _invalidate_user_perm_cache(user_id: int) -> None:
-    """失效单个用户的权限缓存。缓存故障不抛错。"""
+async def _invalidate_user_perm_cache(
+    user_id: int, raise_on_failure: bool = False
+) -> None:
+    """失效单个用户的权限缓存。
+
+    raise_on_failure=False（默认，grant/低风险路径）：失效失败仅告警，不阻断业务变更。
+    raise_on_failure=True（revoke/降权高风险路径）：失效失败抛错，使授权变更操作中止
+    （拒绝服务优于撤权后残留过期权限，见 ER-20）。
+    """
     try:
         await get_cache().delete(_user_perm_cache_key(user_id))
-    except Exception:  # noqa: BLE001 - 失效失败不应阻断业务变更
-        logger.debug("权限缓存失效失败，忽略", user_id=user_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("权限缓存失效失败（单用户）", user_id=user_id, error=str(exc))
+        if raise_on_failure:
+            raise RuntimeError(
+                f"权限缓存失效失败，已中止本次授权变更以避免撤权后残留权限：{exc}"
+            ) from exc
 
 
-async def _invalidate_user_perm_cache_many(user_ids: Iterable[int]) -> None:
+async def _invalidate_user_perm_cache_many(
+    user_ids: Iterable[int], raise_on_failure: bool = False
+) -> None:
     """批量失效多个用户的权限缓存（整批一次往返）。
 
     角色/权限层面的变更会波及该角色下的**全部**用户，逐个 await 删除会让一次
     授权变更的耗时随用户数线性增长；这里合并成一次批量删除。
+    raise_on_failure 语义同上。
     """
     keys = [_user_perm_cache_key(uid) for uid in user_ids]
     if not keys:
         return
     try:
         await get_cache().delete_many(keys)
-    except Exception:  # noqa: BLE001 - 失效失败不应阻断业务变更
-        logger.debug("权限缓存批量失效失败，忽略", count=len(keys))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "权限缓存批量失效失败", count=len(keys), error=str(exc)
+        )
+        if raise_on_failure:
+            raise RuntimeError(
+                f"权限缓存批量失效失败，已中止本次授权变更以避免撤权后残留权限：{exc}"
+            ) from exc
 
 
 class RBACService(RBACAssignmentMixin):
@@ -159,6 +179,8 @@ class RBACService(RBACAssignmentMixin):
 
         # 变更前取关联角色，用于缓存失效
         role_ids = await self.rbac_repo.get_role_ids_by_permission(permission_id)
+        # 高危：权限定义变更可能改变授权语义（等同撤权），提交前失效缓存（fail-closed）
+        await self._invalidate_roles_users_perm_cache(role_ids, raise_on_failure=True)
         try:
             updated = await self.rbac_repo.update_permission(permission, update_data)
             if commit:
@@ -166,7 +188,6 @@ class RBACService(RBACAssignmentMixin):
         except IntegrityError as exc:
             await self.db.rollback()
             raise ConflictException(message="权限数据与现有记录冲突") from exc
-        await self._invalidate_roles_users_perm_cache(role_ids)
         return updated
 
     # ------------------------------------------------------------------ 角色 / 权限 CRUD
@@ -199,13 +220,12 @@ class RBACService(RBACAssignmentMixin):
 
     async def delete_role(self, role_id: int, commit: bool = True) -> bool:
         """删除角色：角色不存在返回 False。"""
-        # 删除前先收集受影响用户，便于提交后清缓存
+        # 删除前先收集受影响用户，提交前清缓存（高危撤权，fail-closed）
         user_ids = await self.rbac_repo.get_user_ids_by_role(role_id)
+        await _invalidate_user_perm_cache_many(user_ids, raise_on_failure=True)
         ok = await self.rbac_repo.delete_role(role_id)
-        if ok:
-            if commit:
-                await self.db.commit()
-            await _invalidate_user_perm_cache_many(user_ids)
+        if ok and commit:
+            await self.db.commit()
         return ok
 
     async def get_all_permissions(
@@ -238,11 +258,11 @@ class RBACService(RBACAssignmentMixin):
     async def delete_permission(self, permission_id: int, commit: bool = True) -> bool:
         """删除权限：权限不存在返回 False。"""
         role_ids = await self.rbac_repo.get_role_ids_by_permission(permission_id)
+        # 高危撤权：提交前失效缓存，失败则中止（fail-closed）
+        await self._invalidate_roles_users_perm_cache(role_ids, raise_on_failure=True)
         ok = await self.rbac_repo.delete_permission(permission_id)
-        if ok:
-            if commit:
-                await self.db.commit()
-            await self._invalidate_roles_users_perm_cache(role_ids)
+        if ok and commit:
+            await self.db.commit()
         return ok
 
     async def get_role_by_name(self, name: str) -> Optional[Role]:
@@ -333,11 +353,11 @@ class RBACService(RBACAssignmentMixin):
                 message="系统内置角色不可删除",
                 details={"role": role.name},
             )
+        # 高危撤权：提交前失效缓存，失败则中止（fail-closed）
+        await self._invalidate_role_users_perm_cache(role_id, raise_on_failure=True)
         ok = await self.rbac_repo.delete_role(role_id)
         if ok and commit:
             await self.db.commit()
-        if ok:
-            await self._invalidate_role_users_perm_cache(role_id)
         return ok
 
     async def replace_role_permissions(
@@ -366,10 +386,11 @@ class RBACService(RBACAssignmentMixin):
                     }
                 )
             permission_ids.append(permission.id)
+        # 高危：全量替换可能移除权限（撤权），提交前失效缓存（fail-closed）
+        await self._invalidate_role_users_perm_cache(role_id, raise_on_failure=True)
         await self.rbac_repo.replace_role_permissions(role_id, permission_ids)
         if commit:
             await self.db.commit()
-        await self._invalidate_role_users_perm_cache(role_id)
         return role
 
     async def list_permissions_admin(self) -> list[Permission]:
@@ -382,21 +403,31 @@ class RBACService(RBACAssignmentMixin):
 
     # ------------------------------------------------------------------ 权限缓存失效
 
-    async def _invalidate_user_perm_cache(self, user_id: int) -> None:
-        await _invalidate_user_perm_cache(user_id)
+    async def _invalidate_user_perm_cache(
+        self, user_id: int, raise_on_failure: bool = False
+    ) -> None:
+        await _invalidate_user_perm_cache(user_id, raise_on_failure=raise_on_failure)
 
-    async def _invalidate_role_users_perm_cache(self, role_id: int) -> None:
+    async def _invalidate_role_users_perm_cache(
+        self, role_id: int, raise_on_failure: bool = False
+    ) -> None:
         """失效指定角色下所有用户的权限缓存（role↔permission 变更时调用）。
 
         并发失效：大角色下逐个串行 await 会堆积缓存 RTT。
         """
         user_ids = await self.rbac_repo.get_user_ids_by_role(role_id)
-        await _invalidate_user_perm_cache_many(user_ids)
+        await _invalidate_user_perm_cache_many(
+            user_ids, raise_on_failure=raise_on_failure
+        )
 
-    async def _invalidate_roles_users_perm_cache(self, role_ids: Sequence[int]) -> None:
+    async def _invalidate_roles_users_perm_cache(
+        self, role_ids: Sequence[int], raise_on_failure: bool = False
+    ) -> None:
         """失效这批角色下所有用户的权限缓存（权限定义变更时调用）。
 
         一次 IN 查询取回受影响用户 + 一次批量删除，不随角色数线性增长往返次数。
         """
         user_ids = await self.rbac_repo.get_user_ids_by_roles(role_ids)
-        await _invalidate_user_perm_cache_many(user_ids)
+        await _invalidate_user_perm_cache_many(
+            user_ids, raise_on_failure=raise_on_failure
+        )

@@ -18,6 +18,7 @@ from app.models.conversation import ChatMessage, Conversation
 from app.models.llm_usage import LlmUsageLog
 from app.models.user import User
 from app.services import auxilio_agent
+from app.services.auxilio_service import AuxilioService
 
 router = APIRouter(prefix="/auxilio", tags=["学习助手"])
 
@@ -53,21 +54,13 @@ async def _own_conversation(db: AsyncSession, user: User, conversation_id: int) 
 @router.post("/chat")
 async def chat(req: ChatRequest, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_active_user)):
     """SSE 流式对话：支持 OpenAI / Anthropic 双协议与 Skills 工具调用。"""
+    last = req.messages[-1]
+    content = last.content if last.role == "user" else ""
     if req.conversation_id is not None:
         conv = await _own_conversation(db, user, req.conversation_id)
+        await AuxilioService(db).append_user_message(conv.id, content)
     else:
-        conv = Conversation(user_id=user.id, title="新会话")
-        db.add(conv)
-        await db.flush()
-
-    # 持久化用户消息
-    user_msg = ChatMessage(
-        conversation_id=conv.id,
-        role="user",
-        content=req.messages[-1].content if req.messages[-1].role == "user" else "",
-    )
-    db.add(user_msg)
-    await db.commit()
+        conv = await AuxilioService(db).create_conversation_with_user_msg(user.id, content)
 
     history = [{"role": m.role, "content": m.content} for m in req.messages]
 
@@ -113,24 +106,10 @@ async def chat(req: ChatRequest, db: AsyncSession = Depends(get_db), user: User 
                     await db.commit()
                 except Exception:  # noqa: BLE001 - 用量记录失败不影响对话
                     pass
-            # 持久化助手消息 + 会话标题
-            try:
-                async with db.begin():
-                    if new_title and conv.title == "新会话":
-                        conv.title = new_title
-                        conv.updated_at = datetime.utcnow()
-                    if assistant_text:
-                        db.add(
-                            ChatMessage(
-                                conversation_id=conv.id,
-                                role="assistant",
-                                content="".join(assistant_text),
-                                tool_calls=tool_records or None,
-                            )
-                        )
-                    conv.updated_at = datetime.utcnow()
-            except Exception:  # noqa: BLE001 - 持久化失败不影响已输出内容
-                pass
+            # 持久化助手消息 + 会话标题（提取到服务层；LlmUsageLog 依 §14.3 例外保留在路由）
+            await AuxilioService(db).persist_assistant_message(
+                conv, assistant_text, tool_records, new_title
+            )
 
     return StreamingResponse(
         event_stream(),

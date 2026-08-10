@@ -47,3 +47,7 @@ opentelemetry-exporter-otlp==1.42.1
 opentelemetry-instrumentation-fastapi==0.63b1
 opentelemetry-instrumentation-sqlalchemy==0.63b1
 opentelemetry-instrumentation-redis==0.63b1
+
+# Prometheus 标准指标端点（ER-06）：/metrics 供 scraper 拉取（错误率/延迟/饱和度）
+# 同步见 pyproject.toml；合并前请用 uv 重新生成 requirements.lock / requirements-dev.lock。
+prometheus-client>=0.20,<0.22

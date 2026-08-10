@@ -7,12 +7,12 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, Request
 
 from app.dependencies_services import get_community_service
-from app.middleware.rbac import require_permission
+from app.middleware.rbac import require_admin_2fa, require_permission
 from app.models.user import User
 from app.schemas.community import post_to_dict
 from app.services.community_service import CommunityService
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_admin_2fa)])
 
 
 # ------------------------------------------------------------------ 内容审核

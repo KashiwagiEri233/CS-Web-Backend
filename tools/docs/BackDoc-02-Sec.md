@@ -159,7 +159,7 @@
 | JWT 签名密钥 | `SECRET_KEY` | 全部 access/refresh token 失效，用户需重新登录 | 高 |
 | TOTP 加密密钥 | `TOTP_ENCRYPTION_KEY` | 已存储的 2FA secret 无法解密，2FA 用户被锁 | 高 |
 | 数据库密码 | `DATABASE_PASSWORD` | 需同步更新 PG 和应用配置 | 中 |
-| 邮箱 IP 哈希密钥 | `COMMUNITY_IP_HASH_SECRET` | 浏览去重计数重置（非安全风险） | 低 |
+| 社区浏览去重 IP 哈希密钥 | `COMMUNITY_IP_HASH_SECRET` | 匿名化访客 IP；现已 fail-fast 强制（缺失拒绝启动），纠正此前回退硬编码常量的缺陷 | 低 |
 
 ### 4.2 JWT 签名密钥轮换（SECRET_KEY）
 

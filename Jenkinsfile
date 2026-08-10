@@ -74,9 +74,21 @@ pipeline {
         stage('API contract freeze (G3)') {
             steps {
                 script {
-                    // 冻结 /api/v1 契约：比对当前 OpenAPI 与基线 openapi.baseline.json。
-                    // 契约变更须经评审后重跑 `python scripts/export_openapi.py --baseline > openapi.baseline.json` 更新基线。
-                    runPythonModule('python tools/scripts/export_openapi.py --check openapi.baseline.json')
+                    // 冻结 /api/v1 契约：比对当前 OpenAPI 与仓库根基线 openapi.baseline.json。
+                    // 注意：Jenkinsfile 运行于 CS-Web-Backend 目录，提交态基线在仓库根，
+                    // 须用 ../openapi.baseline.json（与 Makefile contract-check 一致），
+                    // 否则检查的是未提交到子模块的本地副本，门禁实际空跑（ER-04）。
+                    // 契约变更须经评审后重跑 `make contract-baseline` 更新基线。
+                    runPythonModule('python tools/scripts/export_openapi.py --check ../openapi.baseline.json')
+                }
+            }
+        }
+        stage('Docs dead links (ER-09)') {
+            steps {
+                script {
+                    // 文档死链审计：扫描 docs/ 与根级 *.md，断文件链接即失败。
+                    // 锚点默认仅警告，避免 CJK 标题 slug 近似误杀；可作为 PR 门禁。
+                    runCommand('python3 ../scripts/check_dead_links.py --base . --docs docs')
                 }
             }
         }

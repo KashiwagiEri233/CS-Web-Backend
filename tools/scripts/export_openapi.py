@@ -110,6 +110,11 @@ def main() -> int:
         return 2
 
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+    # 与生成侧一致：比对时忽略 info.version（基线文件保留 version 用于人工追溯，
+    # 但 version 不参与契约差异判定，避免「四源版本」更新引发无意义 diff）。
+    baseline_info = dict(baseline.get("info", {}))
+    baseline_info.pop("version", None)
+    baseline["info"] = baseline_info
     cur = json.loads(_normalize(current))
     base = json.loads(_normalize(baseline))
 

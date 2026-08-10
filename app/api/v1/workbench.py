@@ -11,14 +11,16 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.timezone import local_to_utc, now_local, now_utc
+from app.core.timezone import local_to_utc, now_local
 from app.dependencies import get_current_active_user
 from app.dependencies import get_db
+from app.middleware.rbac import require_admin_2fa
 from app.models.api_usage import ApiCallLog
 from app.models.focus import FocusSession
 from app.models.llm_usage import LlmUsageLog
 from app.models.user import User
 from app.services.contribution_service import ContributionService
+from app.services.workbench_service import WorkbenchService
 
 router = APIRouter(prefix="/workbench", tags=["workbench"])
 
@@ -83,7 +85,8 @@ async def get_github_contributions(
 @router.get("/stats/api-usage")
 async def get_api_usage_stats(
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_active_user),
+    # ER-18 关联：全站 API 用量属管理员可观测性，强制管理员 + 2FA（与所有 admin 端点一致）。
+    user: User = Depends(require_admin_2fa),
     days: int = Query(default=30, ge=1, le=90),
 ):
     """API 调用统计：今日计数 + 近 N 天趋势 + endpoint 分布。"""
@@ -166,17 +169,13 @@ async def record_focus_session(
     user: User = Depends(get_current_active_user),
 ):
     """番茄钟完成一轮专注后上报记录（幂等不校验重复，前端只报完成轮）。"""
-    now = now_utc()
-    session = FocusSession(
-        user_id=user.id,
-        duration_seconds=payload.duration_seconds,
-        phase=payload.phase,
-        sound_source=payload.sound_source,
-        started_at=now - timedelta(seconds=payload.duration_seconds),
+    session_id = await WorkbenchService(db).record_focus_session(
+        user.id,
+        payload.duration_seconds,
+        payload.phase,
+        payload.sound_source,
     )
-    db.add(session)
-    await db.commit()
-    return {"ok": True, "id": session.id}
+    return {"ok": True, "id": session_id}
 
 
 @router.get("/stats/pomodoro")
@@ -412,27 +411,10 @@ async def update_llm_config(
     user: User = Depends(get_current_active_user),
 ):
     """保存用户 LLM 配置（API Key AES-256-GCM 加密存储，绝不落明文/日志）。"""
-    from app.core.totp_encryption import encrypt_secret
-    from app.models.llm_config import LlmConfig
-
-    cfg = (
-        await db.execute(select(LlmConfig).where(LlmConfig.user_id == user.id))
-    ).scalar_one_or_none()
-    if cfg is None:
-        cfg = LlmConfig(user_id=user.id)
-        db.add(cfg)
-
-    cfg.provider = payload.provider
-    cfg.model = payload.model or "gpt-4o-mini"
-    cfg.base_url = (payload.base_url or "").strip() or None
-    if payload.api_key and payload.api_key.strip():
-        cfg.api_key_encrypted = encrypt_secret(payload.api_key.strip())
-    cfg.updated_at = now_utc()
-    await db.commit()
-
-    return {
-        "ok": True,
-        "configured": bool(cfg.api_key_encrypted),
-        "provider": cfg.provider,
-        "model": cfg.model,
-    }
+    return await WorkbenchService(db).upsert_llm_config(
+        user.id,
+        payload.provider,
+        payload.model,
+        payload.base_url,
+        payload.api_key,
+    )

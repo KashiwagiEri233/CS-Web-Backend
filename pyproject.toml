@@ -27,6 +27,7 @@ dependencies = [
     "sqlalchemy==2.0.51",
     "tzdata>=2024.1",
     "uvicorn[standard]==0.28.0",
+    "prometheus-client>=0.20,<0.22",
 ]
 
 # 测试依赖（G2：固化 pytest 全家桶，便于本地 `pip install -e ".[test]"` 复现全绿）

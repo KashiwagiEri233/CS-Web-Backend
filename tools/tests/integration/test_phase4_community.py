@@ -328,3 +328,98 @@ async def test_series_and_moderation(integration_db_ready):
                 delete(CommunityPost).where(CommunityPost.title.like(f"%{sfx}%"))
             )
             await db.commit()
+
+
+@pytest.mark.integration
+async def test_enrich_posts_interaction_flags_batched(integration_db_ready):
+    """ER-16：_enrich_posts 用合并批量查询标记点赞/收藏，2N→2 且标记正确。"""
+    sfx = _sfx()
+    async with get_session() as db:
+        svc = CommunityService(db)
+        viewer = await _make_user(db, f"er16v_{sfx}@t.com")
+        author = await _make_user(db, f"er16a_{sfx}@t.com")
+        try:
+            posts = []
+            for i in range(3):
+                posts.append(
+                    await svc.create_post(
+                        author.id,
+                        "post",
+                        title=f"ER16-{sfx}-{i}",
+                        content_markdown="x",
+                        status="published",
+                    )
+                )
+
+            # viewer 仅点赞第 0 篇、收藏第 1 篇，第 2 篇无任何互动
+            await svc.toggle_like(viewer.id, "post", posts[0].id)
+            await svc.toggle_favorite(viewer.id, posts[1].id)
+
+            await svc._enrich_posts(posts, current_user_id=viewer.id)
+            assert posts[0].is_liked_by_me is True
+            assert posts[0].is_favorited_by_me is False
+            assert posts[1].is_liked_by_me is False
+            assert posts[1].is_favorited_by_me is True
+            assert posts[2].is_liked_by_me is False
+            assert posts[2].is_favorited_by_me is False
+
+            # 未登录分支：全部 False，且不触发任何 interaction 查询
+            await svc._enrich_posts(posts)
+            for p in posts:
+                assert p.is_liked_by_me is False
+                assert p.is_favorited_by_me is False
+        finally:
+            await _cleanup_users(db, viewer.id, author.id)
+            await db.execute(
+                delete(CommunityPost).where(CommunityPost.title.like(f"%{sfx}%"))
+            )
+            await db.commit()
+
+
+@pytest.mark.integration
+async def test_format_follow_users_batched_counts(integration_db_ready):
+    """ER-21：_format_follow_users 批量聚合关注计数/关系，N+1→常量查询且数据正确。"""
+    sfx = _sfx()
+    async with get_session() as db:
+        svc = CommunityService(db)
+        u1 = await _make_user(db, f"er21v_{sfx}@t.com")  # 观察视角
+        u2 = await _make_user(db, f"er21a_{sfx}@t.com")
+        u3 = await _make_user(db, f"er21b_{sfx}@t.com")
+        u4 = await _make_user(db, f"er21c_{sfx}@t.com")
+        try:
+            # u1 关注 u2、u3；u2 关注 u3；u4 关注 u1
+            await svc.toggle_follow(u1.id, u2.id)
+            await svc.toggle_follow(u1.id, u3.id)
+            await svc.toggle_follow(u2.id, u3.id)
+            await svc.toggle_follow(u4.id, u1.id)
+
+            # list_following：u1 关注的人（u2, u3）
+            following = await svc.list_following(u1.id, current_user_id=u1.id)
+            assert following["total"] == 2
+            by_id = {it["id"]: it for it in following["items"]}
+            assert by_id[u2.id]["following_count"] == 1  # u2 关注 u3
+            assert by_id[u2.id]["follower_count"] == 1  # u1 关注 u2
+            assert by_id[u2.id]["is_following"] is True
+            assert by_id[u3.id]["following_count"] == 0  # u3 不关注任何人
+            assert by_id[u3.id]["follower_count"] == 2  # u1、u2 关注 u3
+            assert by_id[u3.id]["is_following"] is True
+
+            # list_followers：关注 u1 的人（u4）
+            followers = await svc.list_followers(u1.id, current_user_id=u1.id)
+            assert followers["total"] == 1
+            f = followers["items"][0]
+            assert f["id"] == u4.id
+            assert f["following_count"] == 1  # u4 关注 u1
+            assert f["follower_count"] == 0
+            assert f["is_following"] is False  # u1 未关注 u4
+
+            # 未登录（current_user_id=None）分支：计数仍正确，is_following 全 False
+            following_anon = await svc.list_following(u1.id)
+            by_id_anon = {it["id"]: it for it in following_anon["items"]}
+            assert by_id_anon[u2.id]["is_following"] is False
+            assert by_id_anon[u3.id]["is_following"] is False
+            assert by_id_anon[u2.id]["follower_count"] == 1
+            assert by_id_anon[u3.id]["follower_count"] == 2
+        finally:
+            await _cleanup_users(db, u1.id, u2.id, u3.id, u4.id)
+            await db.commit()

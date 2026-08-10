@@ -20,11 +20,12 @@ from typing import List, Union
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import PermissionDeniedException
+from app.core.exceptions import ErrorCode, PermissionDeniedException, ValidationException
 from app.database import get_db
 from app.dependencies import get_current_active_user
 from app.models.user import User
 from app.services.rbac_service import RBACService
+from app.services.totp_service import TOTPService
 
 
 class PermissionChecker:
@@ -72,3 +73,53 @@ def require_permission(
 ) -> PermissionChecker:
     """构造权限校验依赖：require_permission("user", "read") -> Depends 可用对象。"""
     return PermissionChecker(f"{resource}:{action}", require_all)
+
+
+# ------------------------------------------------------------------ 管理员强制 2FA
+
+
+def is_admin_role(user: User) -> bool:
+    """管理员 = 超级用户 或 持有 admin 角色。
+
+    提取为纯函数便于单测，不直接依赖 DB。
+    """
+    return user.is_superuser or any(r.name == "admin" for r in user.roles)
+
+
+class Admin2FARequired:
+    """管理员高危面强制 2FA（P0：管理员强制 2FA）。
+
+    已通过 ``require_permission`` 鉴权的管理员/超级用户，必须已启用 TOTP，
+    否则拒绝访问管理后台（未启用即拒，杜绝「未启用直接放行」绕过）。
+    判定与 ``feature_visibility`` 的 root 2FA 强制（决策点 B）同源。
+    """
+
+    async def __call__(
+        self,
+        current_user: User = Depends(get_current_active_user),
+        db: AsyncSession = Depends(get_db),
+    ) -> User:
+        # 非管理员直接放行（普通成员不会进入 admin 端点，此处为防御性短路）。
+        if not is_admin_role(current_user):
+            return current_user
+        totp = TOTPService(db)
+        if not await totp.is_enabled(current_user.id):
+            raise ValidationException(
+                message="管理员必须先启用两步验证（2FA）才能访问管理后台",
+                error_code=ErrorCode.Auth.TWO_FACTOR_NOT_SETUP,
+            )
+        return current_user
+
+
+def enforce_admin_2fa(user: User, twofa_enabled: bool) -> None:
+    """核心判定（纯函数，便于单测）：管理员且未启用 2FA 即拒绝。"""
+    if is_admin_role(user) and not twofa_enabled:
+        raise ValidationException(
+            message="管理员必须先启用两步验证（2FA）才能访问管理后台",
+            error_code=ErrorCode.Auth.TWO_FACTOR_NOT_SETUP,
+        )
+
+
+def require_admin_2fa() -> Admin2FARequired:
+    """构造管理员强制 2FA 依赖，套用于 admin 高危面路由。"""
+    return Admin2FARequired()

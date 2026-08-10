@@ -6,6 +6,8 @@ SQL 语义与重构前完全一致（仅迁移位置，不改变行为）。
 
 from __future__ import annotations
 
+from typing import Optional
+
 from datetime import datetime, timedelta
 
 from sqlalchemy import func, select
@@ -123,19 +125,23 @@ class AuxilioToolRepository:
         ).scalar_one()
         return int(total)
 
-    async def api_usage_stats(self) -> dict[str, int]:
-        """API 调用统计（今日 + 近 30 天，全站）。"""
+    async def api_usage_stats(self, user_id: Optional[int] = None) -> dict[str, int]:
+        """API 调用统计（今日 + 近 30 天）。
+
+        user_id 为 None 时返回全站聚合（管理员可观测性）；传入时仅统计该用户，
+        避免普通用户经学习助手工具越权获取全站用量（ER-18）。
+        原全站行为在 user_id=None 时完全保留。
+        """
         today_start = self._today_start_utc()
         since = today_start - timedelta(days=29)
+        base = select(func.count())
+        if user_id is not None:
+            base = base.where(ApiCallLog.user_id == user_id)
         total = (
-            await self.db.execute(
-                select(func.count()).where(ApiCallLog.created_at >= since)
-            )
+            await self.db.execute(base.where(ApiCallLog.created_at >= since))
         ).scalar_one()
         today = (
-            await self.db.execute(
-                select(func.count()).where(ApiCallLog.created_at >= today_start)
-            )
+            await self.db.execute(base.where(ApiCallLog.created_at >= today_start))
         ).scalar_one()
         return {"today": int(today), "last_30_days_total": int(total)}
 

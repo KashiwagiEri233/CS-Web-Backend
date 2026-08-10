@@ -9,7 +9,7 @@ from fastapi import APIRouter, Body, Depends, Request
 from app.core.exceptions import ErrorCode, ValidationException
 from app.core.request_context import get_client_meta
 from app.dependencies_services import get_event_service
-from app.middleware.rbac import require_permission
+from app.middleware.rbac import require_admin_2fa, require_permission
 from app.models.user import User
 from app.schemas.event import (
     BatchUpdateRequest,
@@ -22,7 +22,7 @@ from app.schemas.event import (
 )
 from app.services.event_service import EventService
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_admin_2fa)])
 
 
 def _to_event_out(event) -> dict:

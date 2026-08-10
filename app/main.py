@@ -14,6 +14,7 @@ from app.core.lifecycle import (
 )
 from app.core.loguru_logger import flush_logs, get_logger, init_logging
 from app.core.app_runtime import process_runtime_guard
+from app.core.metrics import PrometheusMetricsMiddleware, metrics_response
 from app.middleware.monitoring import (
     SecurityHeadersMiddleware,
     MetricsMiddleware,
@@ -163,6 +164,8 @@ def create_app() -> FastAPI:
         allow_methods=settings.allowed_methods_list,
         allow_headers=settings.allowed_headers_list,
     )
+    # Prometheus 指标中间件放最外层：测量完整请求耗时（含 CORS/异常处理）。
+    application.add_middleware(PrometheusMetricsMiddleware)
 
     from app.database import engine
 
@@ -289,6 +292,14 @@ async def metrics_json(
     if instance is None:
         return {"error": "Metrics not available"}
     return instance.get_metrics()
+
+
+# Prometheus 标准指标端点（ER-06）：供 scraper 拉取，无需鉴权（内部采集）。
+# 与 /metrics/json（需 monitor 权限、人读）并存，服务不同消费者。
+@root_router.get("/metrics")
+async def prometheus_metrics():
+    """返回 Prometheus 文本格式指标（错误率 / 延迟 / 饱和度 / 进程级）。"""
+    return metrics_response()
 
 
 # 状态端点
