@@ -1,0 +1,26 @@
+"""认证域错误码（ErrorCode 演进：业务模块自治）。
+
+由全局 ErrorCode re-export（ErrorCode.Auth = AuthErrorCode），
+调用方访问形式 ErrorCode.Auth.X 不变（27 处调用点零改动）。
+"""
+
+
+class AuthErrorCode:
+    """认证类错误码：身份验证失败、凭据无效、账户未激活等。"""
+
+    AUTHENTICATION_FAILED = "AUTHENTICATION_FAILED"
+    INVALID_CREDENTIALS = "INVALID_CREDENTIALS"
+    USER_NOT_ACTIVE = "USER_NOT_ACTIVE"
+    # 邮箱已注册（冲突场景由 Conflict 命名空间抛出，401 场景复用此码标识枚举）
+    TWO_FACTOR_REQUIRED = "TWO_FACTOR_REQUIRED"
+    TOTP_INVALID = "TOTP_INVALID"
+    # 2FA 状态异常：未初始化 / 已启用 / 已禁用
+    TWO_FACTOR_NOT_SETUP = "TWO_FACTOR_NOT_SETUP"
+    TWO_FACTOR_ALREADY_ENABLED = "TWO_FACTOR_ALREADY_ENABLED"
+    TWO_FACTOR_DISABLED = "TWO_FACTOR_DISABLED"
+    # OAuth
+    OAUTH_NOT_CONFIGURED = "OAUTH_NOT_CONFIGURED"
+    OAUTH_ERROR = "OAUTH_ERROR"
+    OAUTH_STATE_INVALID = "OAUTH_STATE_INVALID"
+    OAUTH_STATE_EXPIRED = "OAUTH_STATE_EXPIRED"
+    GITHUB_EMAIL_CONFLICT = "GITHUB_EMAIL_CONFLICT"

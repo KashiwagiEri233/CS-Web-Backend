@@ -106,7 +106,7 @@ async def send_code(
     if await auth_service.user_repo.get_by_email(body.email.lower()):
         raise ConflictException(
             message="该邮箱已注册，请直接登录或使用忘记密码功能",
-            error_code=ErrorCode.Conflict.EMAIL_EXISTS,
+            error_code=ErrorCode.User.EMAIL_EXISTS,
         )
     await verification.generate(body.email)
     return {"ok": True, "message": "验证码已发送"}

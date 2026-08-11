@@ -9,7 +9,15 @@
 
 命名空间按异常类的层次组织（而非业务模块），因为当前所有异常都定义在 core。
 当某个业务异常子类连同其错误码迁移到业务模块时，整块内嵌类一起搬走即可。
+已落地域（错误码定义于各 services/*/errors.py，此处 re-export，访问方式不变）：
+  - User / Auth / Community / Event / Authorization（rbac）
 """
+
+from app.services.auth.errors import AuthErrorCode
+from app.services.community.errors import CommunityErrorCode
+from app.services.event.errors import EventErrorCode
+from app.services.rbac.errors import RbacErrorCode
+from app.services.user.errors import UserErrorCode
 
 
 class ErrorCode:
@@ -22,50 +30,19 @@ class ErrorCode:
     从 core 扩展到业务模块（业务模块自行 re-export 到全局 ErrorCode 即可）。
     """
 
+    # 业务域（ErrorCode 演进：定义于各 app/services/*/errors.py）
+    User = UserErrorCode
+    Auth = AuthErrorCode
+    Community = CommunityErrorCode
+    Event = EventErrorCode
+    # 授权域（rbac）：命名空间名保持 Authorization，调用点零改动
+    Authorization = RbacErrorCode
+
     # ---------------- 通用业务 ----------------
     class Business:
         """通用业务错误。"""
 
         BUSINESS_ERROR = "BUSINESS_ERROR"
-
-    # ---------------- 认证（Authentication，HTTP 401） ----------------
-    class Auth:
-        """认证类错误码：身份验证失败、凭据无效、账户未激活等。"""
-
-        AUTHENTICATION_FAILED = "AUTHENTICATION_FAILED"
-        INVALID_CREDENTIALS = "INVALID_CREDENTIALS"
-        USER_NOT_ACTIVE = "USER_NOT_ACTIVE"
-        # 邮箱已注册（冲突场景由 Conflict 命名空间抛出，401 场景复用此码标识枚举）
-        TWO_FACTOR_REQUIRED = "TWO_FACTOR_REQUIRED"
-        TOTP_INVALID = "TOTP_INVALID"
-        # 2FA 状态异常：未初始化 / 已启用 / 已禁用
-        TWO_FACTOR_NOT_SETUP = "TWO_FACTOR_NOT_SETUP"
-        TWO_FACTOR_ALREADY_ENABLED = "TWO_FACTOR_ALREADY_ENABLED"
-        TWO_FACTOR_DISABLED = "TWO_FACTOR_DISABLED"
-        # 改密相关
-        INVALID_CURRENT_PASSWORD = "INVALID_CURRENT_PASSWORD"
-        PASSWORD_IN_HISTORY = "PASSWORD_IN_HISTORY"
-        # OAuth
-        OAUTH_NOT_CONFIGURED = "OAUTH_NOT_CONFIGURED"
-        OAUTH_ERROR = "OAUTH_ERROR"
-        OAUTH_STATE_INVALID = "OAUTH_STATE_INVALID"
-        OAUTH_STATE_EXPIRED = "OAUTH_STATE_EXPIRED"
-        GITHUB_EMAIL_CONFLICT = "GITHUB_EMAIL_CONFLICT"
-
-    # ---------------- 授权（Authorization，HTTP 403） ----------------
-    class Authorization:
-        """授权类错误码：权限不足、访问被拒。"""
-
-        AUTHORIZATION_FAILED = "AUTHORIZATION_FAILED"
-        PERMISSION_DENIED = "PERMISSION_DENIED"
-        SELF_APPROVE = "SELF_APPROVE"
-        # 管理操作保护（与前端 admin 语义对齐）
-        FORBIDDEN = "FORBIDDEN"  # 普通管理员不可操作其他管理员
-        SELF_DEMOTE = "SELF_DEMOTE"  # 不能修改自己的角色
-        SELF_DISABLE = "SELF_DISABLE"  # 不能禁用自己
-        SELF_DELETE = "SELF_DELETE"  # 不能删除自己
-        ROOT_PROTECTED = "ROOT_PROTECTED"  # 超级管理员账号不可被修改/禁用/删除
-        LAST_ADMIN = "LAST_ADMIN"  # 不能降级/禁用/删除最后一个活跃管理员
 
     # ---------------- 数据校验（Validation，HTTP 422） ----------------
     class Validation:
@@ -98,19 +75,9 @@ class ErrorCode:
 
     # ---------------- 资源冲突（HTTP 409） ----------------
     class Conflict:
-        """资源冲突。"""
+        """资源冲突（通用；活动/社区域码已迁至 Event/Community 命名空间）。"""
 
         RESOURCE_CONFLICT = "RESOURCE_CONFLICT"
-        # 业务子类：用户已存在（未来随 UserAlreadyExistsException 迁到业务模块）
-        USER_ALREADY_EXISTS = "USER_ALREADY_EXISTS"
-        EMAIL_EXISTS = "EMAIL_EXISTS"
-        # 活动报名（Phase 3 迁移）
-        ALREADY_REGISTERED = "ALREADY_REGISTERED"
-        ALREADY_CANCELLED = "ALREADY_CANCELLED"
-        FULL = "FULL"  # 活动名额已满
-        # 社区（Phase 4 迁移）
-        SLUG_EXISTS = "SLUG_EXISTS"  # slug 冲突
-        STATUS_CONFLICT = "STATUS_CONFLICT"  # 状态不允许该操作（如编辑已删除内容）
 
     # ---------------- 数据库（HTTP 500） ----------------
     class Database:

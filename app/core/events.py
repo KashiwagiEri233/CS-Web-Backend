@@ -13,11 +13,23 @@ from __future__ import annotations
 
 import asyncio
 import os
-from typing import Any, Awaitable, Callable, Dict, List
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from app.core.loguru_logger import get_logger
 
 logger = get_logger("events")
+
+# 无运行事件循环时（如启动期 emit）的应急 loop：复用而非反复 asyncio.run
+# 新建/关闭（ER-56：多次各建/关 loop 仅启动期触发，复用消除浪费）。
+_EMERGENCY_LOOP: Optional[asyncio.AbstractEventLoop] = None
+
+
+def _run_without_loop(coro: Awaitable[Any]) -> Any:
+    """无运行事件循环时执行协程：复用模块级应急 loop。"""
+    global _EMERGENCY_LOOP
+    if _EMERGENCY_LOOP is None or _EMERGENCY_LOOP.is_closed():
+        _EMERGENCY_LOOP = asyncio.new_event_loop()
+    return _EMERGENCY_LOOP.run_until_complete(coro)
 
 # 跨实例广播总开关：默认关闭（单实例，行为与改造前完全一致）。
 _MULTI_INSTANCE = os.getenv("MULTI_INSTANCE", "false").strip().lower() in (
@@ -72,7 +84,7 @@ class EventBus:
             if loop is not None:
                 loop.create_task(coro)
             else:
-                asyncio.run(coro)
+                _run_without_loop(coro)
 
     def _broadcast(self, event: str, data: dict) -> None:
         """跨实例广播：经 arq 投递到所有 worker 实例（fire-and-forget）。
@@ -94,7 +106,7 @@ class EventBus:
 
                 from app.core.queue.tasks import dispatch_event_broadcast
 
-                asyncio.run(enqueue(dispatch_event_broadcast, event, data))
+                _run_without_loop(enqueue(dispatch_event_broadcast, event, data))
             except Exception as exc:  # noqa: BLE001
                 logger.warning("事件跨实例广播失败", event=event, error=str(exc))
         except Exception as exc:  # noqa: BLE001 - 广播失败不阻断本地业务

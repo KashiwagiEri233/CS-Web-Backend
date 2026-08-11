@@ -56,3 +56,21 @@ WORKBENCH_MAX_DURATION_SECONDS = 4 * SECONDS_PER_HOUR  # 工作台单次时长�
 # ---------------------------------------------------------------------------
 VIEW_DEDUP_WINDOW_HOURS = 24  # 同一用户/IP 在窗口内的重复浏览不计入
 VIEW_COUNT_FLUSH_INTERVAL_SECONDS = 30  # 异步落库周期（秒）
+
+# ---------------------------------------------------------------------------
+# 社区（统一 service 与 schemas 双源漂移：分层校验以 schema 实际生效值为准；
+# service 侧未使用键已剔除，SLUG_MAX 为 generate_slug 使用）
+# ---------------------------------------------------------------------------
+COMMUNITY_LIMITS = {
+    "TITLE_MAX": 100,  # 标题（schema 请求校验实际生效；旧 service 侧 120 未使用）
+    "TOPIC_CONTENT_MAX": 10_000,  # 帖子正文
+    "REPLY_CONTENT_MAX": 5_000,  # 评论正文
+    "CATEGORY_NAME_MAX": 50,
+    "CATEGORY_DESC_MAX": 200,
+    "TOPICS_PAGE_SIZE": 20,
+    "REPLIES_PAGE_SIZE": 20,
+    "TAGS_MAX": 10,
+    "TAG_MAX": 30,
+    "SLUG_MAX": 80,  # generate_slug 截断
+}
+MENTION_PATTERN = r"@([a-zA-Z0-9_-]{3,50})"

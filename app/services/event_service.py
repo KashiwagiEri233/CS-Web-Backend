@@ -208,13 +208,13 @@ class EventService:
         existing = await self.reg_repo.get(user_id, event_id)
         if existing is not None and existing.status == "registered":
             raise ConflictException(
-                message="已报名该活动", error_code=ErrorCode.Conflict.ALREADY_REGISTERED
+                message="已报名该活动", error_code=ErrorCode.Event.ALREADY_REGISTERED
             )
 
         registered = await self.reg_repo.count_registered(event_id)
         if event.capacity > 0 and registered >= event.capacity:
             raise ConflictException(
-                message="活动报名已满", error_code=ErrorCode.Conflict.FULL
+                message="活动报名已满", error_code=ErrorCode.Event.FULL
             )
 
         if existing is not None:  # cancelled → 重新报名
@@ -250,7 +250,7 @@ class EventService:
             )
         if reg.status == "cancelled":
             raise ConflictException(
-                message="报名已取消", error_code=ErrorCode.Conflict.ALREADY_CANCELLED
+                message="报名已取消", error_code=ErrorCode.Event.ALREADY_CANCELLED
             )
         await self.reg_repo.set_status(reg, "cancelled", now_utc())
         await self.db.commit()
@@ -323,12 +323,12 @@ class EventService:
         if existing is not None and existing.status == "registered":
             raise ConflictException(
                 message="该用户已报名此活动",
-                error_code=ErrorCode.Conflict.ALREADY_REGISTERED,
+                error_code=ErrorCode.Event.ALREADY_REGISTERED,
             )
         registered = await self.reg_repo.count_registered(event_id)
         if event.capacity > 0 and registered >= event.capacity:
             raise ConflictException(
-                message="活动名额已满", error_code=ErrorCode.Conflict.FULL
+                message="活动名额已满", error_code=ErrorCode.Event.FULL
             )
         if existing is not None:
             await self.reg_repo.set_status(existing, "registered", None)

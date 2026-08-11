@@ -8,22 +8,11 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from app.schemas.base import TZModel
+from app.core.constants import COMMUNITY_LIMITS, MENTION_PATTERN
 
 # ------------------------------------------------------------------ 社区
 
-COMMUNITY_LIMITS = {
-    "TITLE_MAX": 100,
-    "TOPIC_CONTENT_MAX": 10000,
-    "REPLY_CONTENT_MAX": 5000,
-    "CATEGORY_NAME_MAX": 50,
-    "CATEGORY_DESC_MAX": 200,
-    "TOPICS_PAGE_SIZE": 20,
-    "REPLIES_PAGE_SIZE": 20,
-}
-
 SLUG_PATTERN = r"^[a-z0-9-]{1,32}$"
-MENTION_PATTERN = r"@([a-zA-Z0-9_-]{3,50})"
-VIEW_DEDUP_WINDOW_HOURS = 24
 
 
 class CategoryInput(BaseModel):

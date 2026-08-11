@@ -245,7 +245,7 @@ class AuthService:
         normalized = email.lower()
         if await self.user_repo.get_by_email(normalized):
             raise ConflictException(
-                message="该邮箱已被注册", error_code=ErrorCode.Conflict.EMAIL_EXISTS
+                message="该邮箱已被注册", error_code=ErrorCode.User.EMAIL_EXISTS
             )
 
         base_username = derive_username(normalized)
@@ -268,7 +268,7 @@ class AuthService:
         except IntegrityError as exc:
             await self.db.rollback()
             raise ConflictException(
-                message="该邮箱已被注册", error_code=ErrorCode.Conflict.EMAIL_EXISTS
+                message="该邮箱已被注册", error_code=ErrorCode.User.EMAIL_EXISTS
             ) from exc
 
         await self._record_login_history(user_id=user.id, success=True, **client_meta)
@@ -363,7 +363,7 @@ class AuthService:
         ):
             raise BusinessException(
                 message="当前密码不正确",
-                error_code=ErrorCode.Auth.INVALID_CURRENT_PASSWORD,
+                error_code=ErrorCode.User.INVALID_CURRENT_PASSWORD,
             )
 
         limit = settings.PASSWORD_HISTORY_LIMIT
@@ -373,7 +373,7 @@ class AuthService:
                 if await self._verify_password_compat(new_password, stored):
                     raise BusinessException(
                         message="新密码与最近使用过的密码重复",
-                        error_code=ErrorCode.Auth.PASSWORD_IN_HISTORY,
+                        error_code=ErrorCode.User.PASSWORD_IN_HISTORY,
                     )
 
         await self.password_history_repo.create(user_id, user.hashed_password)

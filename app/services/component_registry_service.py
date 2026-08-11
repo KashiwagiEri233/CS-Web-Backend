@@ -40,7 +40,7 @@ class ComponentRegistryService:
     async def create_component(self, data: ComponentItemInput) -> ComponentItemOut:
         if await self.repo.get_item_by_slug(data.slug):
             raise ConflictException(
-                message="slug 已存在", error_code=ErrorCode.Conflict.SLUG_EXISTS
+                message="slug 已存在", error_code=ErrorCode.Community.SLUG_EXISTS
             )
         item = await self.repo.create_item(data.model_dump())
         await self.db.commit()

@@ -4,16 +4,11 @@ reports / series / mentions。通知触发：like / reply / favorite / follow / 
 
 from __future__ import annotations
 
-import hashlib
-import hmac
-import re
-import unicodedata
 from typing import Any, Optional
 
 from sqlalchemy import func, select, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.exceptions import (
     AuthorizationException,
     ConflictException,
@@ -21,6 +16,7 @@ from app.core.exceptions import (
     NotFoundException,
 )
 from app.core.timezone import now_utc
+from app.core.constants import COMMUNITY_LIMITS
 from app.models.community import (
     CommunityCategory,
     CommunityComment,
@@ -40,45 +36,16 @@ from app.repositories.community_repo import (
 from app.repositories.user_repo import UserRepository
 from app.services.notification_service import NotificationService
 from app.services.view_count import record_view
-from app.utils.mask import mask_email
+from app.services.community_utils import (
+    generate_slug,
+    hash_ip_for_view,
+    scan_mentions,
+    to_author_summary,
+)
 
-MENTION_PATTERN = r"@([a-zA-Z0-9_-]{3,50})"
-
-COMMUNITY_LIMITS = {
-    "TITLE_MAX": 120,
-    "CONTENT_MAX": 20000,
-    "COMMENT_MAX": 5000,
-    "CATEGORY_NAME_MAX": 50,
-    "CATEGORY_DESC_MAX": 200,
-    "TAGS_MAX": 10,
-    "TAG_MAX": 30,
-    "SLUG_MAX": 80,
-}
-
-
-def hash_ip_for_view(ip: str) -> str:
-    """匿名化访客 IP 用于浏览去重计数。
-
-    密钥来自 COMMUNITY_IP_HASH_SECRET（强制从环境读取，缺失即 fail-fast）。
-    绝不使用硬编码常量——否则匿名化对掌握源码者可逆。
-    """
-    secret = settings.COMMUNITY_IP_HASH_SECRET
-    if not secret:
-        raise RuntimeError(
-            "COMMUNITY_IP_HASH_SECRET 未配置：拒绝处理访客 IP 匿名化"
-        )
-    return hmac.new(secret.encode(), ip.encode(), hashlib.sha256).hexdigest()
-
-
-def scan_mentions(content: str) -> list[str]:
-    return list(dict.fromkeys(re.findall(MENTION_PATTERN, content)))
-
-
-def generate_slug(title: str) -> str:
-    normalized = unicodedata.normalize("NFKD", title)
-    slug = re.sub(r"[^a-zA-Z0-9]+", "-", normalized).strip("-").lower()
-    slug = re.sub(r"-{2,}", "-", slug)
-    return slug[: COMMUNITY_LIMITS["SLUG_MAX"]].strip("-") or "post"
+# ER-15 Phase 0：纯函数已提取至 community_utils，此处 re-export 保持对外
+# import 路径兼容（api/v1/community.py 仍可 `from community_service import hash_ip_for_view`）。
+_to_author_summary = to_author_summary  # 兼容私有名引用
 
 
 class CommunityService:
@@ -119,7 +86,7 @@ class CommunityService:
     ):
         if await self.category_repo.get_by_slug(slug):
             raise ConflictException(
-                message="slug 已存在", error_code=ErrorCode.Conflict.SLUG_EXISTS
+                message="slug 已存在", error_code=ErrorCode.Community.SLUG_EXISTS
             )
         obj = await self.category_repo.create(
             {
@@ -148,7 +115,7 @@ class CommunityService:
         if slug and slug != obj.slug:
             if await self.category_repo.get_by_slug(slug):
                 raise ConflictException(
-                    message="slug 已存在", error_code=ErrorCode.Conflict.SLUG_EXISTS
+                    message="slug 已存在", error_code=ErrorCode.Community.SLUG_EXISTS
                 )
         await self.category_repo.update(
             obj,
@@ -300,7 +267,7 @@ class CommunityService:
             )
         if post.status == "deleted":
             raise ConflictException(
-                message="内容已删除", error_code=ErrorCode.Conflict.STATUS_CONFLICT
+                message="内容已删除", error_code=ErrorCode.Community.STATUS_CONFLICT
             )
         allowed = {
             "title",
@@ -501,7 +468,7 @@ class CommunityService:
             )
         if comment.status == "deleted":
             raise ConflictException(
-                message="评论已删除", error_code=ErrorCode.Conflict.STATUS_CONFLICT
+                message="评论已删除", error_code=ErrorCode.Community.STATUS_CONFLICT
             )
         await self.comment_repo.update(comment, content)
         await self.db.commit()
@@ -1068,13 +1035,3 @@ class CommunityService:
             )
         except Exception:  # noqa: BLE001
             pass
-
-
-def _to_author_summary(user) -> dict:
-    return {
-        "id": user.id,
-        "email": mask_email(user.email) or "",
-        "display_name": user.display_name,
-        "avatar_url": user.avatar_url,
-        "avatar_type": user.avatar_type or "initial",
-    }

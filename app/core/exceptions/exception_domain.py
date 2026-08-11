@@ -39,7 +39,7 @@ class UserAlreadyExistsException(ConflictException):
 
         super().__init__(
             message=message,
-            error_code=ErrorCode.Conflict.USER_ALREADY_EXISTS,
+            error_code=ErrorCode.User.USER_ALREADY_EXISTS,
             details=error_details,
         )
 

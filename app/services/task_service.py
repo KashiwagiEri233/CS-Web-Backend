@@ -85,17 +85,17 @@ class TaskService:
         task = await self.get_task(task_id)
         if task.status != "published":
             raise ConflictException(
-                message="任务未开放", error_code=ErrorCode.Conflict.STATUS_CONFLICT
+                message="任务未开放", error_code=ErrorCode.Community.STATUS_CONFLICT
             )
         existing = await self.repo.get_claim(task_id, user_id)
         if existing is not None:
             raise ConflictException(
-                message="已认领该任务", error_code=ErrorCode.Conflict.ALREADY_REGISTERED
+                message="已认领该任务", error_code=ErrorCode.Event.ALREADY_REGISTERED
             )
         active = await self.repo.count_active_claims(task_id)
         if active >= task.max_claimants:
             raise ConflictException(
-                message="任务认领名额已满", error_code=ErrorCode.Conflict.FULL
+                message="任务认领名额已满", error_code=ErrorCode.Event.FULL
             )
         claim = await self.repo.create_claim(
             {"task_id": task_id, "user_id": user_id, "claim_note": note}
@@ -113,7 +113,7 @@ class TaskService:
             )
         if claim.status != "claimed":
             raise ConflictException(
-                message="该认领不可取消", error_code=ErrorCode.Conflict.STATUS_CONFLICT
+                message="该认领不可取消", error_code=ErrorCode.Community.STATUS_CONFLICT
             )
         await self.db.delete(claim)
         await self.db.commit()
@@ -139,7 +139,7 @@ class TaskService:
             )
         if claim.status != "claimed":
             raise ConflictException(
-                message="该认领不可提交", error_code=ErrorCode.Conflict.STATUS_CONFLICT
+                message="该认领不可提交", error_code=ErrorCode.Community.STATUS_CONFLICT
             )
         claim.status = "submitted"
         claim.completed_at = now_utc()
