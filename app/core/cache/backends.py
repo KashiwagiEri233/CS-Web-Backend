@@ -56,6 +56,30 @@ class InMemoryCacheBackend:
         for key in keys:
             self._store.pop(key, None)
 
+    async def incr(self, key: str, amount: int = 1) -> int:
+        """进程内原子自增（单事件循环，无需锁）。"""
+        current, expire_at = self._store.get(key, (0, None))
+        if not isinstance(current, int):
+            current = 0
+        new_value = current + amount
+        self._store[key] = (new_value, expire_at)
+        return new_value
+
+    async def getset(self, key: str, value: Any) -> Any:
+        """进程内「取旧值并设为新值」。"""
+        item = self._store.get(key)
+        old = item[0] if item is not None else None
+        self._store[key] = (value, None)
+        return old
+
+    async def expire(self, key: str, ttl: int) -> None:
+        """进程内设置过期时间（秒）；ttl<=0 视为不设置。"""
+        if ttl is None or ttl <= 0:
+            return
+        item = self._store.get(key)
+        if item is not None:
+            self._store[key] = (item[0], time.monotonic() + ttl)
+
     def _evict_if_needed(self) -> None:
         """超容量时先清过期项，仍有余则淘汰最旧条目。"""
         if len(self._store) <= self._max_entries:
@@ -104,3 +128,29 @@ class RedisCacheBackend:
         """一次 DEL 删除多个键：批量失效不应退化成 N 次串行往返。"""
         if keys:
             await self._client.delete(*keys)
+
+    async def incr(self, key: str, amount: int = 1) -> int:
+        """原子自增，返回自增后的值（Redis INCR/INCRBY）。
+
+        用于计数类场景（如浏览计数）：并发自增不会丢计数。
+        """
+        return await self._client.incr(key, amount)
+
+    async def getset(self, key: str, value: Any) -> Any:
+        """原子「取旧值并设为新值」（Redis GETSET），未命中返回 None。
+
+        用于计数落库时把计数器原子清零：取到的旧值即本次需落库的增量。
+        """
+        raw = await self._client.getset(key, json.dumps(value, ensure_ascii=False, default=str))
+        if raw is None:
+            return None
+        try:
+            return json.loads(raw)
+        except (ValueError, TypeError):
+            return raw
+
+    async def expire(self, key: str, ttl: int) -> None:
+        """设置过期时间（秒）；ttl<=0 视为不设置。"""
+        if ttl is None or ttl <= 0:
+            return
+        await self._client.expire(key, ttl)

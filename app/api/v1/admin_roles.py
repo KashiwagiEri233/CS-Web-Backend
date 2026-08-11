@@ -29,7 +29,7 @@ from app.schemas.rbac import (
 from app.services.audit_service import AuditService
 from app.services.rbac_service import RBACService
 
-router = APIRouter(dependencies=[Depends(require_admin_2fa)])
+router = APIRouter(dependencies=[Depends(require_admin_2fa())])
 
 
 @router.get("/roles", response_model=list[AdminRoleOut])

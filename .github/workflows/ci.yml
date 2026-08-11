@@ -32,6 +32,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+        with:
+          # ER-45：diff 覆盖率门禁需要与 base 对比新增行，须拉全历史
+          fetch-depth: 0
 
       - name: Setup Python 3.13
         uses: actions/setup-python@v6
@@ -79,6 +82,13 @@ jobs:
         run: |
           mkdir -p build
           python -m pytest --cov --cov-report=xml:build/coverage.xml
+
+      - name: PR diff coverage gate (ER-45)
+        if: github.event_name == 'pull_request'
+        run: |
+          # 新增代码（app/**）行覆盖率低于 80% 即失败，拦截「PR 改代码不补测试」
+          python tools/scripts/diff_coverage.py --base origin/main --threshold 80 \
+            --xml build/coverage.xml --src app
 
       - name: Supply chain audit
         run: |

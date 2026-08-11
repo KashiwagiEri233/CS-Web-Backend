@@ -6,7 +6,7 @@
 #
 # 说明：
 #   - PostgreSQL（含 zhparser 中文分词）数据持久化在 pgdata 卷
-#   - 启动时自动 alembic upgrade head（DB_AUTO_MIGRATE=true）
+#   - 迁移与发布分离：独立 migrate 服务执行 alembic upgrade head（DB_AUTO_MIGRATE=false）
 #   - 后端监听容器内 8000，映射宿主 9000（与前端 BFF 默认一致）
 #   - 前端容器通过 cs-net 网络直连 backend:8000（无需暴露公网）
 #   - backup sidecar 每日 03:00 自动全量备份，保留 14 天
@@ -44,9 +44,9 @@ services:
       DATABASE_NAME: ${DATABASE_NAME:-domefff}
       DATABASE_USER: ${DATABASE_USER:-postgres}
       DATABASE_PASSWORD: ${DATABASE_PASSWORD}
-      # 空库自动建库 + 自动迁移到 head
+      # 空库自动建库；迁移由独立 migrate 服务执行（ER-30，DB_AUTO_MIGRATE=false）
       DB_AUTO_CREATE_DATABASE: "true"
-      DB_AUTO_MIGRATE: "true"
+      DB_AUTO_MIGRATE: "false"
       SECRET_KEY: ${SECRET_KEY}
       TOTP_ENCRYPTION_KEY: ${TOTP_ENCRYPTION_KEY}
       PASSWORD_RESET_DEFAULT: ${PASSWORD_RESET_DEFAULT:-}
@@ -60,6 +60,31 @@ services:
       OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-cs-web-backend}
     ports:
       - "9000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - cs-net
+
+  # ============ 数据库迁移（ER-30：独立 migrate job）============
+  # 一次性任务：等 db 健康后执行 alembic upgrade head，完成后退出；
+  # backend 经 depends_on 等待其成功，避免版本不一致导致启动失败。
+  migrate:
+    build: .
+    container_name: cs-backend-migrate
+    restart: "no"
+    env_file: .env
+    environment:
+      DATABASE_HOST: db
+      DATABASE_PORT: "5432"
+      DATABASE_NAME: ${DATABASE_NAME:-domefff}
+      DATABASE_USER: ${DATABASE_USER:-postgres}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+      SECRET_KEY: ${SECRET_KEY:?请在 .env 中设置 SECRET_KEY}
+      TOTP_ENCRYPTION_KEY: ${TOTP_ENCRYPTION_KEY:?请在 .env 中设置 TOTP_ENCRYPTION_KEY}
+    command: ["alembic", "upgrade", "head"]
     depends_on:
       db:
         condition: service_healthy

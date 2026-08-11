@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.constants import WORKBENCH_MAX_DURATION_SECONDS
 from app.core.timezone import local_to_utc, now_local
 from app.dependencies import get_current_active_user
 from app.dependencies import get_db
@@ -28,7 +29,7 @@ router = APIRouter(prefix="/workbench", tags=["workbench"])
 class FocusSessionIn(BaseModel):
     """前端完成一轮专注后的上报。"""
 
-    duration_seconds: int = Field(gt=0, le=4 * 3600)
+    duration_seconds: int = Field(gt=0, le=WORKBENCH_MAX_DURATION_SECONDS)
     phase: str = Field(default="focus", pattern="^(focus|shortBreak|longBreak)$")
     sound_source: Optional[str] = Field(default=None, max_length=40)
 
@@ -86,7 +87,7 @@ async def get_github_contributions(
 async def get_api_usage_stats(
     db: AsyncSession = Depends(get_db),
     # ER-18 关联：全站 API 用量属管理员可观测性，强制管理员 + 2FA（与所有 admin 端点一致）。
-    user: User = Depends(require_admin_2fa),
+    user: User = Depends(require_admin_2fa()),
     days: int = Query(default=30, ge=1, le=90),
 ):
     """API 调用统计：今日计数 + 近 N 天趋势 + endpoint 分布。"""

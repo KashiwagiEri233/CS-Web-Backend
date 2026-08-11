@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timezone import now_utc
 from app.models.refresh_token import RefreshToken
+from app.core.constants import TOKEN_PURGE_BATCH_SIZE
 from app.repositories.base import dml_rowcount
 
 
@@ -124,7 +125,7 @@ class RefreshTokenRepository:
         )
         return dml_rowcount(result) > 0
 
-    async def purge_expired(self, *, batch_size: int = 1000) -> int:
+    async def purge_expired(self, *, batch_size: int = TOKEN_PURGE_BATCH_SIZE) -> int:
         """分批物理删除已过期 refresh 行，返回删除行数。
 
         已撤销但尚未自然过期的记录必须保留，用于 rotation 复用检测。

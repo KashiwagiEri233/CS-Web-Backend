@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import json
+from app.core.constants import LLM_BUDGET_TOKENS_PER_K, SECONDS_PER_HOUR
 from datetime import datetime
 from typing import AsyncIterator, Optional
 
@@ -154,7 +155,7 @@ async def execute_tool(name: str, arguments: str, db: AsyncSession, user: User) 
                 {
                     "title": e.title,
                     "end_time": e.end_time.isoformat() if e.end_time else None,
-                    "ends_in_hours": round((e.end_time - now).total_seconds() / 3600, 1)
+                    "ends_in_hours": round((e.end_time - now).total_seconds() / SECONDS_PER_HOUR, 1)
                     if e.end_time
                     else None,
                 }
@@ -321,7 +322,7 @@ async def run_chat(
     # 每日 token 预算拦截（LLM_DAILY_BUDGET，单位：千 tokens/日；默认 200 = 20 万 tokens/日；0 = 不限制）
     if settings.LLM_DAILY_BUDGET > 0:
         today_tokens = await AuxilioToolRepository(db).llm_usage_today_tokens(user.id)
-        if today_tokens >= settings.LLM_DAILY_BUDGET * 1000:
+        if today_tokens >= settings.LLM_DAILY_BUDGET * LLM_BUDGET_TOKENS_PER_K:
             yield {
                 "type": "delta",
                 "text": (

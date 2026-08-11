@@ -12,6 +12,7 @@
 import time
 from ipaddress import ip_network
 
+import pytest
 from fastapi import FastAPI, Request
 from starlette.testclient import TestClient
 
@@ -23,6 +24,23 @@ from app.middleware.rate_limit import (
     RateLimitMiddleware,
 )
 from app.core.exceptions import setup_exception_handlers, ExceptionHandlerMiddleware
+
+
+@pytest.fixture(autouse=True)
+def _force_memory_limiter(monkeypatch):
+    """中间件测试固定内存限流，不依赖真实 Redis（与文件 docstring 一致）。
+
+    背景（2026-08-11 定位）：中间件 ``RateLimitMiddleware.__init__`` 调用
+    ``build_limiter()``，环境配置 REDIS_URL 时走 Redis 后端；TestClient 的 peer
+    固定为 "testclient"，导致 ``ratelimit:global:testclient`` / ``ratelimit:auth:testclient``
+    在 60s 窗口内跨测试运行残留计数叠加 → 429 提前出现、断言失败（仅全量/带
+    REDIS_URL 时复现）。此处把 build_limiter 固定为纯内存实现，隔离该测试文件。
+    """
+
+    def _memory_limiter():
+        return DegradableRateLimiter(None, InMemoryBackend(), fallback="memory")
+
+    monkeypatch.setattr("app.middleware.rate_limit.build_limiter", _memory_limiter)
 
 # ----------------------------- 后端 -----------------------------
 

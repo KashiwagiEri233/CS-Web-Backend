@@ -107,6 +107,46 @@ class DegradableCache:
             self._mark_unhealthy(e)
         await self._memory.delete_many(batch)
 
+    async def incr(self, key: str, amount: int = 1) -> int:
+        if self._redis is None:
+            return await self._memory.incr(key, amount)
+        if not self._healthy and time.monotonic() < self._next_retry:
+            return await self._memory.incr(key, amount)
+        try:
+            result = await self._redis.incr(key, amount)
+            self._mark_healthy()
+            return result
+        except Exception as e:  # noqa: BLE001 - 缓存故障绝不向上抛
+            self._mark_unhealthy(e)
+            return await self._memory.incr(key, amount)
+
+    async def getset(self, key: str, value: Any) -> Any:
+        if self._redis is None:
+            return await self._memory.getset(key, value)
+        if not self._healthy and time.monotonic() < self._next_retry:
+            return await self._memory.getset(key, value)
+        try:
+            result = await self._redis.getset(key, value)
+            self._mark_healthy()
+            return result
+        except Exception as e:  # noqa: BLE001
+            self._mark_unhealthy(e)
+            return await self._memory.getset(key, value)
+
+    async def expire(self, key: str, ttl: int) -> None:
+        if self._redis is None:
+            await self._memory.expire(key, ttl)
+            return
+        if not self._healthy and time.monotonic() < self._next_retry:
+            await self._memory.expire(key, ttl)
+            return
+        try:
+            await self._redis.expire(key, ttl)
+            self._mark_healthy()
+        except Exception as e:  # noqa: BLE001
+            self._mark_unhealthy(e)
+            await self._memory.expire(key, ttl)
+
     # ----------------------- 内部 -----------------------
 
     def _mark_healthy(self) -> None:

@@ -67,13 +67,13 @@ async def _cleanup(db, *user_ids: int) -> None:
 
 
 @pytest.mark.integration
-async def test_event_crud_and_archive(integration_db_ready):
+async def test_event_crud_and_archive(integration_db_ready, admin_user):
     sfx = _sfx()
     async with get_session() as db:
         svc = EventService(db)
         try:
             created = await svc.create_event(
-                1,
+                admin_user,
                 EventInput(
                     title=f"活动-{sfx}",
                     description="描述",
@@ -89,19 +89,19 @@ async def test_event_crud_and_archive(integration_db_ready):
             assert fetched.registered_count == 0
 
             updated = await svc.update_event(
-                1, created.id, EventInput(title=f"改名-{sfx}", description="新")
+                admin_user, created.id, EventInput(title=f"改名-{sfx}", description="新")
             )
             assert updated.title == f"改名-{sfx}"
 
             # 自动归档：过去日期 → ended
             past = await svc.create_event(
-                1, EventInput(title=f"过期-{sfx}", date="2020.01.01")
+                admin_user, EventInput(title=f"过期-{sfx}", date="2020.01.01")
             )
             await svc.auto_archive()
             archived = await svc.get_event(past.id)
             assert archived.status == "ended"
 
-            await svc.delete_event(1, created.id)
+            await svc.delete_event(admin_user, created.id)
             with pytest.raises(NotFoundException):
                 await svc.get_event(created.id)
         finally:
@@ -110,14 +110,14 @@ async def test_event_crud_and_archive(integration_db_ready):
 
 
 @pytest.mark.integration
-async def test_registration_flow(integration_db_ready):
+async def test_registration_flow(integration_db_ready, admin_user):
     sfx = _sfx()
     async with get_session() as db:
         svc = EventService(db)
         user = await _make_user(db, f"reg_{sfx}@t.com")
         try:
             event = await svc.create_event(
-                1,
+                admin_user,
                 EventInput(title=f"报名活动-{sfx}", capacity=1),
             )
             # 报名
@@ -149,7 +149,7 @@ async def test_registration_flow(integration_db_ready):
             # 管理员改报名状态
             reg3 = await svc.get_user_registration(user.id, event.id)
             updated = await svc.admin_update_registration_status(
-                1, reg3.id, "waitlisted"
+                admin_user, reg3.id, "waitlisted"
             )
             assert updated.status == "waitlisted"
 
@@ -164,14 +164,14 @@ async def test_registration_flow(integration_db_ready):
 
 
 @pytest.mark.integration
-async def test_checkin_flow(integration_db_ready):
+async def test_checkin_flow(integration_db_ready, admin_user):
     sfx = _sfx()
     async with get_session() as db:
         svc = EventService(db)
         user = await _make_user(db, f"ck_{sfx}@t.com")
         admin = await _make_user(db, f"ckadm_{sfx}@t.com")
         try:
-            event = await svc.create_event(1, EventInput(title=f"签到活动-{sfx}"))
+            event = await svc.create_event(admin_user, EventInput(title=f"签到活动-{sfx}"))
             await svc.register(user.id, event.id)
 
             # 生成签到码
@@ -211,19 +211,19 @@ async def test_checkin_flow(integration_db_ready):
 
 
 @pytest.mark.integration
-async def test_event_batch_and_stats(integration_db_ready):
+async def test_event_batch_and_stats(integration_db_ready, admin_user):
     sfx = _sfx()
     async with get_session() as db:
         svc = EventService(db)
         try:
             e1 = await svc.create_event(
-                1, EventInput(title=f"批量1-{sfx}", status="upcoming")
+                admin_user, EventInput(title=f"批量1-{sfx}", status="upcoming")
             )
             e2 = await svc.create_event(
-                1, EventInput(title=f"批量2-{sfx}", status="upcoming")
+                admin_user, EventInput(title=f"批量2-{sfx}", status="upcoming")
             )
 
-            result = await svc.batch_update(1, [e1.id, e2.id], "ongoing")
+            result = await svc.batch_update(admin_user, [e1.id, e2.id], "ongoing")
             assert result["success"] == 2
             assert (await svc.get_event(e1.id)).status == "ongoing"
 

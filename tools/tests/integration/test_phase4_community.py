@@ -20,6 +20,7 @@ from app.core.exceptions import ConflictException
 from app.database import get_session
 from app.models.community import CommunityCategory, CommunityPost
 from app.models.user import User
+from app.services import view_count
 from app.services.community_service import CommunityService
 
 
@@ -78,17 +79,17 @@ async def _cleanup_users(db, *user_ids: int) -> None:
 
 
 @pytest.mark.integration
-async def test_category_and_posts_flow(integration_db_ready):
+async def test_category_and_posts_flow(integration_db_ready, admin_user):
     sfx = _sfx()
     async with get_session() as db:
         svc = CommunityService(db)
         u = await _make_user(db, f"cp_{sfx}@t.com")
         try:
             # 分类
-            cat = await svc.create_category(1, f"cat-{sfx}", "测试版块", sort_order=1)
+            cat = await svc.create_category(admin_user, f"cat-{sfx}", "测试版块", sort_order=1)
             assert cat.post_count == 0
             with pytest.raises(ConflictException):
-                await svc.create_category(1, f"cat-{sfx}", "重复")
+                await svc.create_category(admin_user, f"cat-{sfx}", "重复")
 
             # 帖子（topic）
             topic = await svc.create_post(
@@ -134,6 +135,12 @@ async def test_category_and_posts_flow(integration_db_ready):
             assert detail is not None
             assert await svc.increment_view(topic.id, user_id=u.id) is True
             assert await svc.increment_view(topic.id, user_id=u.id) is False
+            # ER-22：view_count 改 Redis 计数 + 异步落库（最终一致），
+            # 此处白盒强制 flush 后断言最终值，验证落库路径正确。
+            # 注：_flush_once 用独立 session 落库，原 session identity map 仍缓存旧值，
+            # 须先 refresh 再读。
+            await view_count._flush_once()
+            await db.refresh(topic)
             assert (await svc.get_post(topic.id)).view_count == 1
 
             # 编辑 + 软删除
@@ -156,14 +163,14 @@ async def test_category_and_posts_flow(integration_db_ready):
 
 
 @pytest.mark.integration
-async def test_comments_reactions_favorites(integration_db_ready):
+async def test_comments_reactions_favorites(integration_db_ready, admin_user):
     sfx = _sfx()
     async with get_session() as db:
         svc = CommunityService(db)
         u1 = await _make_user(db, f"cc1_{sfx}@t.com")
         u2 = await _make_user(db, f"cc2_{sfx}@t.com")
         try:
-            cat = await svc.create_category(1, f"rc-{sfx}", "版块")
+            cat = await svc.create_category(admin_user, f"rc-{sfx}", "版块")
             post = await svc.create_post(
                 u1.id,
                 "topic",
@@ -215,7 +222,7 @@ async def test_comments_reactions_favorites(integration_db_ready):
 
 
 @pytest.mark.integration
-async def test_follows_and_reports(integration_db_ready):
+async def test_follows_and_reports(integration_db_ready, admin_user):
     sfx = _sfx()
     async with get_session() as db:
         svc = CommunityService(db)
@@ -236,7 +243,7 @@ async def test_follows_and_reports(integration_db_ready):
             assert len(followers_result["items"]) == 1
 
             # 关注流列表
-            cat = await svc.create_category(1, f"fc-{sfx}", "版块")
+            cat = await svc.create_category(admin_user, f"fc-{sfx}", "版块")
             await svc.create_post(
                 u2.id,
                 "topic",
@@ -279,7 +286,7 @@ async def test_follows_and_reports(integration_db_ready):
 
 
 @pytest.mark.integration
-async def test_series_and_moderation(integration_db_ready):
+async def test_series_and_moderation(integration_db_ready, admin_user):
     sfx = _sfx()
     async with get_session() as db:
         svc = CommunityService(db)
@@ -307,17 +314,17 @@ async def test_series_and_moderation(integration_db_ready):
                 "topic",
                 title=f"审核-{sfx}",
                 content_markdown="x",
-                category_id=(await svc.create_category(1, f"mc-{sfx}", "版块")).id,
+                category_id=(await svc.create_category(admin_user, f"mc-{sfx}", "版块")).id,
             )
-            await svc.hide_post(1, topic.id, "违规")
+            await svc.hide_post(admin_user, topic.id, "违规")
             assert (await svc.get_post(topic.id)).status == "hidden"
-            await svc.restore_post(1, topic.id)
+            await svc.restore_post(admin_user, topic.id)
             assert (await svc.get_post(topic.id)).status == "published"
-            await svc.set_post_pinned(1, topic.id, True)
+            await svc.set_post_pinned(admin_user, topic.id, True)
             assert (await svc.get_post(topic.id)).is_pinned is True
-            await svc.set_post_featured(1, topic.id, True)
+            await svc.set_post_featured(admin_user, topic.id, True)
             assert (await svc.get_post(topic.id)).is_featured is True
-            await svc.hard_delete_post(1, topic.id)
+            await svc.hard_delete_post(admin_user, topic.id)
             assert (await svc.get_post(topic.id)).status == "deleted"
         finally:
             await _cleanup_users(db, u.id)

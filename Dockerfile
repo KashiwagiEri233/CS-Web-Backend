@@ -61,6 +61,10 @@ COPY --chown=appuser:appuser app ./app
 COPY --chown=appuser:appuser alembic ./alembic
 COPY --chown=appuser:appuser alembic.ini run.py ./
 
+# 日志落盘目录（ER-40）：prod 日志写 /app/logs；以 appuser 属主预建，
+# 供命名卷 logs: 首次挂载时继承属主，避免容器非 root 下 PermissionError 降级为仅控制台。
+RUN mkdir -p /app/logs && chown appuser:appuser /app/logs
+
 USER appuser
 
 EXPOSE 8000
@@ -70,8 +74,7 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
     CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).status == 200 else 1)"
 
-# 直接用 uvicorn 而不是 run.py：容器里由编排层负责进程数与重启策略，
-# run.py 的多 worker / 热重载逻辑是本地开发用的。
-# 生产建议 DB_AUTO_MIGRATE=False，迁移作为独立的 init job 执行：
-#   docker run --rm <image> alembic upgrade head
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# 多 worker（ER-37）：默认 4，可用 UVICORN_WORKERS 覆盖（编排层负责进程数）。
+# --timeout-graceful-shutdown 30（ER-36 优雅停机）：SIGTERM 后最多等 30s 让在途请求结束。
+# exec 形式使 uvicorn 成为 PID 1，确保信号直达、优雅停机生效。
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${UVICORN_WORKERS:-4} --timeout-graceful-shutdown ${UVICORN_GRACEFUL_SHUTDOWN:-30}"]

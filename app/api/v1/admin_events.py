@@ -22,7 +22,7 @@ from app.schemas.event import (
 )
 from app.services.event_service import EventService
 
-router = APIRouter(dependencies=[Depends(require_admin_2fa)])
+router = APIRouter(dependencies=[Depends(require_admin_2fa())])
 
 
 def _to_event_out(event) -> dict:

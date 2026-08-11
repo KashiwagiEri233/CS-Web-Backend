@@ -12,6 +12,7 @@ from app.core.config import settings
 from app.core.lifecycle import register_shutdown, register_startup
 from app.core.loguru_logger import get_logger
 from app.core.timezone import now_utc
+from app.services.exception_service import ExceptionService
 
 logger = get_logger("exception_retention")
 
@@ -22,8 +23,8 @@ _stop = asyncio.Event()
 
 async def _purge_once() -> int:
     """在 PostgreSQL advisory lock 下执行一轮集群级清理。"""
+    # 注意：get_session 必须保持方法内惰性导入（lifecycle → *_gc → repo → models → database → lifecycle 环）
     from app.database import get_session
-    from app.services.exception_service import ExceptionService
 
     async with get_session() as db:
         lock_acquired = await db.scalar(

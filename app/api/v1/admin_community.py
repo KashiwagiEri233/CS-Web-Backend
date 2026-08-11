@@ -12,7 +12,7 @@ from app.models.user import User
 from app.schemas.community import post_to_dict
 from app.services.community_service import CommunityService
 
-router = APIRouter(dependencies=[Depends(require_admin_2fa)])
+router = APIRouter(dependencies=[Depends(require_admin_2fa())])
 
 
 # ------------------------------------------------------------------ 内容审核

@@ -82,7 +82,7 @@ def test_list_audit_logs_paginated():
     resp = _client().get("/audit/logs?skip=0&limit=10")
     assert resp.status_code == 200
     body = resp.json()
-    assert set(body) == {"items", "total", "skip", "limit"}
+    assert set(body) == {"items", "total", "skip", "limit", "total_pages"}
     assert body["total"] == 1
     assert body["items"][0]["action"] == "user.create"
 

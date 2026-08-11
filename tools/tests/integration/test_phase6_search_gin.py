@@ -22,12 +22,12 @@ from .test_phase4_community import _cleanup_users, _make_user, _sfx
 
 
 @pytest.mark.integration
-async def test_post_search_tsvector_hit_and_miss(integration_db_ready):
+async def test_post_search_tsvector_hit_and_miss(integration_db_ready, admin_user):
     sfx = _sfx()
     async with get_session() as db:
         svc = CommunityService(db)
         author = await _make_user(db, f"{_sfx()}@example.com")
-        cat = await svc.create_category(1, f"cat-{sfx}", "测试版块")
+        cat = await svc.create_category(admin_user, f"cat-{sfx}", "测试版块")
         topic = await svc.create_post(
             author_id=author.id,
             kind="topic",
@@ -109,12 +109,12 @@ async def svc_member_list(db, search):
 
 
 @pytest.mark.integration
-async def test_search_uses_gin_index(integration_db_ready):
+async def test_search_uses_gin_index(integration_db_ready, admin_user):
     """EXPLAIN 确认搜索走 GIN Index Scan（全文检索索引生效）。"""
     sfx = _sfx()
     async with get_session() as db:
         author = await _make_user(db, f"{_sfx()}@example.com")
-        cat = await svc_create_category(db, f"cat-{sfx}")
+        cat = await svc_create_category(db, admin_user, f"cat-{sfx}")
         post = await CommunityService(db).create_post(
             author_id=author.id,
             kind="topic",
@@ -146,5 +146,5 @@ async def test_search_uses_gin_index(integration_db_ready):
         await _cleanup_users(db, author.id)
 
 
-async def svc_create_category(db, slug: str):
-    return await CommunityService(db).create_category(1, slug, "测试版块")
+async def svc_create_category(db, admin_id: int, slug: str):
+    return await CommunityService(db).create_category(admin_id, slug, "测试版块")

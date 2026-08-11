@@ -39,6 +39,7 @@ from app.repositories.community_repo import (
 )
 from app.repositories.user_repo import UserRepository
 from app.services.notification_service import NotificationService
+from app.services.view_count import record_view
 from app.utils.mask import mask_email
 
 MENTION_PATTERN = r"@([a-zA-Z0-9_-]{3,50})"
@@ -371,20 +372,9 @@ class CommunityService:
         post = await self.post_repo.get_by_id(post_id)
         if post is None or post.status != "published":
             return False
-        if await self.interaction_repo.has_viewed_recently(
-            post_id, user_id=user_id, ip_hash=ip_hash
-        ):
-            return False
-        try:
-            await self.interaction_repo.add_view(
-                post_id, user_id=user_id, ip_hash=ip_hash
-            )
-            await self.post_repo.increment_view(post_id)
-            await self.db.commit()
-            return True
-        except Exception:  # noqa: BLE001 - partial unique index 冲突视为已记录
-            await self.db.rollback()
-            return False
+        # 写放大治理：去重 + 计数走 Redis，异步批量落库（见 app/services/view_count.py）。
+        # 请求路径不再逐次读写 DB / commit；view_count 变更为最终一致。
+        return await record_view(post_id, user_id=user_id, ip_hash=ip_hash)
 
     # ------------------------------------------------------------------ 审核
 

@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock
 import app.database as database_module
 import app.repositories.refresh_token_repo as refresh_repo_module
 import app.services.exception_retention as retention
-import app.services.exception_service as exception_service_module
 import app.services.token_gc as token_gc
 
 
@@ -55,9 +54,9 @@ async def test_exception_retention_purges_under_lock(monkeypatch):
     service = AsyncMock()
     service.purge_before.return_value = 3
     monkeypatch.setattr(database_module, "get_session", _session_factory(session))
-    monkeypatch.setattr(
-        exception_service_module, "ExceptionService", lambda db: service
-    )
+    # 注：_purge_once 使用 retention 模块顶层名 ExceptionService（ER-27 提顶层后），
+    # 须 patch retention.ExceptionService 而非 exception_service 模块名。
+    monkeypatch.setattr(retention, "ExceptionService", lambda db: service)
 
     assert await retention._purge_once() == 3
     service.purge_before.assert_awaited_once()

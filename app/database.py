@@ -10,6 +10,7 @@ from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
+from app.core.constants import CONNECTION_POOL_BUDGET_RATIO
 
 
 # SQLAlchemy 2.0 风格的基类
@@ -284,7 +285,7 @@ async def _check_pool_capacity() -> None:
         return
 
     # 留出余量：superuser 预留连接 + 迁移/运维工具的临时连接
-    budget = int(max_connections * 0.8)
+    budget = int(max_connections * CONNECTION_POOL_BUDGET_RATIO)
     if required > budget:
         _db_logger.warning(
             "连接池总量可能超出数据库上限",

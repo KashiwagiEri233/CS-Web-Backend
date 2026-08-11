@@ -10,6 +10,7 @@ import asyncio
 from datetime import timedelta
 from typing import Optional
 
+from app.core.constants import SECONDS_PER_DAY
 from sqlalchemy import text
 
 from app.core.config import settings
@@ -89,7 +90,7 @@ async def startup_data_retention() -> None:
     login_interval = settings.LOGIN_HISTORY_CLEANUP_INTERVAL_SECONDS
     audit_interval = settings.AUDIT_LOG_CLEANUP_INTERVAL_SECONDS
     # 取两者中较小的间隔作为执行周期（每次都检查两张表，跳过无需清理的）
-    interval = min(login_interval or 86400, audit_interval or 86400)
+    interval = min(login_interval or SECONDS_PER_DAY, audit_interval or SECONDS_PER_DAY)
     if login_interval <= 0 and audit_interval <= 0:
         logger.info("数据保留期清理已禁用")
         return

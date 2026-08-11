@@ -95,7 +95,7 @@ def integration_redis_unavailable(message: str) -> None:
 @pytest.fixture
 async def integration_db_ready():
     """确保真实 PostgreSQL 可用且 schema 已迁移到 Alembic head。"""
-    from sqlalchemy import select, text
+    from sqlalchemy import text
 
     from app.database import get_session
     from tests._alembic_helpers import upgrade_schema_to_head
@@ -107,29 +107,59 @@ async def integration_db_ready():
         integration_db_unavailable(f"PostgreSQL 集成服务不可用: {exc}")
 
     await upgrade_schema_to_head()
+    yield
 
-    # 集成测试普遍以固定 id=1 用户代表"管理员/系统创建者"
-    # （如 create_event(1, ...) / create_category(1, ...)），测试库重建后该
-    # 用户不存在会导致大量 FK 失败。幂等补齐，保证任意库态下可运行。
+
+@pytest.fixture
+async def admin_user(integration_db_ready):
+    """显式创建超级用户（ER-43：替代固定 id=1 依赖），返回 user_id。
+
+    集成测试需要"管理员/系统创建者"身份时注入本 fixture（如
+    create_event(admin_user, ...) / create_category(admin_user, ...)），
+    不再隐式依赖 id=1 的 seed-root 用户。
+    """
+    import uuid
+
+    from sqlalchemy import text as sa_text
+
+    from app.core.security import async_get_password_hash
+    from app.database import get_session
     from app.models.user import User
 
+    sfx = uuid.uuid4().hex[:8]
     async with get_session() as db:
-        root = (await db.execute(select(User).where(User.id == 1))).scalar_one_or_none()
-        if root is None:
-            db.add(
-                User(
-                    id=1,
-                    username="seed-root",
-                    email="root@local.test",
-                    hashed_password=(
-                        "$2b$12$dummyhashdummyhashdummyhashdummyhashdummyhashdummyh"
-                    ),
-                    is_active=True,
-                    is_superuser=True,
-                )
-            )
-            await db.commit()
-    yield
+        admin = User(
+            username=f"itest_admin_{sfx}",
+            email=f"itest_admin_{sfx}@t.com",
+            hashed_password=await async_get_password_hash("StrongPass1!"),
+            is_active=True,
+            is_superuser=True,
+        )
+        db.add(admin)
+        await db.commit()
+        user_id = admin.id
+    yield user_id
+    async with get_session() as db:
+        for table in (
+            "refresh_tokens",
+            "login_history",
+            "password_history",
+            "notifications",
+            "two_factor_auth",
+            "verification_codes",
+            "password_reset_requests",
+            "user_roles",
+        ):
+            try:
+                async with db.begin_nested():
+                    await db.execute(
+                        sa_text(f"DELETE FROM {table} WHERE user_id = :uid"),
+                        {"uid": user_id},
+                    )
+            except Exception:
+                pass
+        await db.execute(sa_text("DELETE FROM users WHERE id = :uid"), {"uid": user_id})
+        await db.commit()
 
 
 @pytest.fixture

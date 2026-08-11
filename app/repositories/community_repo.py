@@ -12,6 +12,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.constants import VIEW_DEDUP_WINDOW_HOURS
 from app.core.timezone import now_utc
 from app.models.community_series import CommunitySeries
 from app.models.community import (
@@ -26,8 +27,6 @@ from app.models.community import (
     CommunityReport,
 )
 from app.models.user import User
-
-VIEW_DEDUP_WINDOW_HOURS = 24
 
 
 class CommunityCategoryRepository:

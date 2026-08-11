@@ -15,9 +15,9 @@ from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.constants import CONTRIBUTION_CACHE_TTL_SECONDS
 from app.models.contribution import ContributionCache
 
-CACHE_TTL_SECONDS = 6 * 3600
 _GITHUB_CONTRIBUTIONS_URL = "https://github.com/users/{username}/contributions"
 _UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
 
@@ -93,7 +93,7 @@ class ContributionService:
         stale = False
         fresh_enough = cache is not None and (
             now - cache.fetched_at
-        ).total_seconds() < CACHE_TTL_SECONDS
+        ).total_seconds() < CONTRIBUTION_CACHE_TTL_SECONDS
 
         if fresh_enough and not force_refresh:
             return self._to_payload(cache, stale=False)

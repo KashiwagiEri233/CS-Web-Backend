@@ -90,7 +90,7 @@ def test_list_users_paginated(monkeypatch):
     resp = _client_authed(monkeypatch).get("/users/?skip=0&limit=10")
     assert resp.status_code == 200
     body = resp.json()
-    assert set(body) == {"items", "total", "skip", "limit"}
+    assert set(body) == {"items", "total", "skip", "limit", "total_pages"}
     assert body["total"] == _TOTAL
     assert body["skip"] == 0 and body["limit"] == 10
     assert len(body["items"]) == 10

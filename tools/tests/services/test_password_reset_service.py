@@ -35,9 +35,9 @@ def _make_service(
     mock_settings.PASSWORD_RESET_DEFAULT = default_password
     monkeypatch.setattr("app.services.password_reset_service.settings", mock_settings)
 
-    svc = PasswordResetService.__new__(PasswordResetService)
-    svc.db = MagicMock()
-    svc.db.commit = AsyncMock()
+    db = MagicMock()
+    db.commit = AsyncMock()
+    svc = PasswordResetService(db=db)  # ER-41：真实 __init__，不再绕
     svc.repo = AsyncMock()
     svc.user_repo = AsyncMock()
     svc.audit = AsyncMock()

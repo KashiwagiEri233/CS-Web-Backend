@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Optional, Tuple
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,12 +27,17 @@ from app.core.exceptions import (
 from app.core.security import async_get_password_hash, async_verify_password
 from app.core.config import settings
 from app.core.timezone import now_utc
+from app.models.community import CommunityComment, CommunityPost
+from app.models.exam import Exam, ExamAttempt, ExamQuestion
+from app.models.role import Role
 from app.models.user import User
 from app.repositories.activity_participation_repo import ActivityParticipationRepository
 from app.repositories.refresh_token_repo import RefreshTokenRepository
 from app.repositories.user_repo import UserRepository
+from app.schemas.auth import UserOut
 from app.schemas.profile import ProfileUpdate
 from app.schemas.user import AdminUserUpdate
+from app.services.audit_service import AuditService
 from app.utils.image_validate import is_valid_image_mime
 
 # 预设头像（与前端 src/shared/config/avatar-presets.ts 对齐；文件由前端静态服务）
@@ -201,8 +207,6 @@ class UserService:
         # role 筛选（角色走关联表，查询后过滤）
         if role != "all":
             users = [u for u in users if role in {r.name for r in u.roles}]
-
-        from app.schemas.auth import UserOut
 
         def _admin_out(u: User) -> dict:
             base = UserOut.model_validate(u).model_dump()
@@ -530,10 +534,6 @@ class UserService:
 
     async def _set_user_role(self, user: User, role_name: str) -> None:
         """替换用户角色为单一角色（前端语义：一用户一主角色）。"""
-        from sqlalchemy import select
-
-        from app.models.role import Role
-
         role = (
             await self.db.execute(select(Role).where(Role.name == role_name))
         ).scalar_one_or_none()
@@ -555,8 +555,6 @@ class UserService:
         detail: dict,
         client_meta: Optional[dict],
     ) -> None:
-        from app.services.audit_service import AuditService
-
         await AuditService().record(
             action=action,
             resource_type="user",
@@ -686,10 +684,6 @@ class UserService:
 
     async def get_public_profile(self, user_id: int) -> Optional[dict]:
         """用户公开主页（无需登录）：公开资料 + 社区/考试统计。"""
-        from sqlalchemy import func, select
-        from app.models.community import CommunityComment, CommunityPost
-        from app.models.exam import Exam, ExamAttempt, ExamQuestion
-
         user = await self.user_repo.get_by_id(user_id)
         if user is None or user.deleted_at is not None or not user.is_active:
             return None

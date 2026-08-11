@@ -22,7 +22,7 @@ from app.schemas.auth import UserOut
 from app.schemas.user import AdminUserListOut, AdminUserOut, AdminUserUpdate
 from app.services.user_service import UserService
 
-router = APIRouter(dependencies=[Depends(require_admin_2fa)])
+router = APIRouter(dependencies=[Depends(require_admin_2fa())])
 
 
 def _to_admin_out(user: User) -> dict:

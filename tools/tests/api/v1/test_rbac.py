@@ -97,7 +97,7 @@ def test_get_roles_paginated():
     resp = _client().get("/rbac/roles/?skip=0&limit=5")
     assert resp.status_code == 200
     body = resp.json()
-    assert set(body) == {"items", "total", "skip", "limit"}
+    assert set(body) == {"items", "total", "skip", "limit", "total_pages"}
     assert body["total"] == 30
     assert body["skip"] == 0 and body["limit"] == 5
     assert len(body["items"]) == 5
@@ -107,7 +107,7 @@ def test_get_permissions_paginated_structure():
     resp = _client().get("/rbac/permissions/?skip=0&limit=10")
     assert resp.status_code == 200
     body = resp.json()
-    assert set(body) == {"items", "total", "skip", "limit"}
+    assert set(body) == {"items", "total", "skip", "limit", "total_pages"}
     assert body["total"] == 0
 
 

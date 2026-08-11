@@ -10,6 +10,7 @@ import secrets
 from datetime import date as date_cls
 from typing import Optional
 
+from app.core.constants import VERIFICATION_CODE_MIN, VERIFICATION_CODE_MAX
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events import event_bus
@@ -372,7 +373,7 @@ class EventService:
             if reg.id in existing_codes:
                 skipped += 1
                 continue
-            code = f"{secrets.randbelow(900000) + 100000}"
+            code = f"{secrets.randbelow(VERIFICATION_CODE_MAX - VERIFICATION_CODE_MIN + 1) + VERIFICATION_CODE_MIN}"
             await self.checkin_repo.create(
                 event_id=event_id,
                 registration_id=reg.id,

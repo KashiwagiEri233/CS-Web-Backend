@@ -154,7 +154,7 @@ async def test_exam_flow(integration_db_ready):
 
 
 @pytest.mark.integration
-async def test_resource_flow(integration_db_ready):
+async def test_resource_flow(integration_db_ready, admin_user):
     sfx = _sfx()
     async with get_session() as db:
         svc = ResourceService(db)
@@ -168,7 +168,7 @@ async def test_resource_flow(integration_db_ready):
             )
             assert resource.status == "pending"
 
-            approved = await svc.review_resource(1, resource.id, True, "ok")
+            approved = await svc.review_resource(admin_user, resource.id, True, "ok")
             assert approved.status == "approved"
 
             items, total = await svc.list_resources(status="approved")
@@ -177,7 +177,7 @@ async def test_resource_flow(integration_db_ready):
             await svc.increment_view(resource.id)
             assert (await svc.get_resource(resource.id)).view_count == 1
 
-            rejected = await svc.review_resource(1, resource.id, False, "no")
+            rejected = await svc.review_resource(admin_user, resource.id, False, "no")
             assert rejected.status == "rejected"
         finally:
             await _cleanup_user(db, u.id)
@@ -186,7 +186,7 @@ async def test_resource_flow(integration_db_ready):
 
 
 @pytest.mark.integration
-async def test_task_and_points_flow(integration_db_ready):
+async def test_task_and_points_flow(integration_db_ready, admin_user):
     sfx = _sfx()
     async with get_session() as db:
         task_svc = TaskService(db)
@@ -218,7 +218,7 @@ async def test_task_and_points_flow(integration_db_ready):
 
             # 提交 + 审核 → 积分
             await task_svc.submit_claim(u.id, claim.id)
-            reviewed = await task_svc.review_claim(1, claim.id, True, "通过")
+            reviewed = await task_svc.review_claim(admin_user, claim.id, True, "通过")
             assert reviewed.status == "approved"
 
             profile = await points_svc.profile(u.id)
@@ -244,7 +244,7 @@ async def test_task_and_points_flow(integration_db_ready):
 
 
 @pytest.mark.integration
-async def test_auxilio(integration_db_ready):
+async def test_auxilio(integration_db_ready, admin_user):
     sfx = _sfx()
     async with get_session() as db:
         svc = AuxilioService(db)
@@ -279,7 +279,7 @@ async def test_auxilio(integration_db_ready):
             resources, _ = await resource_svc.list_resources()
             for r in resources:
                 if r.title.startswith(f"资源aux-{sfx}"):
-                    await resource_svc.review_resource(1, r.id, True, "ok")
+                    await resource_svc.review_resource(admin_user, r.id, True, "ok")
 
             analysis = await svc.analyze_learning_profile(u.id)
             assert any(t["tag"] == "web" for t in analysis["weak_tags"])

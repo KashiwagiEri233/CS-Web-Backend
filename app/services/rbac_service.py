@@ -11,13 +11,14 @@ from app.models.role import Role
 from app.models.permission import Permission
 from app.repositories.rbac_repo import RBACRepository
 from app.schemas.rbac import AdminRoleCreate, AdminRoleUpdate
+from app.core.constants import RBAC_USER_PERMISSION_CACHE_TTL_SECONDS
 from app.services.rbac_assignments import RBACAssignmentMixin
 
 logger = get_logger("rbac")
 
 # 用户权限缓存 TTL（秒）。短 TTL 兼顾热数据加速与变更滞后窗口；
 # 真正的即时失效由 grant/revoke 点显式 delete 缓存保证。
-_USER_PERM_CACHE_TTL = 60
+# 具体值见 app.core.constants.RBAC_USER_PERMISSION_CACHE_TTL_SECONDS。
 
 
 def _user_perm_cache_key(user_id: int) -> str:
@@ -75,7 +76,7 @@ class RBACService(RBACAssignmentMixin):
     async def get_user_permissions(self, user_id: int) -> Set[str]:
         """获取用户所有权限（带可降级缓存）。**鉴权与展示共用此入口。**
 
-        缓存键 rbac:user_perms:{user_id}，TTL 见 _USER_PERM_CACHE_TTL；
+        缓存键 rbac:user_perms:{user_id}，TTL 见 RBAC_USER_PERMISSION_CACHE_TTL_SECONDS；
         所有授权变更点（grant/revoke/update/delete）都做了显式失效。
         缓存故障（Redis 不可用等）不抛错，退回直接查库。
         """
@@ -95,7 +96,7 @@ class RBACService(RBACAssignmentMixin):
         permissions = await self.rbac_repo.get_authorization_permissions(user_id)
 
         try:
-            await cache.set(key, list(permissions), _USER_PERM_CACHE_TTL)
+            await cache.set(key, list(permissions), RBAC_USER_PERMISSION_CACHE_TTL_SECONDS)
         except Exception:  # noqa: BLE001
             logger.debug("权限缓存写入失败，忽略", user_id=user_id)
 

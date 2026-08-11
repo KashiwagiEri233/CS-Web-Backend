@@ -17,17 +17,22 @@ from app.core.exceptions import (
 from app.services.user_service import UserService
 
 
-def _make_service(monkeypatch) -> UserService:
-    """构造 user_repo 被 AsyncMock 替换的 UserService。"""
+@pytest.fixture
+def user_service(monkeypatch) -> UserService:
+    """注入 mock db 的真实 UserService（ER-41：不再绕 __init__）。
+
+    行为层（user_repo / refresh_repo）仍用 AsyncMock 替换，避免真实 SQL；
+    __init__ 正常执行，新增依赖初始化会在此暴露。
+    """
     monkeypatch.setattr(
         "app.services.user_service.async_get_password_hash",
         AsyncMock(side_effect=lambda raw: f"hash:{raw}"),
     )
-    svc = UserService.__new__(UserService)
-    svc.db = MagicMock()
-    svc.db.commit = AsyncMock()
-    svc.db.refresh = AsyncMock()
-    svc.db.execute = AsyncMock()
+    db = MagicMock()
+    db.commit = AsyncMock()
+    db.refresh = AsyncMock()
+    db.execute = AsyncMock()
+    svc = UserService(db=db)
     svc.user_repo = AsyncMock()
     svc.refresh_repo = AsyncMock()
     svc.refresh_repo.revoke_all_for_user = AsyncMock(return_value=0)
@@ -37,8 +42,8 @@ def _make_service(monkeypatch) -> UserService:
 # ---- list / get ----
 
 
-async def test_list_users_returns_users_and_total(monkeypatch):
-    svc = _make_service(monkeypatch)
+async def test_list_users_returns_users_and_total(user_service, monkeypatch):
+    svc = user_service
     svc.user_repo.list_active.return_value = ["u1", "u2"]
     svc.user_repo.count_active.return_value = 2
 
@@ -50,16 +55,16 @@ async def test_list_users_returns_users_and_total(monkeypatch):
     svc.user_repo.count_active.assert_awaited_once_with()
 
 
-async def test_get_user_raises_when_missing(monkeypatch):
-    svc = _make_service(monkeypatch)
+async def test_get_user_raises_when_missing(user_service, monkeypatch):
+    svc = user_service
     svc.user_repo.get_by_id.return_value = None
 
     with pytest.raises(NotFoundException):
         await svc.get_user(9)
 
 
-async def test_get_user_returns_user(monkeypatch):
-    svc = _make_service(monkeypatch)
+async def test_get_user_returns_user(user_service, monkeypatch):
+    svc = user_service
     u = MagicMock(id=1, deleted_at=None)
     svc.user_repo.get_by_id.return_value = u
 
@@ -69,8 +74,8 @@ async def test_get_user_returns_user(monkeypatch):
 # ---- update_user ----
 
 
-async def test_update_user_applies_fields_and_hashes_password(monkeypatch):
-    svc = _make_service(monkeypatch)
+async def test_update_user_applies_fields_and_hashes_password(user_service, monkeypatch):
+    svc = user_service
     user = MagicMock(
         id=3, email="old@t.com", full_name="old", hashed_password="h", deleted_at=None
     )
@@ -98,8 +103,8 @@ async def test_update_user_applies_fields_and_hashes_password(monkeypatch):
     svc.db.commit.assert_awaited()
 
 
-async def test_update_user_blocks_conflicting_email(monkeypatch):
-    svc = _make_service(monkeypatch)
+async def test_update_user_blocks_conflicting_email(user_service, monkeypatch):
+    svc = user_service
     user = MagicMock(
         id=3,
         deleted_at=None,
@@ -117,9 +122,9 @@ async def test_update_user_blocks_conflicting_email(monkeypatch):
         await svc.update_user(3, {"email": "taken@t.com"})
 
 
-async def test_update_user_allows_same_email(monkeypatch):
+async def test_update_user_allows_same_email(user_service, monkeypatch):
     """更新为本人当前邮箱不应判冲突。"""
-    svc = _make_service(monkeypatch)
+    svc = user_service
     user = MagicMock(
         id=3,
         deleted_at=None,
@@ -138,8 +143,8 @@ async def test_update_user_allows_same_email(monkeypatch):
 # ---- update_profile（自助：不可改 is_active） ----
 
 
-async def test_update_profile_ignores_is_active(monkeypatch):
-    svc = _make_service(monkeypatch)
+async def test_update_profile_ignores_is_active(user_service, monkeypatch):
+    svc = user_service
     user = MagicMock(
         id=3,
         deleted_at=None,
@@ -158,8 +163,8 @@ async def test_update_profile_ignores_is_active(monkeypatch):
     assert user.is_active is True
 
 
-async def test_update_profile_allows_password_change(monkeypatch):
-    svc = _make_service(monkeypatch)
+async def test_update_profile_allows_password_change(user_service, monkeypatch):
+    svc = user_service
     monkeypatch.setattr(
         "app.services.user_service.async_verify_password",
         AsyncMock(return_value=True),
@@ -180,9 +185,9 @@ async def test_update_profile_allows_password_change(monkeypatch):
     assert user.hashed_password == "hash:newp"
 
 
-async def test_update_profile_password_requires_old_password(monkeypatch):
+async def test_update_profile_password_requires_old_password(user_service, monkeypatch):
     """自助改密必须提供当前密码，缺失则 422。"""
-    svc = _make_service(monkeypatch)
+    svc = user_service
     user = MagicMock(id=3, hashed_password="h")
 
     with pytest.raises(ValidationException):
@@ -191,9 +196,9 @@ async def test_update_profile_password_requires_old_password(monkeypatch):
     svc.user_repo.update.assert_not_called()
 
 
-async def test_update_profile_rejects_wrong_old_password(monkeypatch):
+async def test_update_profile_rejects_wrong_old_password(user_service, monkeypatch):
     """旧密码错误拒绝改密，且不会进入字段更新流程。"""
-    svc = _make_service(monkeypatch)
+    svc = user_service
     verify = AsyncMock(return_value=False)
     monkeypatch.setattr("app.services.user_service.async_verify_password", verify)
     user = MagicMock(id=3, hashed_password="h")
@@ -212,23 +217,23 @@ def _actor(user_id: int = 1, is_superuser: bool = False) -> MagicMock:
     return MagicMock(id=user_id, is_superuser=is_superuser)
 
 
-async def test_delete_user_prevents_self_delete(monkeypatch):
-    svc = _make_service(monkeypatch)
+async def test_delete_user_prevents_self_delete(user_service, monkeypatch):
+    svc = user_service
 
     with pytest.raises(ConflictException):
         await svc.delete_user(5, actor=_actor(user_id=5))
 
 
-async def test_delete_user_raises_when_missing(monkeypatch):
-    svc = _make_service(monkeypatch)
+async def test_delete_user_raises_when_missing(user_service, monkeypatch):
+    svc = user_service
     svc.user_repo.get_by_id.return_value = None
 
     with pytest.raises(NotFoundException):
         await svc.delete_user(9, actor=_actor())
 
 
-async def test_delete_user_succeeds(monkeypatch):
-    svc = _make_service(monkeypatch)
+async def test_delete_user_succeeds(user_service, monkeypatch):
+    svc = user_service
     user = MagicMock(
         id=9,
         deleted_at=None,
@@ -250,9 +255,9 @@ async def test_delete_user_succeeds(monkeypatch):
 # ---- 超级用户操纵防护 ----
 
 
-async def test_update_user_blocks_non_superuser_editing_superuser(monkeypatch):
+async def test_update_user_blocks_non_superuser_editing_superuser(user_service, monkeypatch):
     """非超管 actor 更新超管账号 → 拒绝（防提权接管）。"""
-    svc = _make_service(monkeypatch)
+    svc = user_service
     target = MagicMock(id=3, deleted_at=None, is_superuser=True)
     svc.user_repo.get_by_id.return_value = target
 
@@ -262,9 +267,9 @@ async def test_update_user_blocks_non_superuser_editing_superuser(monkeypatch):
     svc.user_repo.update.assert_not_called()
 
 
-async def test_update_user_allows_superuser_editing_superuser(monkeypatch):
+async def test_update_user_allows_superuser_editing_superuser(user_service, monkeypatch):
     """超管 actor 更新超管账号 → 放行。"""
-    svc = _make_service(monkeypatch)
+    svc = user_service
     target = MagicMock(
         id=3,
         deleted_at=None,
@@ -282,9 +287,9 @@ async def test_update_user_allows_superuser_editing_superuser(monkeypatch):
     assert target.full_name == "x"
 
 
-async def test_delete_user_blocks_non_superuser_deleting_superuser(monkeypatch):
+async def test_delete_user_blocks_non_superuser_deleting_superuser(user_service, monkeypatch):
     """非超管 actor 删除超管账号 → 拒绝。"""
-    svc = _make_service(monkeypatch)
+    svc = user_service
     target = MagicMock(id=9, deleted_at=None, is_superuser=True)
     svc.user_repo.get_by_id.return_value = target
 

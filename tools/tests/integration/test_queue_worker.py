@@ -8,7 +8,7 @@ import pytest
 
 # arq 是可选队列依赖（requirements-queue.txt），未安装时整个模块 skip 而非收集报错
 arq = pytest.importorskip("arq")
-from arq import Retry, Worker  # noqa: E402
+from arq import Retry, Worker, func as arq_func  # noqa: E402
 from arq.jobs import Job  # noqa: E402
 import app.core.queue.client as queue_client  # noqa: E402
 from app.core.config import settings  # noqa: E402
@@ -29,7 +29,9 @@ async def test_enqueue_worker_consumes_and_retries(
 
     redis_url = os.environ.get("TEST_REDIS_URL") or os.environ["REDIS_URL"]
     monkeypatch.setattr(settings, "REDIS_URL", redis_url)
-    monkeypatch.setattr(queue_client, "_read_queue_enabled", lambda: True)
+    # 注：_QUEUE_ENABLED 在模块 import 时求值（_read_queue_enabled()），
+    # 必须 patch 常量本身而非函数，否则 enqueue 走 eager 路径、Retry 直接逃逸。
+    monkeypatch.setattr(queue_client, "_QUEUE_ENABLED", True)
     monkeypatch.setattr(queue_client, "_pool", None)
     monkeypatch.setattr(queue_client, "_pool_initialized", False)
     monkeypatch.setattr(
@@ -45,8 +47,11 @@ async def test_enqueue_worker_consumes_and_retries(
 
         pool = await queue_client._get_pool()
         assert pool is not None
+        # 注：arq Function.name 默认取 __qualname__（闭包含 <locals> 前缀），
+        # 与 enqueue 投递的 __name__ 不匹配会报 "function not found"；
+        # 用 arq_func 包装并显式 name 对齐。
         worker = Worker(
-            [integration_retry_task],
+            [arq_func(integration_retry_task, name=integration_retry_task.__name__)],
             redis_pool=pool,
             burst=True,
             handle_signals=False,
