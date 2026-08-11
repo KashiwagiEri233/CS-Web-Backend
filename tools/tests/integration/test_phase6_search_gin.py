@@ -16,8 +16,8 @@ from sqlalchemy import text
 from app.core.config import settings
 from app.database import get_session
 from app.models.user import User
+from app.services.community_category import CategoryService
 from app.services.community_post import PostService
-from app.services.community_service import CommunityService
 
 from .test_phase4_community import _cleanup_users, _make_user, _sfx
 
@@ -26,7 +26,7 @@ from .test_phase4_community import _cleanup_users, _make_user, _sfx
 async def test_post_search_tsvector_hit_and_miss(integration_db_ready, admin_user):
     sfx = _sfx()
     async with get_session() as db:
-        svc = CommunityService(db)
+        svc = CategoryService(db)
         post_svc = PostService(db)
         author = await _make_user(db, f"{_sfx()}@example.com")
         cat = await svc.create_category(admin_user, f"cat-{sfx}", "测试版块")
@@ -149,4 +149,4 @@ async def test_search_uses_gin_index(integration_db_ready, admin_user):
 
 
 async def svc_create_category(db, admin_id: int, slug: str):
-    return await CommunityService(db).create_category(admin_id, slug, "测试版块")
+    return await CategoryService(db).create_category(admin_id, slug, "测试版块")

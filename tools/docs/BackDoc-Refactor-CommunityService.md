@@ -50,6 +50,7 @@
   - 评论楼中楼、帖子草稿/软删/浏览去重迁移；`_enrich_posts` 归入 `PostService`（批量互动标记已通过 ER-16 优化）。
 - **Phase 4 — 抽 `FeedService`**
   - 关注流与关注列表迁移（关注计数批量聚合已通过 ER-21 优化）；最后删除 `CommunityService` facade，调用方改指具体子服务。
+  - ✅ **已完成（2026-08-11）**：新建 `FeedService`（关注 CRUD/列表/计数）+ `CategoryService` + `ReportService` + `SeriesService` 四服务；api 剩余 15 处注入切换；`app/services/community_service.py` 删除（方法集差集对比 MISSING/EXTRA 均 NONE）。**本史诗 Phase 0~4 全量落地**，AL-2 五服务（Post/Comment/Reaction+Favorite/Feed/Notification）闭环；全量 432 passed、OpenAPI 契约零漂移。
 
 ## 5. 必须守住的不变量
 
@@ -66,7 +67,7 @@
 
 ## 7. 验收标准（重构完成时）
 
-- `community_service.py` 不复存在（或退化为 < 100 行的路由适配层）。
+- `community_service.py` 不复存在（或退化为 < 100 行的路由适配层）。✅ **已删除（Phase 4，2026-08-11）**
 - 任一子服务单文件 < 400 行；子服务间循环依赖 = 0。
 - 社区 integration 测试全绿，契约零漂移。
 - 通知逻辑经事件总线驱动，业务服务无直接 notify 依赖。

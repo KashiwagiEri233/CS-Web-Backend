@@ -3,8 +3,8 @@
 - hash_ip_for_view / scan_mentions / generate_slug：无状态纯函数；
 - to_author_summary：作者摘要映射（mask_email 脱敏）。
 
-community_service 从本模块 re-export，对外 import 路径（如 api/v1/community.py
-的 `from app.services.community_service import hash_ip_for_view`）保持兼容。
+由各社区子服务（Post/Comment/Series 等）直接 import；community_service.py
+已在 ER-15 Phase 4 删除（facade 收敛完毕），无 re-export 兼容负担。
 """
 
 import hashlib

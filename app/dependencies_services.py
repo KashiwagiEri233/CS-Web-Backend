@@ -19,10 +19,13 @@ from app.services.audit_service import AuditService
 from app.services.auth_service import AuthService
 from app.services.feature_visibility_service import FeatureVisibilityService
 from app.services.auxilio_service import AuxilioService
+from app.services.community_category import CategoryService
 from app.services.community_comment import CommentService
+from app.services.community_feed import FeedService
 from app.services.community_interaction import FavoriteService, ReactionService
 from app.services.community_post import PostService
-from app.services.community_service import CommunityService
+from app.services.community_report import ReportService
+from app.services.community_series import SeriesService
 from app.services.component_registry_service import ComponentRegistryService
 from app.services.event_service import EventService
 from app.services.exam_service import ExamService
@@ -57,8 +60,20 @@ def get_event_service(db: AsyncSession = Depends(get_db)) -> EventService:
     return EventService(db)
 
 
-def get_community_service(db: AsyncSession = Depends(get_db)) -> CommunityService:
-    return CommunityService(db)
+def get_feed_service(db: AsyncSession = Depends(get_db)) -> FeedService:
+    return FeedService(db)
+
+
+def get_category_service(db: AsyncSession = Depends(get_db)) -> CategoryService:
+    return CategoryService(db)
+
+
+def get_report_service(db: AsyncSession = Depends(get_db)) -> ReportService:
+    return ReportService(db)
+
+
+def get_series_service(db: AsyncSession = Depends(get_db)) -> SeriesService:
+    return SeriesService(db)
 
 
 def get_post_service(db: AsyncSession = Depends(get_db)) -> PostService:

@@ -21,10 +21,13 @@ from app.database import get_session
 from app.models.community import CommunityCategory, CommunityPost
 from app.models.user import User
 from app.services import view_count
+from app.services.community_category import CategoryService
 from app.services.community_comment import CommentService
+from app.services.community_feed import FeedService
 from app.services.community_interaction import FavoriteService, ReactionService
 from app.services.community_post import PostService
-from app.services.community_service import CommunityService
+from app.services.community_report import ReportService
+from app.services.community_series import SeriesService
 
 
 def _sfx() -> str:
@@ -85,7 +88,7 @@ async def _cleanup_users(db, *user_ids: int) -> None:
 async def test_category_and_posts_flow(integration_db_ready, admin_user):
     sfx = _sfx()
     async with get_session() as db:
-        svc = CommunityService(db)
+        svc = CategoryService(db)
         post_svc = PostService(db)
         u = await _make_user(db, f"cp_{sfx}@t.com")
         try:
@@ -170,7 +173,7 @@ async def test_category_and_posts_flow(integration_db_ready, admin_user):
 async def test_comments_reactions_favorites(integration_db_ready, admin_user):
     sfx = _sfx()
     async with get_session() as db:
-        svc = CommunityService(db)
+        svc = CategoryService(db)
         post_svc = PostService(db)
         comment_svc = CommentService(db)
         reaction = ReactionService(db)
@@ -235,7 +238,9 @@ async def test_comments_reactions_favorites(integration_db_ready, admin_user):
 async def test_follows_and_reports(integration_db_ready, admin_user):
     sfx = _sfx()
     async with get_session() as db:
-        svc = CommunityService(db)
+        svc = FeedService(db)
+        cat_svc = CategoryService(db)
+        report_svc = ReportService(db)
         post_svc = PostService(db)
         u1 = await _make_user(db, f"fl1_{sfx}@t.com")
         u2 = await _make_user(db, f"fl2_{sfx}@t.com")
@@ -254,7 +259,7 @@ async def test_follows_and_reports(integration_db_ready, admin_user):
             assert len(followers_result["items"]) == 1
 
             # 关注流列表
-            cat = await svc.create_category(admin_user, f"fc-{sfx}", "版块")
+            cat = await cat_svc.create_category(admin_user, f"fc-{sfx}", "版块")
             await post_svc.create_post(
                 u2.id,
                 "topic",
@@ -279,12 +284,14 @@ async def test_follows_and_reports(integration_db_ready, admin_user):
                 content_markdown="bad",
                 category_id=cat.id,
             )
-            report = await svc.submit_report(u3.id, "post", post.id, "违规", "测试")
+            report = await report_svc.submit_report(u3.id, "post", post.id, "违规", "测试")
             assert report.status == "pending"
-            reports, total = await svc.list_reports(status="pending")
+            reports, total = await report_svc.list_reports(status="pending")
             assert total >= 1
-            await svc.resolve_report(u1.id, report.id, "resolved")
-            assert (await svc.report_repo.get_by_id(report.id)).status == "resolved"
+            await report_svc.resolve_report(u1.id, report.id, "resolved")
+            assert (
+                await report_svc.report_repo.get_by_id(report.id)
+            ).status == "resolved"
         finally:
             await _cleanup_users(db, u1.id, u2.id, u3.id)
             await db.execute(
@@ -300,7 +307,8 @@ async def test_follows_and_reports(integration_db_ready, admin_user):
 async def test_series_and_moderation(integration_db_ready, admin_user):
     sfx = _sfx()
     async with get_session() as db:
-        svc = CommunityService(db)
+        svc = SeriesService(db)
+        cat_svc = CategoryService(db)
         post_svc = PostService(db)
         u = await _make_user(db, f"md_{sfx}@t.com")
         try:
@@ -326,7 +334,7 @@ async def test_series_and_moderation(integration_db_ready, admin_user):
                 "topic",
                 title=f"审核-{sfx}",
                 content_markdown="x",
-                category_id=(await svc.create_category(admin_user, f"mc-{sfx}", "版块")).id,
+                category_id=(await cat_svc.create_category(admin_user, f"mc-{sfx}", "版块")).id,
             )
             await post_svc.hide_post(admin_user, topic.id, "违规")
             assert (await post_svc.get_post(topic.id)).status == "hidden"
@@ -402,7 +410,7 @@ async def test_format_follow_users_batched_counts(integration_db_ready):
     """ER-21：_format_follow_users 批量聚合关注计数/关系，N+1→常量查询且数据正确。"""
     sfx = _sfx()
     async with get_session() as db:
-        svc = CommunityService(db)
+        svc = FeedService(db)
         u1 = await _make_user(db, f"er21v_{sfx}@t.com")  # 观察视角
         u2 = await _make_user(db, f"er21a_{sfx}@t.com")
         u3 = await _make_user(db, f"er21b_{sfx}@t.com")

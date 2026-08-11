@@ -18,20 +18,26 @@ from app.core.request_context import get_client_meta
 from app.database import get_db
 from app.dependencies import get_current_active_user, get_optional_current_user
 from app.dependencies_services import (
+    get_category_service,
     get_comment_service,
-    get_community_service,
+    get_feed_service,
     get_favorite_service,
     get_post_service,
     get_reaction_service,
+    get_report_service,
+    get_series_service,
 )
 from app.models.community import CommunityPost
 from app.models.user import User
 from app.schemas.community import post_to_dict
 from app.schemas.pagination import PaginatedResponse, PaginationParams
+from app.services.community_category import CategoryService
 from app.services.community_comment import CommentService
+from app.services.community_feed import FeedService
 from app.services.community_interaction import FavoriteService, ReactionService
 from app.services.community_post import PostService
-from app.services.community_service import CommunityService
+from app.services.community_report import ReportService
+from app.services.community_series import SeriesService
 from app.utils.image_validate import is_valid_image_mime
 
 router = APIRouter()
@@ -164,7 +170,7 @@ async def list_members(
 
 @router.get("/categories")
 async def list_categories(
-    service: CommunityService = Depends(get_community_service),
+    service: CategoryService = Depends(get_category_service),
 ) -> Any:
     return [_category_out(c) for c in await service.list_categories()]
 
@@ -220,7 +226,7 @@ async def get_post(
 ) -> Any:
     post = await service.get_post(post_id, current_user.id if current_user else None)
     client_ip = get_client_meta(request).get("ip_address")
-    from app.services.community_service import hash_ip_for_view
+    from app.services.community_utils import hash_ip_for_view
 
     await service.increment_view(
         post_id,
@@ -241,7 +247,7 @@ async def get_post_by_slug(
         slug, current_user.id if current_user else None
     )
     client_ip = get_client_meta(request).get("ip_address")
-    from app.services.community_service import hash_ip_for_view
+    from app.services.community_utils import hash_ip_for_view
 
     await service.increment_view(
         post.id,
@@ -446,7 +452,7 @@ async def list_favorites(
 @router.post("/follows")
 async def toggle_follow(
     body: dict,
-    service: CommunityService = Depends(get_community_service),
+    service: FeedService = Depends(get_feed_service),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     following_id = body.get("followingId", body.get("following_id"))
@@ -460,7 +466,7 @@ async def list_follows(
     type: str = "following",
     page: int = 1,
     page_size: int = Query(20, alias="pageSize"),
-    service: CommunityService = Depends(get_community_service),
+    service: FeedService = Depends(get_feed_service),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     skip = (max(1, page) - 1) * page_size
@@ -476,7 +482,7 @@ async def list_follows(
 @router.get("/users/{user_id}/follow-status")
 async def follow_status(
     user_id: int,
-    service: CommunityService = Depends(get_community_service),
+    service: FeedService = Depends(get_feed_service),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     return {
@@ -488,7 +494,7 @@ async def follow_status(
 @router.get("/users/{user_id}/follow-counts")
 async def follow_counts(
     user_id: int,
-    service: CommunityService = Depends(get_community_service),
+    service: FeedService = Depends(get_feed_service),
 ) -> Any:
     return await service.get_follow_counts(user_id)
 
@@ -499,7 +505,7 @@ async def follow_counts(
 @router.post("/reports", response_model=dict, status_code=201)
 async def submit_report(
     body: dict,
-    service: CommunityService = Depends(get_community_service),
+    service: ReportService = Depends(get_report_service),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     target_type = body.get("targetType", body.get("target_type"))
@@ -518,7 +524,7 @@ async def submit_report(
 
 @router.get("/series")
 async def list_series(
-    service: CommunityService = Depends(get_community_service),
+    service: SeriesService = Depends(get_series_service),
 ) -> Any:
     return await service.list_series()
 
@@ -526,7 +532,7 @@ async def list_series(
 @router.post("/series", response_model=dict, status_code=201)
 async def create_series(
     body: dict,
-    service: CommunityService = Depends(get_community_service),
+    service: SeriesService = Depends(get_series_service),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     title = body.get("title", "")

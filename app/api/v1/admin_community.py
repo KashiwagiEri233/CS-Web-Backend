@@ -7,16 +7,18 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, Request
 
 from app.dependencies_services import (
+    get_category_service,
     get_comment_service,
-    get_community_service,
     get_post_service,
+    get_report_service,
 )
 from app.middleware.rbac import require_admin_2fa, require_permission
 from app.models.user import User
 from app.schemas.community import post_to_dict
+from app.services.community_category import CategoryService
 from app.services.community_comment import CommentService
 from app.services.community_post import PostService
-from app.services.community_service import CommunityService
+from app.services.community_report import ReportService
 
 router = APIRouter(dependencies=[Depends(require_admin_2fa())])
 
@@ -162,7 +164,7 @@ async def restore_comment(
 
 @router.get("/categories")
 async def admin_list_categories(
-    service: CommunityService = Depends(get_community_service),
+    service: CategoryService = Depends(get_category_service),
     current_user: User = Depends(require_permission("community", "read")),
 ) -> Any:
     return await service.list_categories()
@@ -171,7 +173,7 @@ async def admin_list_categories(
 @router.post("/categories", response_model=dict, status_code=201)
 async def create_category(
     body: dict,
-    service: CommunityService = Depends(get_community_service),
+    service: CategoryService = Depends(get_category_service),
     current_user: User = Depends(require_permission("community", "category_create")),
 ) -> Any:
     return await service.create_category(
@@ -188,7 +190,7 @@ async def create_category(
 async def update_category(
     category_id: int,
     body: dict,
-    service: CommunityService = Depends(get_community_service),
+    service: CategoryService = Depends(get_category_service),
     current_user: User = Depends(require_permission("community", "category_update")),
 ) -> Any:
     return await service.update_category(
@@ -205,7 +207,7 @@ async def update_category(
 @router.delete("/categories/{category_id}")
 async def delete_category(
     category_id: int,
-    service: CommunityService = Depends(get_community_service),
+    service: CategoryService = Depends(get_category_service),
     current_user: User = Depends(require_permission("community", "category_delete")),
 ) -> Any:
     await service.delete_category(current_user.id, category_id)
@@ -220,7 +222,7 @@ async def list_reports(
     status: Optional[str] = None,
     skip: int = 0,
     limit: int = 20,
-    service: CommunityService = Depends(get_community_service),
+    service: ReportService = Depends(get_report_service),
     current_user: User = Depends(require_permission("community", "read")),
 ) -> Any:
     reports, total = await service.list_reports(status=status, skip=skip, limit=limit)
@@ -247,7 +249,7 @@ async def list_reports(
 @router.post("/reports/{report_id}/resolve")
 async def resolve_report(
     report_id: int,
-    service: CommunityService = Depends(get_community_service),
+    service: ReportService = Depends(get_report_service),
     current_user: User = Depends(require_permission("community", "read")),
 ) -> Any:
     await service.resolve_report(current_user.id, report_id, "resolved")
@@ -257,7 +259,7 @@ async def resolve_report(
 @router.post("/reports/{report_id}/dismiss")
 async def dismiss_report(
     report_id: int,
-    service: CommunityService = Depends(get_community_service),
+    service: ReportService = Depends(get_report_service),
     current_user: User = Depends(require_permission("community", "read")),
 ) -> Any:
     await service.resolve_report(current_user.id, report_id, "dismissed")
