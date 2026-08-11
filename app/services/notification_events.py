@@ -70,10 +70,103 @@ async def _on_event_cancelled(user_id: int, event_id: int, event_title: str) -> 
         )
 
 
+# ---- 社区（ER-15 Phase 1：community_service 通知事件化后订阅）----
+
+
+async def _on_community_mention(
+    source_type: str,
+    source_id: int,
+    source_author_id: int,
+    mentioned_user_ids: list[int],
+) -> None:
+    async with get_session() as db:
+        service = NotificationService(db)
+        for uid in mentioned_user_ids:
+            await service.create(
+                user_id=uid,
+                type="reply",
+                title="你在社区中被提及",
+                content="某条内容中提到了你，点击查看。",
+                sender_id=source_author_id,
+            )
+
+
+async def _on_community_comment_reply(
+    post_title: str, actor_id: int, recipients: dict[int, str]
+) -> None:
+    async with get_session() as db:
+        service = NotificationService(db)
+        for uid, content in recipients.items():
+            await service.create(
+                user_id=uid,
+                type="reply",
+                title="新的回复",
+                content=content,
+                sender_id=actor_id,
+            )
+
+
+async def _on_community_post_liked(
+    target_type: str, target_title: str, actor_id: int, recipient_id: int
+) -> None:
+    async with get_session() as db:
+        service = NotificationService(db)
+        await service.create(
+            user_id=recipient_id,
+            type="like",
+            title="内容被点赞",
+            content=(
+                f"你的内容「{target_title}」被点赞"
+                if target_type == "post"
+                else "你的评论被点赞"
+            ),
+            sender_id=actor_id,
+        )
+
+
+async def _on_community_post_favorited(
+    post_title: str, actor_id: int, recipient_id: int
+) -> None:
+    async with get_session() as db:
+        service = NotificationService(db)
+        await service.create(
+            user_id=recipient_id,
+            type="favorite",
+            title="内容被收藏",
+            content=f"你的内容「{post_title}」被收藏",
+            sender_id=actor_id,
+        )
+
+
+async def _on_community_user_followed(
+    follower_id: int, target_user_id: int
+) -> None:
+    async with get_session() as db:
+        from app.models.user import User
+
+        follower = await db.get(User, follower_id)
+        follower_name = (
+            (follower.display_name or follower.username) if follower else "有人"
+        )
+        service = NotificationService(db)
+        await service.create(
+            user_id=target_user_id,
+            type="follow",
+            title="新的关注",
+            content=f"{follower_name} 关注了你",
+            sender_id=follower_id,
+        )
+
+
 def register_notification_events() -> None:
     """注册全部通知订阅者（幂等，可多次调用）。"""
     event_bus.subscribe("user.registered", _on_user_registered)
     event_bus.subscribe("event.created", _on_event_created)
     event_bus.subscribe("event.registered", _on_event_registered)
     event_bus.subscribe("event.cancelled", _on_event_cancelled)
+    event_bus.subscribe("community.mention", _on_community_mention)
+    event_bus.subscribe("community.comment.reply", _on_community_comment_reply)
+    event_bus.subscribe("community.post.liked", _on_community_post_liked)
+    event_bus.subscribe("community.post.favorited", _on_community_post_favorited)
+    event_bus.subscribe("community.user.followed", _on_community_user_followed)
     logger.debug("通知事件订阅已注册")

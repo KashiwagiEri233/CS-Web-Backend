@@ -17,11 +17,20 @@ from app.core.exceptions import NotFoundException, ValidationException
 from app.core.request_context import get_client_meta
 from app.database import get_db
 from app.dependencies import get_current_active_user, get_optional_current_user
-from app.dependencies_services import get_community_service
+from app.dependencies_services import (
+    get_comment_service,
+    get_community_service,
+    get_favorite_service,
+    get_post_service,
+    get_reaction_service,
+)
 from app.models.community import CommunityPost
 from app.models.user import User
 from app.schemas.community import post_to_dict
 from app.schemas.pagination import PaginatedResponse, PaginationParams
+from app.services.community_comment import CommentService
+from app.services.community_interaction import FavoriteService, ReactionService
+from app.services.community_post import PostService
 from app.services.community_service import CommunityService
 from app.utils.image_validate import is_valid_image_mime
 
@@ -176,7 +185,7 @@ async def list_posts(
     search: Optional[str] = None,
     sort: str = "latest",
     following: bool = False,
-    service: CommunityService = Depends(get_community_service),
+    service: PostService = Depends(get_post_service),
     current_user: Optional[User] = Depends(get_optional_current_user),
 ) -> Any:
     posts, total = await service.list_posts(
@@ -206,7 +215,7 @@ async def list_posts(
 async def get_post(
     post_id: int,
     request: Request,
-    service: CommunityService = Depends(get_community_service),
+    service: PostService = Depends(get_post_service),
     current_user: Optional[User] = Depends(get_optional_current_user),
 ) -> Any:
     post = await service.get_post(post_id, current_user.id if current_user else None)
@@ -225,7 +234,7 @@ async def get_post(
 async def get_post_by_slug(
     slug: str,
     request: Request,
-    service: CommunityService = Depends(get_community_service),
+    service: PostService = Depends(get_post_service),
     current_user: Optional[User] = Depends(get_optional_current_user),
 ) -> Any:
     post = await service.get_post_by_slug(
@@ -245,7 +254,7 @@ async def get_post_by_slug(
 @router.post("/posts", response_model=dict, status_code=201)
 async def create_post(
     body: dict,
-    service: CommunityService = Depends(get_community_service),
+    service: PostService = Depends(get_post_service),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     kind = body.get("kind", "topic")
@@ -274,10 +283,10 @@ async def create_post(
 async def update_post(
     post_id: int,
     body: dict,
-    service: CommunityService = Depends(get_community_service),
+    service: PostService = Depends(get_post_service),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
-    is_admin = await _is_admin(service, current_user)
+    is_admin = await _is_admin(service.db, current_user)
     post = await service.update_post(current_user.id, post_id, body, is_admin)
     return post_to_dict(post)
 
@@ -285,10 +294,10 @@ async def update_post(
 @router.delete("/posts/{post_id}")
 async def delete_post(
     post_id: int,
-    service: CommunityService = Depends(get_community_service),
+    service: PostService = Depends(get_post_service),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
-    is_admin = await _is_admin(service, current_user)
+    is_admin = await _is_admin(service.db, current_user)
     await service.delete_post(current_user.id, post_id, is_admin)
     return {"ok": True}
 
@@ -296,7 +305,7 @@ async def delete_post(
 @router.get("/drafts")
 async def list_drafts(
     pagination: PaginationParams = Depends(),
-    service: CommunityService = Depends(get_community_service),
+    service: PostService = Depends(get_post_service),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     posts, total = await service.user_drafts(
@@ -317,7 +326,7 @@ async def list_drafts(
 async def list_comments(
     post_id: int,
     pagination: PaginationParams = Depends(),
-    service: CommunityService = Depends(get_community_service),
+    service: CommentService = Depends(get_comment_service),
 ) -> Any:
     comments, total = await service.list_comments(
         post_id, skip=pagination.skip, limit=pagination.limit
@@ -334,7 +343,7 @@ async def list_comments(
 async def create_comment(
     post_id: int,
     body: dict,
-    service: CommunityService = Depends(get_community_service),
+    service: CommentService = Depends(get_comment_service),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     content = body.get("contentMarkdown", body.get("content_markdown", ""))
@@ -354,7 +363,7 @@ async def create_comment(
 @router.get("/comments/{comment_id}/nested")
 async def list_nested_comments(
     comment_id: int,
-    service: CommunityService = Depends(get_community_service),
+    service: CommentService = Depends(get_comment_service),
 ) -> Any:
     comments = await service.list_nested_comments(comment_id)
     return [_comment_out(c) for c in comments]
@@ -364,11 +373,11 @@ async def list_nested_comments(
 async def update_comment(
     comment_id: int,
     body: dict,
-    service: CommunityService = Depends(get_community_service),
+    service: CommentService = Depends(get_comment_service),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     content = body.get("contentMarkdown", body.get("content_markdown", ""))
-    is_admin = await _is_admin(service, current_user)
+    is_admin = await _is_admin(service.db, current_user)
     comment = await service.update_comment(
         current_user.id, is_admin, comment_id, content
     )
@@ -378,10 +387,10 @@ async def update_comment(
 @router.delete("/comments/{comment_id}")
 async def delete_comment(
     comment_id: int,
-    service: CommunityService = Depends(get_community_service),
+    service: CommentService = Depends(get_comment_service),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
-    is_admin = await _is_admin(service, current_user)
+    is_admin = await _is_admin(service.db, current_user)
     await service.delete_comment(current_user.id, is_admin, comment_id)
     return {"ok": True}
 
@@ -392,7 +401,7 @@ async def delete_comment(
 @router.post("/reactions")
 async def toggle_like(
     body: dict,
-    service: CommunityService = Depends(get_community_service),
+    service: ReactionService = Depends(get_reaction_service),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     target_type = body.get("targetType", body.get("target_type"))
@@ -405,7 +414,7 @@ async def toggle_like(
 @router.post("/favorites")
 async def toggle_favorite(
     body: dict,
-    service: CommunityService = Depends(get_community_service),
+    service: FavoriteService = Depends(get_favorite_service),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     target_id = body.get("targetId", body.get("target_id"))
@@ -417,7 +426,7 @@ async def toggle_favorite(
 @router.get("/favorites")
 async def list_favorites(
     pagination: PaginationParams = Depends(),
-    service: CommunityService = Depends(get_community_service),
+    service: PostService = Depends(get_post_service),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     posts, total = await service.list_user_favorites(
@@ -535,7 +544,7 @@ async def create_series(
 async def list_user_topics(
     user_id: int,
     pagination: PaginationParams = Depends(),
-    service: CommunityService = Depends(get_community_service),
+    service: PostService = Depends(get_post_service),
 ) -> Any:
     posts, total = await service.list_posts(
         kind="topic", author_id=user_id, skip=pagination.skip, limit=pagination.limit
@@ -552,12 +561,11 @@ async def list_user_topics(
 async def list_user_replies(
     user_id: int,
     pagination: PaginationParams = Depends(),
-    service: CommunityService = Depends(get_community_service),
+    service: CommentService = Depends(get_comment_service),
 ) -> Any:
-    comments, total = await service.comment_repo.list_for_author(
+    comments, total = await service.list_by_author(
         user_id, skip=pagination.skip, limit=pagination.limit
     )
-    await service._load_author_summaries(comments)
     return PaginatedResponse(
         items=[_comment_out(c) for c in comments],
         total=total,
@@ -633,7 +641,7 @@ async def serve_community_image(filename: str) -> Any:
 # ------------------------------------------------------------------ 内部
 
 
-async def _is_admin(service: CommunityService, user: User) -> bool:
+async def _is_admin(db: AsyncSession, user: User) -> bool:
     from sqlalchemy import select
 
     from app.models.role import Role
@@ -642,7 +650,7 @@ async def _is_admin(service: CommunityService, user: User) -> bool:
         return True
     roles = (
         (
-            await service.db.execute(
+            await db.execute(
                 select(Role.name).join(Role.users).where(User.id == user.id)
             )
         )

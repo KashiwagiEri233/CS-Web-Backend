@@ -16,6 +16,7 @@ from sqlalchemy import text
 from app.core.config import settings
 from app.database import get_session
 from app.models.user import User
+from app.services.community_post import PostService
 from app.services.community_service import CommunityService
 
 from .test_phase4_community import _cleanup_users, _make_user, _sfx
@@ -26,9 +27,10 @@ async def test_post_search_tsvector_hit_and_miss(integration_db_ready, admin_use
     sfx = _sfx()
     async with get_session() as db:
         svc = CommunityService(db)
+        post_svc = PostService(db)
         author = await _make_user(db, f"{_sfx()}@example.com")
         cat = await svc.create_category(admin_user, f"cat-{sfx}", "测试版块")
-        topic = await svc.create_post(
+        topic = await post_svc.create_post(
             author_id=author.id,
             kind="topic",
             title="Rust 异步编程实践指南",
@@ -36,7 +38,7 @@ async def test_post_search_tsvector_hit_and_miss(integration_db_ready, admin_use
             category_id=cat.id,
             status="published",
         )
-        off = await svc.create_post(
+        off = await post_svc.create_post(
             author_id=author.id,
             kind="topic",
             title="前端工程化",
@@ -46,20 +48,20 @@ async def test_post_search_tsvector_hit_and_miss(integration_db_ready, admin_use
         )
 
         # 命中：标题英文精确词
-        items, total = await svc.list_posts(kind="topic", search="Rust")
+        items, total = await post_svc.list_posts(kind="topic", search="Rust")
         assert total >= 1 and any(p.id == topic.id for p in items)
         assert not any(p.id == off.id for p in items)
 
         # 命中：正文英文精确词
-        items, total = await svc.list_posts(kind="topic", search="tokio")
+        items, total = await post_svc.list_posts(kind="topic", search="tokio")
         assert any(p.id == topic.id for p in items)
 
         # 未命中
-        items, total = await svc.list_posts(kind="topic", search="区块链")
+        items, total = await post_svc.list_posts(kind="topic", search="区块链")
         assert total == 0
 
         # 多词 AND：tokio 与 async 必须同篇命中（topic 命中，off 不命中）
-        items, total = await svc.list_posts(kind="topic", search="tokio async")
+        items, total = await post_svc.list_posts(kind="topic", search="tokio async")
         assert any(p.id == topic.id for p in items)
         assert not any(p.id == off.id for p in items)
 
@@ -115,7 +117,7 @@ async def test_search_uses_gin_index(integration_db_ready, admin_user):
     async with get_session() as db:
         author = await _make_user(db, f"{_sfx()}@example.com")
         cat = await svc_create_category(db, admin_user, f"cat-{sfx}")
-        post = await CommunityService(db).create_post(
+        post = await PostService(db).create_post(
             author_id=author.id,
             kind="topic",
             title="GIN 索引验证帖",

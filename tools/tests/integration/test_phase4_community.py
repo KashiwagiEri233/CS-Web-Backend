@@ -21,6 +21,9 @@ from app.database import get_session
 from app.models.community import CommunityCategory, CommunityPost
 from app.models.user import User
 from app.services import view_count
+from app.services.community_comment import CommentService
+from app.services.community_interaction import FavoriteService, ReactionService
+from app.services.community_post import PostService
 from app.services.community_service import CommunityService
 
 
@@ -83,6 +86,7 @@ async def test_category_and_posts_flow(integration_db_ready, admin_user):
     sfx = _sfx()
     async with get_session() as db:
         svc = CommunityService(db)
+        post_svc = PostService(db)
         u = await _make_user(db, f"cp_{sfx}@t.com")
         try:
             # 分类
@@ -92,7 +96,7 @@ async def test_category_and_posts_flow(integration_db_ready, admin_user):
                 await svc.create_category(admin_user, f"cat-{sfx}", "重复")
 
             # 帖子（topic）
-            topic = await svc.create_post(
+            topic = await post_svc.create_post(
                 u.id,
                 "topic",
                 title=f"主题-{sfx}",
@@ -103,7 +107,7 @@ async def test_category_and_posts_flow(integration_db_ready, admin_user):
             assert (await svc.get_category(cat.id)).post_count == 1
 
             # 帖子（post，自动 slug）
-            post = await svc.create_post(
+            post = await post_svc.create_post(
                 u.id,
                 "post",
                 title=f"文章-{sfx}",
@@ -114,42 +118,42 @@ async def test_category_and_posts_flow(integration_db_ready, admin_user):
             assert post.kind == "post" and post.slug
 
             # 草稿
-            draft = await svc.create_post(
+            draft = await post_svc.create_post(
                 u.id,
                 "post",
                 title=f"草稿-{sfx}",
                 content_markdown="draft",
                 status="draft",
             )
-            drafts, _ = await svc.user_drafts(u.id)
+            drafts, _ = await post_svc.user_drafts(u.id)
             assert any(p.id == draft.id for p in drafts)
 
             # 列表 + 筛选 + 搜索
-            items, total = await svc.list_posts(kind="topic", search="abc")
+            items, total = await post_svc.list_posts(kind="topic", search="abc")
             assert any(p.id == topic.id for p in items)
-            posts, _ = await svc.list_posts(kind="post", status="published")
+            posts, _ = await post_svc.list_posts(kind="post", status="published")
             assert any(p.id == post.id for p in posts)
 
             # 详情 + 浏览去重
-            detail = await svc.get_post(topic.id, current_user_id=u.id)
+            detail = await post_svc.get_post(topic.id, current_user_id=u.id)
             assert detail is not None
-            assert await svc.increment_view(topic.id, user_id=u.id) is True
-            assert await svc.increment_view(topic.id, user_id=u.id) is False
+            assert await post_svc.increment_view(topic.id, user_id=u.id) is True
+            assert await post_svc.increment_view(topic.id, user_id=u.id) is False
             # ER-22：view_count 改 Redis 计数 + 异步落库（最终一致），
             # 此处白盒强制 flush 后断言最终值，验证落库路径正确。
             # 注：_flush_once 用独立 session 落库，原 session identity map 仍缓存旧值，
             # 须先 refresh 再读。
             await view_count._flush_once()
             await db.refresh(topic)
-            assert (await svc.get_post(topic.id)).view_count == 1
+            assert (await post_svc.get_post(topic.id)).view_count == 1
 
             # 编辑 + 软删除
-            updated = await svc.update_post(
+            updated = await post_svc.update_post(
                 u.id, topic.id, {"title": f"改名-{sfx}"}, is_admin=False
             )
             assert updated.title == f"改名-{sfx}"
-            await svc.delete_post(u.id, topic.id, is_admin=False)
-            assert (await svc.get_post(topic.id)).status == "deleted"
+            await post_svc.delete_post(u.id, topic.id, is_admin=False)
+            assert (await post_svc.get_post(topic.id)).status == "deleted"
             assert (await svc.get_category(cat.id)).post_count == 0
         finally:
             await _cleanup_users(db, u.id)
@@ -167,11 +171,15 @@ async def test_comments_reactions_favorites(integration_db_ready, admin_user):
     sfx = _sfx()
     async with get_session() as db:
         svc = CommunityService(db)
+        post_svc = PostService(db)
+        comment_svc = CommentService(db)
+        reaction = ReactionService(db)
+        favorite = FavoriteService(db)
         u1 = await _make_user(db, f"cc1_{sfx}@t.com")
         u2 = await _make_user(db, f"cc2_{sfx}@t.com")
         try:
             cat = await svc.create_category(admin_user, f"rc-{sfx}", "版块")
-            post = await svc.create_post(
+            post = await post_svc.create_post(
                 u1.id,
                 "topic",
                 title=f"互动主题-{sfx}",
@@ -180,35 +188,37 @@ async def test_comments_reactions_favorites(integration_db_ready, admin_user):
             )
 
             # 评论 + 楼中楼
-            comment = await svc.create_comment(u2.id, post.id, "评论1")
-            nested = await svc.create_comment(
+            comment = await comment_svc.create_comment(u2.id, post.id, "评论1")
+            nested = await comment_svc.create_comment(
                 u1.id, post.id, "楼中楼", parent_comment_id=comment.id
             )
             assert nested.parent_comment_id == comment.id
-            assert (await svc.get_post(post.id)).reply_count == 2
-            nested_list = await svc.list_nested_comments(comment.id)
+            assert (await post_svc.get_post(post.id)).reply_count == 2
+            nested_list = await comment_svc.list_nested_comments(comment.id)
             assert len(nested_list) == 1
 
             # 编辑/删除评论
-            await svc.update_comment(u2.id, False, comment.id, "改过的评论")
+            await comment_svc.update_comment(u2.id, False, comment.id, "改过的评论")
             assert (
-                await svc.comment_repo.get_by_id(comment.id)
+                await comment_svc.comment_repo.get_by_id(comment.id)
             ).content_markdown == "改过的评论"
-            await svc.delete_comment(u2.id, False, comment.id)
-            assert (await svc.comment_repo.get_by_id(comment.id)).status == "deleted"
+            await comment_svc.delete_comment(u2.id, False, comment.id)
+            assert (
+                await comment_svc.comment_repo.get_by_id(comment.id)
+            ).status == "deleted"
 
             # 点赞/收藏
-            like1 = await svc.toggle_like(u1.id, "post", post.id)
+            like1 = await reaction.toggle_like(u1.id, "post", post.id)
             assert like1["liked"] is True and like1["like_count"] == 1
-            like2 = await svc.toggle_like(u1.id, "post", post.id)
+            like2 = await reaction.toggle_like(u1.id, "post", post.id)
             assert like2["liked"] is False and like2["like_count"] == 0
 
-            fav = await svc.toggle_favorite(u1.id, post.id)
+            fav = await favorite.toggle_favorite(u1.id, post.id)
             assert fav["favorited"] is True
-            favorites, total = await svc.list_user_favorites(u1.id)
+            favorites, total = await post_svc.list_user_favorites(u1.id)
             assert total == 1 and favorites[0].id == post.id
 
-            status = await svc.get_reaction_status(u1.id, "post", post.id)
+            status = await reaction.get_reaction_status(u1.id, "post", post.id)
             assert status["favorited"] is True
         finally:
             await _cleanup_users(db, u1.id, u2.id)
@@ -226,6 +236,7 @@ async def test_follows_and_reports(integration_db_ready, admin_user):
     sfx = _sfx()
     async with get_session() as db:
         svc = CommunityService(db)
+        post_svc = PostService(db)
         u1 = await _make_user(db, f"fl1_{sfx}@t.com")
         u2 = await _make_user(db, f"fl2_{sfx}@t.com")
         u3 = await _make_user(db, f"fl3_{sfx}@t.com")
@@ -244,14 +255,14 @@ async def test_follows_and_reports(integration_db_ready, admin_user):
 
             # 关注流列表
             cat = await svc.create_category(admin_user, f"fc-{sfx}", "版块")
-            await svc.create_post(
+            await post_svc.create_post(
                 u2.id,
                 "topic",
                 title=f"关注流-{sfx}",
                 content_markdown="x",
                 category_id=cat.id,
             )
-            feed_posts, feed_total = await svc.list_posts(
+            feed_posts, feed_total = await post_svc.list_posts(
                 following_only=True, current_user_id=u1.id
             )
             assert feed_total >= 1 and all(p.author_id == u2.id for p in feed_posts)
@@ -261,7 +272,7 @@ async def test_follows_and_reports(integration_db_ready, admin_user):
             assert result2["following"] is False
 
             # 举报
-            post = await svc.create_post(
+            post = await post_svc.create_post(
                 u2.id,
                 "topic",
                 title=f"举报-{sfx}",
@@ -290,12 +301,13 @@ async def test_series_and_moderation(integration_db_ready, admin_user):
     sfx = _sfx()
     async with get_session() as db:
         svc = CommunityService(db)
+        post_svc = PostService(db)
         u = await _make_user(db, f"md_{sfx}@t.com")
         try:
             # 系列
             series = await svc.create_series(u.id, f"系列-{sfx}", "描述")
             assert series.slug and series.id > 0
-            post = await svc.create_post(
+            post = await post_svc.create_post(
                 u.id,
                 "post",
                 title=f"系列文-{sfx}",
@@ -303,29 +315,29 @@ async def test_series_and_moderation(integration_db_ready, admin_user):
                 status="published",
                 series_id=series.id,
             )
-            posts, _ = await svc.list_posts(
+            posts, _ = await post_svc.list_posts(
                 kind="post", status="published", series_id=series.id
             )
             assert any(p.id == post.id for p in posts)
 
             # 审核：隐藏/恢复/置顶/加精/硬删除
-            topic = await svc.create_post(
+            topic = await post_svc.create_post(
                 u.id,
                 "topic",
                 title=f"审核-{sfx}",
                 content_markdown="x",
                 category_id=(await svc.create_category(admin_user, f"mc-{sfx}", "版块")).id,
             )
-            await svc.hide_post(admin_user, topic.id, "违规")
-            assert (await svc.get_post(topic.id)).status == "hidden"
-            await svc.restore_post(admin_user, topic.id)
-            assert (await svc.get_post(topic.id)).status == "published"
-            await svc.set_post_pinned(admin_user, topic.id, True)
-            assert (await svc.get_post(topic.id)).is_pinned is True
-            await svc.set_post_featured(admin_user, topic.id, True)
-            assert (await svc.get_post(topic.id)).is_featured is True
-            await svc.hard_delete_post(admin_user, topic.id)
-            assert (await svc.get_post(topic.id)).status == "deleted"
+            await post_svc.hide_post(admin_user, topic.id, "违规")
+            assert (await post_svc.get_post(topic.id)).status == "hidden"
+            await post_svc.restore_post(admin_user, topic.id)
+            assert (await post_svc.get_post(topic.id)).status == "published"
+            await post_svc.set_post_pinned(admin_user, topic.id, True)
+            assert (await post_svc.get_post(topic.id)).is_pinned is True
+            await post_svc.set_post_featured(admin_user, topic.id, True)
+            assert (await post_svc.get_post(topic.id)).is_featured is True
+            await post_svc.hard_delete_post(admin_user, topic.id)
+            assert (await post_svc.get_post(topic.id)).status == "deleted"
         finally:
             await _cleanup_users(db, u.id)
             await db.execute(
@@ -342,7 +354,9 @@ async def test_enrich_posts_interaction_flags_batched(integration_db_ready):
     """ER-16：_enrich_posts 用合并批量查询标记点赞/收藏，2N→2 且标记正确。"""
     sfx = _sfx()
     async with get_session() as db:
-        svc = CommunityService(db)
+        svc = PostService(db)
+        reaction = ReactionService(db)
+        favorite = FavoriteService(db)
         viewer = await _make_user(db, f"er16v_{sfx}@t.com")
         author = await _make_user(db, f"er16a_{sfx}@t.com")
         try:
@@ -359,8 +373,8 @@ async def test_enrich_posts_interaction_flags_batched(integration_db_ready):
                 )
 
             # viewer 仅点赞第 0 篇、收藏第 1 篇，第 2 篇无任何互动
-            await svc.toggle_like(viewer.id, "post", posts[0].id)
-            await svc.toggle_favorite(viewer.id, posts[1].id)
+            await reaction.toggle_like(viewer.id, "post", posts[0].id)
+            await favorite.toggle_favorite(viewer.id, posts[1].id)
 
             await svc._enrich_posts(posts, current_user_id=viewer.id)
             assert posts[0].is_liked_by_me is True

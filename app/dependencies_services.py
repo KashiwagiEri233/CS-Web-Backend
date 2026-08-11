@@ -19,6 +19,9 @@ from app.services.audit_service import AuditService
 from app.services.auth_service import AuthService
 from app.services.feature_visibility_service import FeatureVisibilityService
 from app.services.auxilio_service import AuxilioService
+from app.services.community_comment import CommentService
+from app.services.community_interaction import FavoriteService, ReactionService
+from app.services.community_post import PostService
 from app.services.community_service import CommunityService
 from app.services.component_registry_service import ComponentRegistryService
 from app.services.event_service import EventService
@@ -56,6 +59,22 @@ def get_event_service(db: AsyncSession = Depends(get_db)) -> EventService:
 
 def get_community_service(db: AsyncSession = Depends(get_db)) -> CommunityService:
     return CommunityService(db)
+
+
+def get_post_service(db: AsyncSession = Depends(get_db)) -> PostService:
+    return PostService(db)
+
+
+def get_comment_service(db: AsyncSession = Depends(get_db)) -> CommentService:
+    return CommentService(db)
+
+
+def get_reaction_service(db: AsyncSession = Depends(get_db)) -> ReactionService:
+    return ReactionService(db)
+
+
+def get_favorite_service(db: AsyncSession = Depends(get_db)) -> FavoriteService:
+    return FavoriteService(db)
 
 
 def get_exam_service(db: AsyncSession = Depends(get_db)) -> ExamService:
