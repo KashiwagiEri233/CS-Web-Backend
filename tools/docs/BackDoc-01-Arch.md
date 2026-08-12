@@ -1,7 +1,7 @@
 # 后端架构与业务模块（BackDoc-Arch）
 
 > 更新人：3yearsZ
-> 最后更新：2026-08-08（v0.9.8：新增第 9 章「工作台与学习助手子系统」；原 `BackDoc-Mods.md` 全量并入本文 **Part B · 业务模块契约**，原文件删除）
+> 最后更新：2026-08-08（v0.9.8：新增第 9 章「工作台与学习助手子系统」；业务模块契约全量并入本文 **Part B**）
 > 关联：编码规范见 [BackDoc-Conv.md](BackDoc-Conv.md)；扩展约定见 `../AGENTS.md`；项目定位见 `../CLAUDE.md`；安全与权限见 [BackDoc-02-Sec.md](BackDoc-02-Sec.md)；基础设施见 [BackDoc-Infra.md](BackDoc-Infra.md)；业务模块契约见本文 **Part B**；入职与工程约定见根级 `docs/Onboarding.md`（附录 B）
 
 > **文档定位**：后端系统设计与模块关系权威文档（reference）。Source of truth：分层架构、横切关注点、请求生命周期、目录职责矩阵、关键不变量、扩展指引、**业务模块契约（Part B：认证 / 用户 / RBAC / 审计 / 工作台 / 学习助手 / API 统计中间件）**。前端 BFF 架构与 API 契约见 `CS-Web-Frontend/tools/docs/FrontDoc-01-Arch.md`。
@@ -328,7 +328,7 @@ a3b4c5d6e7f8 (chinese_fts_zhparser)
 
 # Part B · 业务模块契约
 
-> 本部分承接原 `BackDoc-Mods.md`（2026-08-08 **全量并入**本文，原文件删除；更早的合并史见根级 `docs/项目演变历史`）。
+> 本部分为业务模块契约（Part B）。
 > 每个模块遵循统一模板：**概述 / 接口 / 配置 / 安全要点（或降级与不变量）/ 测试**。
 > 路由表为**摘要**，完整契约（method / path / requestBody / responses / schemas）以根仓 `openapi.baseline.json` 为准，字段约束以代码 `app/schemas/` 为准（不重抄字段，避免漂移）。
 

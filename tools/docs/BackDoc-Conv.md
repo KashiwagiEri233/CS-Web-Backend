@@ -197,7 +197,7 @@ API 的 JSON 入/出参统一 **camelCase 传输**，Python 属性名保持 snak
 
 ---
 
-## 11. 禁止事项汇总（来自 CLAUDE.md）
+## 11. 禁止事项汇总
 
 - 禁止前端渲染：Jinja2 / StaticFiles / HTMLResponse。
 - 禁止 sqlite 作生产库（仅 PostgreSQL）。

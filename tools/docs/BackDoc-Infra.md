@@ -3,7 +3,7 @@
 > 更新人：3yearsZ
 > 最后更新：2026-08-08（0.9.8 同步：应用数据表 / 运行环境 / Alembic head 校正）
 > 关联：架构见 [BackDoc-01-Arch.md](BackDoc-01-Arch.md)；安全见 [BackDoc-02-Sec.md](BackDoc-02-Sec.md)；迁移验证见本文 §六
-> 本文件合并了原 `docs/observability.md` 与 `docs/data_and_tasks.md`，统一阐述应用**运行期的基础设施**：
+> 本文件合并 `docs/observability.md` 与 `docs/data_and_tasks.md`，统一阐述应用**运行期的基础设施**：
 > 如何被观察（日志/追踪/指标）、数据如何存取（数据库/事务）、应用如何启停（生命周期）、
 > 后台任务如何执行（队列）、缓存如何降级。
 
@@ -349,7 +349,7 @@ otel-collector 等）。**默认关闭**：`OTEL_ENABLED=False` 时完全 no-op�
 
 ## 六、迁移验证（MIGRATION_VERIFICATION）
 
-> **合并说明**：本章原位于 `BackDoc-MigV.md`（迁移验证指南），于 2026-08-07 并入本文 §六，与 §二 数据库与事务的迁移/版本校验形成完整闭环。
+> 本章为数据层迁移的验证指南，与 §二 数据库与事务的迁移/版本校验形成完整闭环。
 > 更新人：3yearsZ
 > 最后更新：2026-08-05（统一 BackDoc 命名）
 > 关联：架构见 [BackDoc-01-Arch.md](BackDoc-01-Arch.md)；安全见 [BackDoc-02-Sec.md](BackDoc-02-Sec.md)

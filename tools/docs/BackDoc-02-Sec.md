@@ -148,7 +148,7 @@
 
 ## 4. 密钥轮换 Runbook
 
-> **合并说明**：本章原位于 `BackDoc-KeyRotation.md`（密钥轮换 Runbook），于 2026-08-07 并入本文 §4，与 §1 鉴权基础设施的密钥配置（SECRET_KEY / TOTP_ENCRYPTION_KEY / DATABASE_PASSWORD）形成完整闭环。
+> 本章为密钥轮换 Runbook，与 §1 鉴权基础设施的密钥配置（SECRET_KEY / TOTP_ENCRYPTION_KEY / DATABASE_PASSWORD）形成完整闭环。
 > 适用范围：CS-Web-Backend 生产环境
 > 触发条件：定期轮换（建议每 6 个月）/ 安全事件（疑似泄露）/ 人员变动
 
