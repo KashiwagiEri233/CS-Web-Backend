@@ -6,8 +6,8 @@ community_reactions / community_favorites / community_post_views /
 community_mentions / community_follows / community_reports。
 旧表（forum_* / blog_posts / blog_likes）保留作数据迁移源，后续 Phase 6 清理。
 
-Revision ID: c8d9e0f1a2b3
-Revises: h2i3j4k5l6m7
+Revision ID: 5c6d7e8f9a0b
+Revises: 7e8f9a0b1c2d
 Create Date: 2026-08-03
 
 """
@@ -19,8 +19,8 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = "c8d9e0f1a2b3"
-down_revision: Union[str, Sequence[str], None] = "h2i3j4k5l6m7"
+revision: str = "5c6d7e8f9a0b"
+down_revision: Union[str, Sequence[str], None] = "7e8f9a0b1c2d"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

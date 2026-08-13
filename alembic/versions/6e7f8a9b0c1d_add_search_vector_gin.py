@@ -4,8 +4,8 @@
 由 PostgreSQL 触发器（tsvector_update_trigger, pg_catalog.simple）在写入/更新时自动维护，
 并建立 GIN 索引加速 websearch_to_tsquery 查询。历史数据在 upgrade 中回填。
 
-Revision ID: 22232b182a66b
-Revises: d6e7f8g9h0i1
+Revision ID: 6e7f8a9b0c1d
+Revises: 9f1c2a3b4d5e
 Create Date: 2026-08-06
 
 """
@@ -17,8 +17,8 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = "22232b182a66b"
-down_revision: Union[str, Sequence[str], None] = "d6e7f8g9h0i1"
+revision: str = "6e7f8a9b0c1d"
+down_revision: Union[str, Sequence[str], None] = "9f1c2a3b4d5e"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

@@ -340,10 +340,53 @@ class ComponentVariantInput(BaseModel):
     model_config = camel_config(str_strip_whitespace=True)
 
 
+class ComponentVariantToggleInput(BaseModel):
+    """变体开关输入：PATCH 单个变体的启用状态。"""
+
+    variant_id: int
+    enabled: bool
+    model_config = camel_config(str_strip_whitespace=True)
+
+
+# 迁移状态合法值（与前端 STATUS_CONFIG 顺序保持一致）。
+COMPONENT_MIGRATION_STATUSES = {"legacy", "in-progress", "migrated", "deprecated"}
+
+# 变体矩阵预设合法值（与前端 VARIANT_PRESETS 保持一致）。
+COMPONENT_VARIANT_PRESETS = {"all", "none", "primary", "minimal"}
+
+
+class ComponentMigrationStatusInput(BaseModel):
+    """迁移状态更新输入：PATCH 单个 item 的 migrationStatus。"""
+
+    migration_status: str
+    model_config = camel_config(str_strip_whitespace=True)
+
+    @field_validator("migration_status")
+    @classmethod
+    def _validate_status(cls, v: str) -> str:
+        if v not in COMPONENT_MIGRATION_STATUSES:
+            raise ValueError("迁移状态无效")
+        return v
+
+
 class ComponentGuideInput(BaseModel):
     use_cases: List[str] = []
     anti_patterns: List[str] = []
     model_config = camel_config(str_strip_whitespace=True)
+
+
+class ComponentVariantPresetInput(BaseModel):
+    """变体矩阵预设输入：POST 应用一个预设批量翻转 is_enabled。"""
+
+    preset: str
+    model_config = camel_config(str_strip_whitespace=True)
+
+    @field_validator("preset")
+    @classmethod
+    def _validate_preset(cls, v: str) -> str:
+        if v not in COMPONENT_VARIANT_PRESETS:
+            raise ValueError("变体预设无效")
+        return v
 
 
 class ComponentVariantOut(BaseModel):
@@ -377,7 +420,19 @@ class ComponentItemOut(BaseModel):
     description: Optional[str] = None
     migration_status: str
     sort_order: int
+    # 可见性闭环：slug 对应可见性模块当前是否全开（None 表示未接入可见性服务）。
+    visibility_open: Optional[bool] = None
     variants: List[ComponentVariantOut] = []
     guide: Optional[ComponentGuideOut] = None
     created_at: datetime
     updated_at: datetime
+
+
+class ComponentMigrationStatusOutput(BaseModel):
+    """迁移状态更新结果：携带旧状态与可见性联动结果，供治理事件审计。"""
+
+    name: str
+    old_migration_status: str
+    migration_status: str
+    visibility_opened: bool = False
+    model_config = camel_config()

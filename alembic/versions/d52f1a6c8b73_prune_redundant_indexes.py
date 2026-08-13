@@ -10,7 +10,7 @@ Create Date: 2026-07-26 00:00:00.000000
    ``index=True`` 会再建一个 ``ix_<table>_id``，对查询毫无帮助，只增加每次
    INSERT/UPDATE 的索引维护成本。
 
-2. 精简 ``exception_logs`` 的索引（承接 22232b182a66 已删除的那批，本迁移只处理
+2. 精简 ``exception_logs`` 的索引（承接 8c9d0e1f2a3b 已删除的那批，本迁移只处理
    剩下被复合索引前缀覆盖的单列索引）。该表写多读少：
    - exception_type / error_code / status_code / user_id 的单列索引被对应的
      ``idx_*_created`` 复合索引最左前缀完全覆盖；
@@ -34,7 +34,7 @@ from typing import List, Sequence, Tuple, Union
 from alembic import op
 
 revision: str = "d52f1a6c8b73"
-down_revision: Union[str, Sequence[str], None] = "22232b182a66"
+down_revision: Union[str, Sequence[str], None] = "8c9d0e1f2a3b"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

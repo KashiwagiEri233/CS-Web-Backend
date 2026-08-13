@@ -8,15 +8,15 @@ forum_post_views / blog_posts / blog_likes 等）曾作为「数据迁移源」�
 统一表，方可执行本迁移彻底清理旧表。
 
 执行前建议先预览 SQL 并备份：
-    alembic upgrade 22232b182a66c --sql     # 仅打印 SQL，不执行
+    alembic upgrade 4f5a6b7c8d9e --sql     # 仅打印 SQL，不执行
     pg_dump ... > pre_drop_backup.sql        # 备份
 
 本迁移为**高风险维护迁移**（DROP 旧表，不可逆）。
-已串入主链末尾（down_revision=22232b182a66b），生产环境 DB_AUTO_MIGRATE=False
+已串入主链末尾（down_revision=6e7f8a9b0c1d），生产环境 DB_AUTO_MIGRATE=False
 时不会自动执行；操作员须确认数据迁移完成后、备份后再手动 alembic upgrade head。
 
-Revision ID: 22232b182a66c
-Revises: 22232b182a66b
+Revision ID: 4f5a6b7c8d9e
+Revises: 6e7f8a9b0c1d
 Create Date: 2026-08-06
 
 """
@@ -27,8 +27,8 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "22232b182a66c"
-down_revision: Union[str, Sequence[str], None] = "22232b182a66b"  # 串入主链末尾
+revision: str = "4f5a6b7c8d9e"
+down_revision: Union[str, Sequence[str], None] = "6e7f8a9b0c1d"  # 串入主链末尾
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

@@ -1,5 +1,5 @@
 [project]
-name = "fastapi-witchcat-framework"
+name = "cs-web-backend"
 version = "0.9.9"
 requires-python = ">=3.13"
 dependencies = [

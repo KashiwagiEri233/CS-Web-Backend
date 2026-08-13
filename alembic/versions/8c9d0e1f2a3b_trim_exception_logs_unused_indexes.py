@@ -5,7 +5,7 @@ priority/related_incident_id）维护单列索引，外加两个冗余复合索�
 （idx_traceback_id_user、idx_created_at_severity），拖慢每次异常插入。
 列表查询只按 type/code/status/user/resolved/created 过滤，相应索引保留。
 
-Revision ID: 22232b182a66
+Revision ID: 8c9d0e1f2a3b
 Revises: c41e8d7a2f90
 Create Date: 2026-07-21 12:56:49.609379
 
@@ -16,7 +16,7 @@ from typing import Sequence, Union
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "22232b182a66"
+revision: str = "8c9d0e1f2a3b"
 down_revision: Union[str, Sequence[str], None] = "c41e8d7a2f90"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

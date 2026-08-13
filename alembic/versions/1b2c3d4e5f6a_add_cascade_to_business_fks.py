@@ -7,8 +7,8 @@
 - event_registrations.event_id / event_checkins.event_id+registration_id /
   activity_participations.event_id
 
-Revision ID: f0a1b2c3d4e5
-Revises: e5f6g7h8i9j0
+Revision ID: 1b2c3d4e5f6a
+Revises: 3a4b5c6d7e8f
 Create Date: 2026-08-03
 
 """
@@ -18,8 +18,8 @@ from typing import Sequence, Union
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "f0a1b2c3d4e5"
-down_revision: Union[str, Sequence[str], None] = "e5f6g7h8i9j0"
+revision: str = "1b2c3d4e5f6a"
+down_revision: Union[str, Sequence[str], None] = "3a4b5c6d7e8f"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

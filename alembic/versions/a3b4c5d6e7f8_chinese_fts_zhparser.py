@@ -1,7 +1,7 @@
 """chinese fts zhparser
 
 Revision ID: a3b4c5d6e7f8
-Revises: 22232b182a66c
+Revises: 4f5a6b7c8d9e
 Create Date: 2026-08-07
 
 替换 pg_catalog.simple 为中文分词配置（zhparser）。
@@ -22,7 +22,7 @@ from collections.abc import Sequence
 from alembic import op
 
 revision: str = "a3b4c5d6e7f8"
-down_revision: str | Sequence[str] | None = "22232b182a66d"
+down_revision: str | Sequence[str] | None = "2a3b4c5d6e7f"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

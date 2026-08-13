@@ -432,7 +432,7 @@ wheels = [
 ]
 
 [[package]]
-name = "fastapi-witchcat-framework"
+name = "cs-web-backend"
 version = "0.9.9"
 source = { virtual = "." }
 dependencies = [

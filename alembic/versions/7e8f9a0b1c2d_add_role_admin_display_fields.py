@@ -2,7 +2,7 @@
 
 子阶段 2.5（admin 聚合）：roles 表增加展示字段，对齐前端角色管理 UI。
 
-Revision ID: h2i3j4k5l6m7
+Revision ID: 7e8f9a0b1c2d
 Revises: f6a7b8c9d0e1
 Create Date: 2026-08-01
 
@@ -14,7 +14,7 @@ from alembic import op
 import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
-revision: str = "h2i3j4k5l6m7"
+revision: str = "7e8f9a0b1c2d"
 down_revision: Union[str, Sequence[str], None] = "f6a7b8c9d0e1"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

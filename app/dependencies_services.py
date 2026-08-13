@@ -112,12 +112,6 @@ def get_auxilio_service(db: AsyncSession = Depends(get_db)) -> AuxilioService:
     return AuxilioService(db)
 
 
-def get_component_registry_service(
-    db: AsyncSession = Depends(get_db),
-) -> ComponentRegistryService:
-    return ComponentRegistryService(db)
-
-
 def get_auth_service(db: AsyncSession = Depends(get_db)) -> AuthService:
     # 注入共享会话的 AuditService：login 的成败审计走独立会话（record 默认行为），
     # create_user_with_audit 的原子审计（record_atomic）需要请求级会话。
@@ -144,3 +138,11 @@ def get_feature_visibility_service(
     db: AsyncSession = Depends(get_db),
 ) -> FeatureVisibilityService:
     return FeatureVisibilityService(db)
+
+
+def get_component_registry_service(
+    db: AsyncSession = Depends(get_db),
+    visibility: FeatureVisibilityService = Depends(get_feature_visibility_service),
+) -> ComponentRegistryService:
+    # 注入可见性服务，构成 slug↔key 映射与「迁移 done 自动开放可见性」闭环。
+    return ComponentRegistryService(db, visibility=visibility)

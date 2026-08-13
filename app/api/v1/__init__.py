@@ -9,16 +9,20 @@ from app.api.v1 import (
     audit,
     auth,
     auxilio,
+    component_registry,
     community,
     events,
     exceptions,
+    exam,
     feature_visibility,
     join,
     notifications,
     password_resets,
+    points,
     profile,
     rbac,
-    tools,
+    resource,
+    task,
     users,
     workbench,
 )
@@ -50,8 +54,14 @@ api_router.include_router(community.router, prefix="/community", tags=["社区"]
 api_router.include_router(
     admin_community.router, prefix="/admin/community", tags=["管理员-社区"]
 )
-api_router.include_router(tools.router, prefix="/tools", tags=["工具集"])
-api_router.include_router(auxilio.router, tags=["学习助手"])
+api_router.include_router(exam.router, prefix="/tools", tags=["考试"])
+api_router.include_router(resource.router, prefix="/tools", tags=["资源"])
+api_router.include_router(task.router, prefix="/tools", tags=["任务"])
+api_router.include_router(points.router, prefix="/tools", tags=["积分"])
+api_router.include_router(auxilio.router, prefix="/tools", tags=["学习助手"])
+api_router.include_router(
+    component_registry.router, prefix="/tools", tags=["组件注册表"]
+)
 api_router.include_router(workbench.router, tags=["工作台"])
 api_router.include_router(feature_visibility.router, tags=["功能模块可见性"])
 

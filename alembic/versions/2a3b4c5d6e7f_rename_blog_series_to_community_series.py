@@ -6,11 +6,11 @@ community_series，与 ORM 模型 `app/models/community_series.py` 的
 
 本迁移为可逆的 ALTER TABLE ... RENAME（低风险），但若需降级请在生产环境
 DB_AUTO_MIGRATE=False 时谨慎执行：
-    alembic upgrade 22232b182a66d --sql   # 预览 SQL
-    alembic downgrade 22232b182a66c       # 还原表名
+    alembic upgrade 2a3b4c5d6e7f --sql   # 预览 SQL
+    alembic downgrade 4f5a6b7c8d9e       # 还原表名
 
-Revision ID: 22232b182a66d
-Revises: 22232b182a66c
+Revision ID: 2a3b4c5d6e7f
+Revises: 4f5a6b7c8d9e
 Create Date: 2026-08-07
 
 """
@@ -21,8 +21,8 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "22232b182a66d"
-down_revision: Union[str, Sequence[str], None] = "22232b182a66c"
+revision: str = "2a3b4c5d6e7f"
+down_revision: Union[str, Sequence[str], None] = "4f5a6b7c8d9e"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
