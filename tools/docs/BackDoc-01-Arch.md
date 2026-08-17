@@ -419,7 +419,7 @@ Phase 1 新增（全部登记 `.env.example`）：
 
 ### 测试
 
-`tools/tests/api/v1/test_auth.py`、`tools/tests/services/test_auth_service.py`、`tools/tests/integration/test_auth_token_lifecycle.py`、
+`tools/tests/api/v1/test_auth.py`、`tools/tests/services/test_auth_service.py`、`tools/tests/features/auth/test_auth_token_lifecycle.py`、
 `test_auth_phase1.py`（需 PG）、`tools/tests/core/test_totp.py`、`test_totp_encryption.py`、`test_password_compat.py`、`test_token_blacklist.py`。
 
 ### 前后端联动
@@ -473,7 +473,7 @@ Phase 1 新增（全部登记 `.env.example`）：
 
 ### 测试
 
-`tools/tests/api/v1/test_users.py`、`tools/tests/services/test_user_service.py`、`tools/tests/integration/test_auth_phase1.py`。
+`tools/tests/api/v1/test_users.py`、`tools/tests/services/test_user_service.py`、`tools/tests/features/auth/test_auth_phase1.py`。
 
 ### 前后端联动
 - 前端模块：个人资料（`FrontDoc-01-Arch.md` Part B §2.3）；页面 `/profile` `/users/[id]`
@@ -680,7 +680,7 @@ LLM 配置（全局 / 用户级）详见 Part A §9.3：`LLM_PROVIDER`（默认 
 
 ### 测试
 
-`tools/tests/integration/test_phase5_tools.py::test_auxilio`（覆盖 `AuxilioService.analyze_learning_profile` 学习画像分析）。
+`tools/tests/features/tools/test_phase5_tools.py::test_auxilio`（覆盖 `AuxilioService.analyze_learning_profile` 学习画像分析）。
 
 ### 前后端联动
 - 前端模块：学习助手（`FrontDoc-01-Arch.md` Part B §2.19）；页面 `/tools/auxilio`、工作台 assistant 视图

@@ -79,7 +79,7 @@ api (路由)  →  service (业务)  →  repository (数据)  →  model (ORM)
 ## 3. Python 与异步约定
 
 - **全异步**：所有 IO（DB、Redis、HTTP）一律 `async def`；禁止在异步路径里调用阻塞 IO。
-- **Python 版本**：跟随 `requirements.txt`，类型注解必填（公共函数签名、Pydantic 字段）。
+- **Python 版本**：跟随 `pyproject.toml`（`requires-python = ">=3.13"`），类型注解必填（公共函数签名、Pydantic 字段）。
 - **DB 会话与事务边界**：
   - 路由内：`Depends(get_db)`。
   - 路由外（worker/脚本/后台任务）：`async with get_session() as db:`。

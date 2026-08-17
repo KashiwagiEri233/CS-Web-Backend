@@ -93,7 +93,7 @@ uv run mypy app
 uv run python -m pytest -q --no-cov -m "not integration and not queue_integration"
 
 # PG 集成测试（需 Linux + PostgreSQL，验证流程见 tools/docs/BackDoc-Infra.md §六 迁移验证）
-uv run python -m pytest tools/tests/integration -v --no-cov
+uv run python -m pytest tools/tests/features tools/tests/integration -v --no-cov
 ```
 
 集成测试按 Phase 组织：`test_auth_phase1.py` / `test_phase2_modules.py` / `test_phase2_5_admin.py` /

@@ -74,9 +74,10 @@ jobs:
           # 误报经安全评审后可在此步骤加白名单逻辑豁免。
           python tools/scripts/check/scan_security.py --root app
 
-      - name: API contract freeze (G3)
-        run: |
-          python tools/scripts/contract/export_openapi.py --check openapi.baseline.json
+      # API contract freeze (G3)：2026-08-17 移除本步。
+      # 基线 openapi.baseline.json 只在根仓，后端 submodule 的 GitHub Actions checkout 中不存在，
+      # export_openapi.py --check 对缺失基线 exit 非零 → 本步必红（与 ER-04 同源问题，基线不可入子模块）。
+      # 契约冻结权威 = Jenkinsfile（../openapi.baseline.json）+ 根 `make contract-check`，见 RootDoc-Deploy.md §八。
 
       - name: Tests with coverage
         run: |

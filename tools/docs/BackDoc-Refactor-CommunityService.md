@@ -1,6 +1,6 @@
 # 社区服务重构史诗（ER-15 / AL-2）
 
-> 状态：**规划中（safe-start）**。本文档仅立重构基线，不改动任何代码；实际拆解列为后续迭代（P2/P3），**不阻塞 0.9.9 / 1.0.0 收口**。
+> 状态：**已完成（2026-08-11，Phase 0~4 全量落地）**。`community_service.py` 已删除，AL-2 五服务闭环（见 §4 Phase 4 完成注记）；本文档作为重构过程记录保留，不再视为规划基线。
 >
 > 来源：工程保障团队 Archi F1/F14 + Cody Q1（ER-15，God Module）；AL-2 目标架构布局建议（按子域拆 5 服务，NotificationService 仅订阅事件总线）。
 
@@ -38,7 +38,7 @@
 > 原则：每阶段保持对外 API 契约（OpenAPI 基线）**完全不变**；`CommunityService` 作为 facade 转发，调用方零改造；单阶段合入后再迁移下一阶段。
 
 - **Phase 0 — 加固基线（先行）**
-  - 确保 `community_service` 现有集成测试（见 `tools/tests/integration/test_phase4_community.py`）全绿，作为行为对照。
+  - 确保 `community_service` 现有集成测试（见 `tools/tests/features/community/test_phase4_community.py`）全绿，作为行为对照。
   - 抽取纯函数/类型到 `_types` 或独立模块，不改行为。
 - **Phase 1 — 抽 `NotificationService`（最低风险）**
   - 通知逻辑最独立、无复杂事务耦合，优先拆出。
@@ -72,7 +72,6 @@
 - 社区 integration 测试全绿，契约零漂移。
 - 通知逻辑经事件总线驱动，业务服务无直接 notify 依赖。
 
-## 8. 范围与排期
+## 8. 范围与排期（已完成）
 
-- **本轮（safe-start）**：仅本文档立基线，零代码改动。
-- **后续迭代**：Phase 0~4 按上表推进，建议每个 Phase 独立 PR + 门禁；不阻塞 0.9.9 与 1.0.0 收口（属 P2/P3 架构优化）。
+- **实际执行（2026-08-11 收口）**：Phase 0~4 全部落地，`community_service.py` 删除（见 §4 Phase 4 完成注记：432 passed、OpenAPI 契约零漂移）；本文档为重构完成后的记录，非规划基线。

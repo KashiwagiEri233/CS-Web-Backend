@@ -83,10 +83,10 @@ schema 见 `app/schemas/<x>.py`。
 |---|---|
 | [BackDoc-Infra.md §六 迁移验证](BackDoc-Infra.md#六迁移验证migration_verification) | 数据层迁移的 Linux/PG 环境验证指南 |
 
-### 重构与演进（规划）
+### 重构与演进（已落地）
 | 文档 | 说明 |
 |---|---|
-| [BackDoc-Refactor-CommunityService.md](BackDoc-Refactor-CommunityService.md) | ER-15 / AL-2 重构史诗：community_service.py（1088 行 God Module）按子域拆 Post/Comment/Reaction/Feed/Notification 5 服务 + 事件总线边界，分阶段迁移策略与 CI 闸门。**规划中，不阻塞 0.9.9/1.0.0** |
+| [BackDoc-Refactor-CommunityService.md](BackDoc-Refactor-CommunityService.md) | ER-15 / AL-2 重构史诗：community_service.py（1088 行 God Module）按子域拆 Post/Comment/Reaction/Feed/Notification 5 服务 + 事件总线边界。**已完成（2026-08-11，Phase 0~4 全量落地：432 passed / OpenAPI 契约零漂移）** |
 
 ### 历史归档
 已完成特性的迁移计划与设计稿，仅作演进痕迹保留，**不作现行方案**。当前能力以根级正式文档为准。

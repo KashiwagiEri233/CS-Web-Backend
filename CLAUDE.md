@@ -54,7 +54,7 @@ python run.py --env 3 --prod   # 等价的显式写法
 - **核心/存储一律 UTC**：DB 列用 `DateTime(timezone=True)`、默认值/JWT/token 过期/缓存过期全部走 `app/core/timezone.py` 的 `now_utc()`。**禁止** `datetime.now()`（naive 本地）/ `datetime.utcnow()`（naive）/ 裸 `datetime.now(timezone.utc)`——统一走 `now_utc()`，便于测试 mock。
 - **展示用本地时区**：由 `settings.TIMEZONE`（IANA 名，如 `Asia/Shanghai`）控制；存储的 UTC 经 `utc_to_local()` 转换后呈现。已接入**日志层**（`init_logging` 里 `_apply_timezone_patcher`，时间戳按 TIMEZONE 显示）。
 - **对外 API 出参也转本地**：出参模型继承 `app/schemas/base.py` 的 `TZModel`（带 `from_attributes`），其 `field_serializer("*")` 在序列化边界统一把 datetime 字段从 UTC 转 `settings.TIMEZONE` 并输出 ISO（带 `+08:00`）。**新增带 datetime 的响应模型必须继承 `TZModel`**，不要再手写 per-field serializer。错误响应模型（`ErrorResponse`/`ErrorContext`）同样继承 `TZModel`，故其 timestamp 也是本地时区。
-- **必须装 `tzdata`**（已在 requirements.txt）：Windows / alpine / distroless 无系统 IANA 库，缺它 `ZoneInfo("Asia/Shanghai")` 会失败——展示层静默回退 UTC（差 8 小时）、且 `config._validate_timezone` 会误报"时区非法"启动失败。改非 UTC 时区前先确保已装。
+- **必须装 `tzdata`**（已在 pyproject.toml 主依赖）：Windows / alpine / distroless 无系统 IANA 库，缺它 `ZoneInfo("Asia/Shanghai")` 会失败——展示层静默回退 UTC（差 8 小时）、且 `config._validate_timezone` 会误报"时区非法"启动失败。改非 UTC 时区前先确保已装。
 
 ## 运维端点（无版本前缀，根路径挂载）
 - `/health` liveness（浅检查，进程存活）；`/readyz` readiness（探 DB+Redis，DB 不通返回 503；Redis 可降级故只报告不影响就绪）。

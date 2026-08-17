@@ -171,7 +171,7 @@ otel-collector 等）。**默认关闭**：`OTEL_ENABLED=False` 时完全 no-op�
 ### 测试
 
 - CI：`upgrade head → downgrade base → upgrade head`。
-- `tools/tests/integration/test_http_postgres_e2e.py`、`test_auth_token_lifecycle.py`、`test_rbac_db.py`。
+- `tools/tests/integration/test_http_postgres_e2e.py`（e2e，仍在 integration/）、`tools/tests/features/auth/test_auth_token_lifecycle.py`、`tools/tests/features/rbac/test_rbac_db.py`。
 
 ### 扩展指引
 
@@ -290,9 +290,9 @@ otel-collector 等）。**默认关闭**：`OTEL_ENABLED=False` 时完全 no-op�
 
 ### 启用 / 停用
 
-启用：装 `requirements-queue.txt` → 配 `QUEUE_ENABLED=True` + `REDIS_URL` → 起 worker（`arq app.core.queue.worker.WorkerSettings`）→ web 侧 `enqueue`。
+启用：配 `QUEUE_ENABLED=True` + `REDIS_URL` → 起 worker（`arq app.core.queue.worker.WorkerSettings`）→ web 侧 `enqueue`（arq 已在 pyproject.toml 主依赖，无需单独安装）。
 
-停用：`QUEUE_ENABLED=False`（eager）；彻底移除 = 删 `app/core/queue/` + `requirements-queue.txt` + 业务侧 import 点（开关不在 Settings，无需改 config.py / main.py）。
+停用：`QUEUE_ENABLED=False`（eager）；彻底移除 = 删 `app/core/queue/` + 业务侧 import 点（开关不在 Settings，无需改 config.py / main.py）。
 
 ### 降级与不变量
 
@@ -303,7 +303,7 @@ otel-collector 等）。**默认关闭**：`OTEL_ENABLED=False` 时完全 no-op�
 
 ### 测试与扩展
 
-- 测试：`tools/tests/core/test_queue.py`、`tools/tests/integration/test_queue_worker.py`。
+- 测试：`tools/tests/core/test_queue.py`、`tools/tests/features/queue/test_queue_worker.py`。
 - 扩展：加任务 `tasks.py` 登记 `TASKS`；定时任务加 `cron_jobs`；重试/超时配 `max_tries`/`job_timeout`。
 
 ---
@@ -365,7 +365,7 @@ otel-collector 等）。**默认关闭**：`OTEL_ENABLED=False` 时完全 no-op�
 | `alembic upgrade head` | 成功；42 张表建成（框架 8 + 业务 34，含 two_factor_auth） |
 | `alembic check` | 无 drift（模型 ↔ 数据库一致） |
 | `alembic downgrade -1 && upgrade head` | 往返成功 |
-| Phase 1 集成测试 | `tools/tests/integration/test_auth_phase1.py` 全绿（注册/2FA/懒升级/会话/重置流） |
+| Phase 1 集成测试 | `tools/tests/features/auth/test_auth_phase1.py` 全绿（注册/2FA/懒升级/会话/重置流） |
 | pytest | 全绿（除标记 integration 且无 Redis 时跳过的用例） |
 
 > ⚠️ **版本说明**：本节为历史基线（42 张表）验证快照；0.9.8 新增工作台 / LLM 等 7 张应用数据表后，当前 Alembic 单一 head 为 `d3e4f5a6b7c8`（线性链、无分支，见 §二「应用数据表」）。执行验证时请以 `alembic heads` 实际输出为准。表总数：历史基线 42 张 + 0.9.8 新增 7 张应用数据表，精确值 [待填写]（需 `alembic upgrade head` 后 `\dt` 实测）。
@@ -434,7 +434,7 @@ rm alembic/versions/<新文件>   # 删除临时文件
 ```bash
 # 需要 domefff_test 测试库（库名含 test，见 conftest 校验）+ .env.test 的
 # TOTP_ENCRYPTION_KEY/PASSWORD_RESET_DEFAULT（模板已含）
-uv run python -m pytest tools/tests/integration/test_auth_phase1.py -v --no-cov
+uv run python -m pytest tools/tests/features/auth/test_auth_phase1.py -v --no-cov
 ```
 
 覆盖：注册→登录→改密、2FA 全流程（setup/confirm/登录二次验证/备用码一次性）、scrypt 懒升级、登录历史、设备列表/远程登出、忘记密码→批准→默认密码登录、验证码一次性。
@@ -442,7 +442,7 @@ uv run python -m pytest tools/tests/integration/test_auth_phase1.py -v --no-cov
 #### 6.3.5 Phase 2 集成测试（公告/通知/入社/管理员用户）
 
 ```bash
-uv run python -m pytest tools/tests/integration/test_phase2_modules.py -v --no-cov
+uv run python -m pytest tools/tests/features/modules/test_phase2_modules.py -v --no-cov
 ```
 
 覆盖：公告生命周期（生效/过期/角色定向/CRUD）、通知列表/已读/广播/群发记录聚合、入社提交（游客+登录）与审批（含通知与重复审批拒绝）、管理员保护规则（SELF_DISABLE/ROOT_PROTECTED/FORBIDDEN/LAST_ADMIN/NO_CHANGE）、注册→欢迎通知事件。
@@ -450,7 +450,7 @@ uv run python -m pytest tools/tests/integration/test_phase2_modules.py -v --no-c
 #### 6.3.6 子阶段 2.5 集成测试（管理员角色/审计删除）
 
 ```bash
-uv run python -m pytest tools/tests/integration/test_phase2_5_admin.py -v --no-cov
+uv run python -m pytest tools/tests/features/admin/test_phase2_5_admin.py -v --no-cov
 ```
 
 覆盖：角色 CRUD（权限自动创建/全量替换/用户数）、系统角色删除保护、审计日志删除（单条 + 批量）。
@@ -458,7 +458,7 @@ uv run python -m pytest tools/tests/integration/test_phase2_5_admin.py -v --no-c
 #### 6.3.7 Phase 3 集成测试（活动模块）
 
 ```bash
-uv run python -m pytest tools/tests/integration/test_phase3_events.py -v --no-cov
+uv run python -m pytest tools/tests/features/events/test_phase3_events.py -v --no-cov
 ```
 
 覆盖：活动 CRUD + 自动归档、报名流（重复 409/名额满 409/取消重报）、签到码生成与核销（无效码/重复使用）、批量更新 + 统计、活动设置读写/重置。
@@ -466,7 +466,7 @@ uv run python -m pytest tools/tests/integration/test_phase3_events.py -v --no-co
 #### 6.3.8 Phase 4 集成测试（社区模块）
 
 ```bash
-uv run python -m pytest tools/tests/integration/test_phase4_community.py -v --no-cov
+uv run python -m pytest tools/tests/features/community/test_phase4_community.py -v --no-cov
 ```
 
 覆盖：版块+主题（slug 冲突/反范式计数/浏览去重）、回复+互动（楼中楼/点赞收藏）、审核（隐藏/恢复/置顶/加精/硬删除）、社区（slug 唯一/发布/归档/点赞/系列）、成员与 Feed 聚合（标签筛选/三源合并/统计）。
@@ -474,7 +474,7 @@ uv run python -m pytest tools/tests/integration/test_phase4_community.py -v --no
 #### 6.3.9 Phase 5 集成测试（工具集模块）
 
 ```bash
-uv run python -m pytest tools/tests/integration/test_phase5_tools.py -v --no-cov
+uv run python -m pytest tools/tests/features/tools/test_phase5_tools.py -v --no-cov
 ```
 
 覆盖：考试（组卷/答题判分 upsert/排名/状态机）、资源（提交/审核/浏览）、任务+积分（认领限额/提交/审核→积分/流水/排行榜/等级）、Auxilio（薄弱标签+资源推荐）、组件注册表（slug 冲突/variants 四元组唯一/guide/toggle）。
