@@ -79,7 +79,7 @@ pipeline {
                     // 须用 ../openapi.baseline.json（与 Makefile contract-check 一致），
                     // 否则检查的是未提交到子模块的本地副本，门禁实际空跑（ER-04）。
                     // 契约变更须经评审后重跑 `make contract-baseline` 更新基线。
-                    runPythonModule('python tools/scripts/export_openapi.py --check ../openapi.baseline.json')
+                    runPythonModule('python tools/scripts/contract/export_openapi.py --check ../openapi.baseline.json')
                 }
             }
         }

@@ -6,7 +6,7 @@
 拦截「PR 新增代码零测试」：全量覆盖率再高，改动行没测也过不了门禁。
 
 用法：
-  python tools/scripts/diff_coverage.py --base origin/main --threshold 80 \
+  python tools/scripts/check/diff_coverage.py --base origin/main --threshold 80 \
       --xml build/coverage.xml --src app
 
 退出码：0 通过（或无新增行）；1 覆盖率不足 / 运行错误。

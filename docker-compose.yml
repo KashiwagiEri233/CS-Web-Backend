@@ -104,7 +104,7 @@ services:
       DATABASE_PASSWORD: ${DATABASE_PASSWORD}
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
     volumes:
-      - ./tools/scripts/backup_db.sh:/usr/local/bin/backup_db.sh:ro
+      - ./tools/scripts/db/backup_db.sh:/usr/local/bin/backup_db.sh:ro
       - backups:/backups
     entrypoint:
       - /bin/sh

@@ -14,7 +14,7 @@
    已知安全常量（错误码、dummy 哈希、IP 哈希盐等白名单）。
 
 用法：
-    python tools/scripts/scan_security.py [--root app]
+    python tools/scripts/check/scan_security.py [--root app]
 退出码：0 通过，1 发现风险，2 用法/IO 错误。
 """
 from __future__ import annotations

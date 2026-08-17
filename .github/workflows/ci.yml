@@ -72,11 +72,11 @@ jobs:
         run: |
           # G1 发布门禁补充：阻断敏感端点缺 Origin 守卫 / 硬编码密钥。
           # 误报经安全评审后可在此步骤加白名单逻辑豁免。
-          python tools/scripts/scan_security.py --root app
+          python tools/scripts/check/scan_security.py --root app
 
       - name: API contract freeze (G3)
         run: |
-          python tools/scripts/export_openapi.py --check openapi.baseline.json
+          python tools/scripts/contract/export_openapi.py --check openapi.baseline.json
 
       - name: Tests with coverage
         run: |
@@ -87,7 +87,7 @@ jobs:
         if: github.event_name == 'pull_request'
         run: |
           # 新增代码（app/**）行覆盖率低于 80% 即失败，拦截「PR 改代码不补测试」
-          python tools/scripts/diff_coverage.py --base origin/main --threshold 80 \
+          python tools/scripts/check/diff_coverage.py --base origin/main --threshold 80 \
             --xml build/coverage.xml --src app
 
       - name: Supply chain audit

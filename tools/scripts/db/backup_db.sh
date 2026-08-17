@@ -6,7 +6,7 @@
 #   ./backup_db.sh /custom/backup/dir       # 指定备份目录
 #
 # cron 示例（每日 03:00 全量备份，保留 14 天）：
-#   0 3 * * * /path/to/CS-Web-Backend/tools/scripts/backup_db.sh >> /var/log/cs-backup.log 2>&1
+#   0 3 * * * /path/to/CS-Web-Backend/tools/scripts/db/backup_db.sh >> /var/log/cs-backup.log 2>&1
 #
 # 恢复演练：
 #   ./backup_db.sh --restore /path/to/backup.sql.gz

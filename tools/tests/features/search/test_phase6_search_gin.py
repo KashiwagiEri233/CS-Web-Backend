@@ -19,7 +19,7 @@ from app.models.user import User
 from app.services.community_category import CategoryService
 from app.services.community_post import PostService
 
-from .test_phase4_community import _cleanup_users, _make_user, _sfx
+from ._helpers import _cleanup_users, _make_user, _sfx
 
 
 @pytest.mark.integration
