@@ -19,7 +19,7 @@ dependencies = [
     "opentelemetry-instrumentation-sqlalchemy==0.63b1",
     "opentelemetry-sdk==1.42.1",
     "psycopg2-binary==2.9.10",
-    "pydantic-settings==2.2.1",
+    "pydantic-settings==2.15.0",
     "pyjwt[crypto]==2.13.0",
     "python-dotenv==1.2.2",
     "python-multipart==0.0.31",
