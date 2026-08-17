@@ -58,7 +58,10 @@ api_router.include_router(exam.router, prefix="/tools", tags=["考试"])
 api_router.include_router(resource.router, prefix="/tools", tags=["资源"])
 api_router.include_router(task.router, prefix="/tools", tags=["任务"])
 api_router.include_router(points.router, prefix="/tools", tags=["积分"])
-api_router.include_router(auxilio.router, prefix="/tools", tags=["学习助手"])
+api_router.include_router(auxilio.router, tags=["学习助手"])
+api_router.include_router(
+    auxilio.analysis_router, prefix="/tools", tags=["学习助手"]
+)
 api_router.include_router(
     component_registry.router, prefix="/tools", tags=["组件注册表"]
 )

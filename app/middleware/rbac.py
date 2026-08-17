@@ -20,6 +20,7 @@ from typing import List, Union
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.exceptions import ErrorCode, PermissionDeniedException, ValidationException
 from app.database import get_db
 from app.dependencies import get_current_active_user
@@ -99,6 +100,11 @@ class Admin2FARequired:
         current_user: User = Depends(get_current_active_user),
         db: AsyncSession = Depends(get_db),
     ) -> User:
+        # 开发环境豁免（显式开关，见 WebSettings.ADMIN_2FA_REQUIRED）：
+        # APP_ENV=development 且 ADMIN_2FA_REQUIRED=False 时，管理员免 2FA 即可访问管理后台。
+        # 生产安全锁保证该开关仅能在开发/测试环境关闭（config_parts/web.py _guard_admin_2fa_disabled）。
+        if settings.APP_ENV == "development" and not settings.ADMIN_2FA_REQUIRED:
+            return current_user
         # 非管理员直接放行（普通成员不会进入 admin 端点，此处为防御性短路）。
         if not is_admin_role(current_user):
             return current_user

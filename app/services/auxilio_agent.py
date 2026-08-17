@@ -313,7 +313,7 @@ async def run_chat(
                 "（模型未配置，已切换规则模式）\n\n"
                 f"你最近的学习画像：薄弱知识点【{('、'.join(w['tag'] for w in (profile.get('weak_tags') or [])[:5])) or '暂无'}】，"
                 f"为你推荐了 {len(profile.get('recommended_resources') or [])} 条资源。"
-                "可在「API 调用统计」模块的 LLM 设置中接入自己的 API Key 后与我自由对话。"
+                "可在卡片右上角「用量与设置」中接入自己的 API Key 后与我自由对话。"
             ),
         }
         yield {"type": "done"}

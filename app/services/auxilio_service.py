@@ -118,21 +118,25 @@ class AuxilioService:
     async def persist_assistant_message(
         self, conv, assistant_text, tool_records, new_title
     ) -> None:
-        """SSE 结束时落库助手消息 + 会话标题（失败不影响已输出内容）。"""
+        """SSE 结束时落库助手消息 + 会话标题（失败不影响已输出内容）。
+
+        注意：不能用 `async with self.db.begin()` 包裹——chat 流式期间查询会 autobegin
+        只读事务，此时 begin() 抛 InvalidRequestError 被吞导致消息不落库；
+        改为直接 add + commit（与 create_conversation_with_user_msg 一致）。
+        """
         try:
-            async with self.db.begin():
-                if new_title and conv.title == "新会话":
-                    conv.title = new_title
-                    conv.updated_at = now_utc()
-                if assistant_text:
-                    self.db.add(
-                        ChatMessage(
-                            conversation_id=conv.id,
-                            role="assistant",
-                            content="".join(assistant_text),
-                            tool_calls=tool_records or None,
-                        )
+            if new_title and conv.title == "新会话":
+                conv.title = new_title
+            if assistant_text:
+                self.db.add(
+                    ChatMessage(
+                        conversation_id=conv.id,
+                        role="assistant",
+                        content="".join(assistant_text),
+                        tool_calls=tool_records or None,
                     )
-                conv.updated_at = now_utc()
+                )
+            conv.updated_at = now_utc()
+            await self.db.commit()
         except Exception:  # noqa: BLE001 - 持久化失败不影响已输出内容
             pass

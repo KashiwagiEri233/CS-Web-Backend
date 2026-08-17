@@ -204,6 +204,7 @@ API 的 JSON 入/出参统一 **camelCase 传输**，Python 属性名保持 snak
 - 禁止直接 `print` 或直接配置 loguru handler。
 - 禁止提交 `*.db`、`logs/`；环境文件遵循本私有仓库的跟踪策略。
 - 禁止 `AUTH_ENABLED=False` 用于生产（`DEBUG=False` 时会拒绝启动）。
+- 禁止 `ADMIN_2FA_REQUIRED=False` 用于生产（非 `APP_ENV=development` 时会拒绝启动）。
 
 ---
 

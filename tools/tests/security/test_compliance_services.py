@@ -135,7 +135,7 @@ def test_feature_visibility_admin_modules_hidden_from_guest():
 def test_feature_visibility_known_modules_non_empty():
     """受管模块表已初始化，根级索引约定的常驻模块存在。"""
     assert len(KNOWN_MODULE_KEYS) > 20
-    for key in ("home", "community", "tools-auxilio", "community-admin"):
+    for key in ("home", "community", "community-admin"):
         assert key in KNOWN_MODULE_KEYS
 
 

@@ -129,7 +129,7 @@ CORS → ExceptionHandler → SecurityHeaders → Logging → Metrics → RateLi
 
 ### 4.3 认证与权限（`app/middleware/rbac.py` + `app/core/security.py`）
 
-鉴权用**依赖注入**（`Depends(require_permission("res","act"))`），**禁止用装饰器**；`AUTH_ENABLED=False` 时全局放行为超级用户（仅本地）。详见 **`BackDoc-02-Sec.md`**「鉴权与安全基础设施」节。
+鉴权用**依赖注入**（`Depends(require_permission("res","act"))`），**禁止用装饰器**；`AUTH_ENABLED=False` 时全局放行为超级用户（仅本地）。管理端路由统一挂 `Depends(require_admin_2fa())` 强制管理员 2FA（未启用 TOTP → `TWO_FACTOR_NOT_SETUP`）；开发环境可用 `ADMIN_2FA_REQUIRED=False` 豁免（仅 `APP_ENV=development` 允许，生产置 False 拒绝启动）。详见 **`BackDoc-02-Sec.md`**「鉴权与安全基础设施」节。
 
 ### 4.4 限流与缓存
 
