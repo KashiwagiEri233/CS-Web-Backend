@@ -3,7 +3,7 @@
 > 计算机社团官网后端 — FastAPI + PostgreSQL
 >
 > 由原 Next.js 全栈单体（CS-Web-Frontend）按模块分离而来：前端降级为「UI + BFF 薄转发」，
-> 认证、数据、业务逻辑全部由本仓库接管。分离计划与 ADR 见 `docs/项目演变历史.md` 的「前后端分离迁移」一节。
+> 认证、数据、业务逻辑全部由本仓库接管。分离计划与 ADR 见根仓 [`CHANGELOG.md`](../CHANGELOG.md) 的「前后端分离迁移」一节。
 
 ## 技术栈
 
