@@ -67,15 +67,16 @@ async def chat(
     req: ChatRequest,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_active_user),
+    service: AuxilioService = Depends(get_auxilio_service),
 ):
     """SSE 流式对话：支持 OpenAI / Anthropic 双协议与 Skills 工具调用。"""
     last = req.messages[-1]
     content = last.content if last.role == "user" else ""
     if req.conversation_id is not None:
         conv = await _own_conversation(db, user, req.conversation_id)
-        await AuxilioService(db).append_user_message(conv.id, content)
+        await service.append_user_message(conv.id, content)
     else:
-        conv = await AuxilioService(db).create_conversation_with_user_msg(user.id, content)
+        conv = await service.create_conversation_with_user_msg(user.id, content)
 
     history = [{"role": m.role, "content": m.content} for m in req.messages]
 
@@ -122,7 +123,7 @@ async def chat(
                 except Exception:  # noqa: BLE001 - 用量记录失败不影响对话
                     pass
             # 持久化助手消息 + 会话标题（提取到服务层；LlmUsageLog 依 §14.3 例外保留在路由）
-            await AuxilioService(db).persist_assistant_message(
+            await service.persist_assistant_message(
                 conv, assistant_text, tool_records, new_title
             )
 

@@ -215,6 +215,8 @@ async def health_events():
 async def health_security():
     """返回安全相关组件健康状态（规划中 → 已实现）。
     无需鉴权：供运维探针快速定位安全组件异常。
+    脱敏（ER-48 / P1-1）：仅暴露组件健康/连通性状态，不暴露安全配置姿态
+    （如 AUTH_ENABLED、TOTP 密钥是否已配置等），避免向匿名探针泄露安全态势。
     """
     from app.core.rate_limit import get_limiter
     from app.core.config import settings
@@ -244,10 +246,8 @@ async def health_security():
             "backend": blacklist_type,
             "redis_configured": bool(settings.REDIS_URL),
         },
-        "auth": {
-            "enabled": settings.AUTH_ENABLED,
-            "totp_encryption_key_set": bool(settings.TOTP_ENCRYPTION_KEY),
-        },
+        # 脱敏（ER-48 / P1-1）：不暴露安全配置姿态（AUTH_ENABLED、TOTP 密钥是否已配置等），
+        # 避免向匿名探针泄露安全态势；仅保留组件健康/连通性状态供运维探针使用。
         "migration": {
             "database": db_status.get("status", "unknown"),
             "redis": redis_status.get("status", "unknown"),

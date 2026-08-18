@@ -36,8 +36,11 @@ from app.services.points_service import PointsService
 from app.services.rbac_service import RBACService
 from app.services.resource_service import ResourceService
 from app.services.task_service import TaskService
+from app.services.totp_service import TOTPService
 from app.services.user_service import UserService
 from app.services.verification_service import VerificationService
+from app.services.workbench_service import WorkbenchService
+from app.services.contribution_service import ContributionService
 
 
 def get_user_service(db: AsyncSession = Depends(get_db)) -> UserService:
@@ -118,6 +121,10 @@ def get_auth_service(db: AsyncSession = Depends(get_db)) -> AuthService:
     return AuthService(db, audit=AuditService(db))
 
 
+def get_totp_service(db: AsyncSession = Depends(get_db)) -> TOTPService:
+    return TOTPService(db)
+
+
 def get_verification_service(db: AsyncSession = Depends(get_db)) -> VerificationService:
     return VerificationService(db)
 
@@ -146,3 +153,11 @@ def get_component_registry_service(
 ) -> ComponentRegistryService:
     # 注入可见性服务，构成 slug↔key 映射与「迁移 done 自动开放可见性」闭环。
     return ComponentRegistryService(db, visibility=visibility)
+
+
+def get_workbench_service(db: AsyncSession = Depends(get_db)) -> WorkbenchService:
+    return WorkbenchService(db)
+
+
+def get_contribution_service(db: AsyncSession = Depends(get_db)) -> ContributionService:
+    return ContributionService(db)

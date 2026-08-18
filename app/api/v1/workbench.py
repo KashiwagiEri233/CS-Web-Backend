@@ -15,6 +15,7 @@ from app.core.constants import WORKBENCH_MAX_DURATION_SECONDS
 from app.core.timezone import local_to_utc, now_local
 from app.dependencies import get_current_active_user
 from app.dependencies import get_db
+from app.dependencies_services import get_contribution_service, get_workbench_service
 from app.middleware.rbac import require_admin_2fa
 from app.models.api_usage import ApiCallLog
 from app.models.focus import FocusSession
@@ -59,8 +60,8 @@ def _local_day_start_utc(d: date) -> datetime:
 
 @router.get("/contributions/github")
 async def get_github_contributions(
-    db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_active_user),
+    service: ContributionService = Depends(get_contribution_service),
     username: Optional[str] = Query(default=None, description="GitHub 用户名；缺省用绑定资料"),
     year: int = Query(default=0, ge=2015, le=2100),
     refresh: bool = Query(default=False, description="强制刷新"),
@@ -73,7 +74,6 @@ async def get_github_contributions(
             "need_username": True,
             "message": "请在 GitHub 设置中绑定用户名，或在请求中传入 username",
         }
-    service = ContributionService(db)
     payload = await service.get_github(
         user_id=user.id,
         username=resolved,
@@ -166,11 +166,11 @@ async def get_api_usage_stats(
 @router.post("/focus-sessions")
 async def record_focus_session(
     payload: FocusSessionIn,
-    db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_active_user),
+    workbench: WorkbenchService = Depends(get_workbench_service),
 ):
     """番茄钟完成一轮专注后上报记录（幂等不校验重复，前端只报完成轮）。"""
-    session_id = await WorkbenchService(db).record_focus_session(
+    session_id = await workbench.record_focus_session(
         user.id,
         payload.duration_seconds,
         payload.phase,
@@ -408,11 +408,11 @@ def _mask_secret(encrypted: str | None) -> str:
 @router.put("/llm-config")
 async def update_llm_config(
     payload: LlmConfigIn,
-    db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_active_user),
+    workbench: WorkbenchService = Depends(get_workbench_service),
 ):
     """保存用户 LLM 配置（API Key AES-256-GCM 加密存储，绝不落明文/日志）。"""
-    return await WorkbenchService(db).upsert_llm_config(
+    return await workbench.upsert_llm_config(
         user.id,
         payload.provider,
         payload.model,

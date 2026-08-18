@@ -497,12 +497,13 @@ class UserService:
             )
 
         # 级联清理（依赖 FK ondelete 的表由 PG 处理；无 FK 的显式清理）
-        for table in ("refresh_tokens", "login_history", "password_history"):
-            await self.db.execute(
-                text(f"DELETE FROM {table} WHERE user_id=:i"), {"i": target.id}
-            )
-            await self.db.delete(target)
-            # 移除提前 commit：改由 _audit_admin 的 record_atomic 同事务原子提交，审计失败整体回滚
+        # 表名无法参数化，改为字面量语句（不再用 f-string 动态拼接 SQL，消除代码味）；
+        # 表名取自固定白名单，无注入风险。
+        await self.db.execute(text("DELETE FROM refresh_tokens WHERE user_id=:i"), {"i": target.id})
+        await self.db.execute(text("DELETE FROM login_history WHERE user_id=:i"), {"i": target.id})
+        await self.db.execute(text("DELETE FROM password_history WHERE user_id=:i"), {"i": target.id})
+        await self.db.delete(target)
+        # 移除提前 commit：改由 _audit_admin 的 record_atomic 同事务原子提交，审计失败整体回滚
 
         await self._audit_admin(
             action="user.delete",
