@@ -435,6 +435,7 @@ class EventService:
             if hasattr(target, "id")
             else (str(target) if target is not None else None)
         )
+        # 非关键审计，允许 best-effort（管理员活动 CRUD 与用户签到共用此 helper，迁原子会连用户签到一起回滚）
         await self.audit.record(
             action=action,
             resource_type="event",

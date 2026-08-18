@@ -8,7 +8,9 @@ from unittest.mock import AsyncMock
 
 import app.database as database_module
 import app.repositories.refresh_token_repo as refresh_repo_module
+import app.services.data_retention as data_retention
 import app.services.exception_retention as retention
+import app.services.maintenance_cron as mc
 import app.services.token_gc as token_gc
 
 
@@ -69,42 +71,91 @@ async def test_exception_retention_skips_when_cluster_lock_is_busy(monkeypatch):
     assert await retention._purge_once() == 0
 
 
-async def test_maintenance_loops_stop_cleanly(monkeypatch):
-    async def stop_token_loop():
-        token_gc._stop.set()
-        return 1
-
-    async def stop_retention_loop():
-        retention._stop.set()
-        return 1
-
-    monkeypatch.setattr(token_gc, "_purge_once", stop_token_loop)
-    monkeypatch.setattr(retention, "_purge_once", stop_retention_loop)
-    token_gc._stop.clear()
-    retention._stop.clear()
-
-    await token_gc._gc_loop(1)
-    await retention._cleanup_loop(1)
-
-
-async def test_maintenance_startup_and_shutdown(monkeypatch):
-    async def wait_until_stopped(interval):
-        await token_gc._stop.wait()
-
-    async def wait_until_retention_stopped(interval):
-        await retention._stop.wait()
-
-    monkeypatch.setattr(token_gc.settings, "REFRESH_TOKEN_GC_INTERVAL_SECONDS", 1)
-    monkeypatch.setattr(retention.settings, "EXCEPTION_LOG_CLEANUP_INTERVAL_SECONDS", 1)
-    monkeypatch.setattr(token_gc, "_gc_loop", wait_until_stopped)
-    monkeypatch.setattr(retention, "_cleanup_loop", wait_until_retention_stopped)
-
+async def test_token_gc_startup_runs_once_when_enabled(monkeypatch):
+    purged = AsyncMock(return_value=2)
+    monkeypatch.setattr(token_gc, "_purge_once", purged)
+    monkeypatch.setattr(token_gc.settings, "REFRESH_TOKEN_GC_INTERVAL_SECONDS", 3600)
     await token_gc.startup_refresh_token_gc()
-    await retention.startup_exception_log_retention()
-    assert isinstance(token_gc._gc_task, asyncio.Task)
-    assert isinstance(retention._cleanup_task, asyncio.Task)
+    purged.assert_awaited_once()
 
-    await token_gc.shutdown_refresh_token_gc()
-    await retention.shutdown_exception_log_retention()
-    assert token_gc._gc_task is None
-    assert retention._cleanup_task is None
+
+async def test_token_gc_startup_skips_when_disabled(monkeypatch):
+    purged = AsyncMock(return_value=2)
+    monkeypatch.setattr(token_gc, "_purge_once", purged)
+    monkeypatch.setattr(token_gc.settings, "REFRESH_TOKEN_GC_INTERVAL_SECONDS", 0)
+    await token_gc.startup_refresh_token_gc()
+    purged.assert_not_awaited()
+
+
+async def test_exception_retention_startup_runs_once_when_enabled(monkeypatch):
+    purged = AsyncMock(return_value=3)
+    monkeypatch.setattr(retention, "_purge_once", purged)
+    monkeypatch.setattr(retention.settings, "EXCEPTION_LOG_CLEANUP_INTERVAL_SECONDS", 86400)
+    await retention.startup_exception_log_retention()
+    purged.assert_awaited_once()
+
+
+async def test_exception_retention_startup_skips_when_disabled(monkeypatch):
+    purged = AsyncMock(return_value=3)
+    monkeypatch.setattr(retention, "_purge_once", purged)
+    monkeypatch.setattr(retention.settings, "EXCEPTION_LOG_CLEANUP_INTERVAL_SECONDS", 0)
+    await retention.startup_exception_log_retention()
+    purged.assert_not_awaited()
+
+
+async def test_data_retention_startup_runs_when_either_interval_enabled(monkeypatch):
+    purged = AsyncMock(return_value={"login_history": 1, "audit_log": 2})
+    monkeypatch.setattr(data_retention, "_purge_once", purged)
+    monkeypatch.setattr(data_retention.settings, "LOGIN_HISTORY_CLEANUP_INTERVAL_SECONDS", 0)
+    monkeypatch.setattr(data_retention.settings, "AUDIT_LOG_CLEANUP_INTERVAL_SECONDS", 0)
+    await data_retention.startup_data_retention()
+    purged.assert_not_awaited()
+
+    monkeypatch.setattr(data_retention.settings, "LOGIN_HISTORY_CLEANUP_INTERVAL_SECONDS", 86400)
+    await data_retention.startup_data_retention()
+    purged.assert_awaited_once()
+
+
+# ===== AR-S2 方案 B：arq cron 包装器与注册 =====
+
+async def test_cron_wrappers_skip_when_disabled(monkeypatch):
+    purged = AsyncMock(return_value=5)
+    monkeypatch.setattr(mc.token_gc, "_purge_once", purged)
+    monkeypatch.setattr(mc.settings, "REFRESH_TOKEN_GC_INTERVAL_SECONDS", 0)
+    assert await mc.token_gc_cron(ctx={}) == 0
+    purged.assert_not_awaited()
+
+
+async def test_cron_wrappers_delegate_when_enabled(monkeypatch):
+    purged = AsyncMock(return_value=7)
+    monkeypatch.setattr(mc.token_gc, "_purge_once", purged)
+    monkeypatch.setattr(mc.settings, "REFRESH_TOKEN_GC_INTERVAL_SECONDS", 3600)
+    assert await mc.token_gc_cron(ctx={"job_id": "x"}) == 7
+    purged.assert_awaited_once()
+
+
+async def test_data_retention_cron_skips_only_when_both_disabled(monkeypatch):
+    purged = AsyncMock(return_value={"login_history": 1, "audit_log": 2})
+    monkeypatch.setattr(mc.data_retention, "_purge_once", purged)
+    monkeypatch.setattr(mc.settings, "LOGIN_HISTORY_CLEANUP_INTERVAL_SECONDS", 0)
+    monkeypatch.setattr(mc.settings, "AUDIT_LOG_CLEANUP_INTERVAL_SECONDS", 0)
+    assert await mc.data_retention_cron(ctx={}) == {"login_history": 0, "audit_log": 0}
+    purged.assert_not_awaited()
+
+    monkeypatch.setattr(mc.settings, "LOGIN_HISTORY_CLEANUP_INTERVAL_SECONDS", 86400)
+    assert await mc.data_retention_cron(ctx={}) == {"login_history": 1, "audit_log": 2}
+    purged.assert_awaited_once()
+
+
+async def test_cron_jobs_registered():
+    import app.core.config as _cfg
+    if not _cfg.settings.REDIS_URL:
+        _cfg.settings.REDIS_URL = "redis://localhost:6379/0"
+    from app.core.queue.worker import WorkerSettings
+
+    names = [c.name for c in WorkerSettings.cron_jobs]
+    assert names == [
+        "cron:token_gc_cron",
+        "cron:data_retention_cron",
+        "cron:exception_retention_cron",
+    ]

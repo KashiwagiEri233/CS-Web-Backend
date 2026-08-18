@@ -61,6 +61,8 @@ class UserService:
         self.user_repo = UserRepository(db)
         self.refresh_repo = RefreshTokenRepository(db)
         self.activity_repo = ActivityParticipationRepository(db)
+        # 注入共享请求会话，使 record_atomic 可同事务提交审计（否则 db=None 会抛错）；与 auth_service 一致
+        self.audit = AuditService(self.db)
 
     async def list_users(self, skip: int = 0, limit: int = 100) -> Tuple[list, int]:
         """分页获取未删除用户列表，返回 (users, total)。"""
@@ -306,10 +308,10 @@ class UserService:
                 if not active_change:
                     await self.refresh_repo.revoke_all_for_user(target.id)
 
-        target.updated_at = now_utc()
-        await self.user_repo.update(target)
-        await self.db.commit()
-        await self.db.refresh(target)
+            target.updated_at = now_utc()
+            await self.user_repo.update(target)
+            # 移除提前 commit：改由 _audit_admin 的 record_atomic 同事务原子提交，审计失败整体回滚
+            await self.db.refresh(target)
 
         await self._audit_admin(
             action="user.update",
@@ -376,13 +378,13 @@ class UserService:
                 message="状态无变化", error_code=ErrorCode.Validation.NO_CHANGE
             )
 
-        target.is_active = active
-        target.updated_at = now_utc()
-        await self.user_repo.update(target)
-        if not active:
-            await self.refresh_repo.revoke_all_for_user(target.id)
-        await self.db.commit()
-        await self.db.refresh(target)
+            target.is_active = active
+            target.updated_at = now_utc()
+            await self.user_repo.update(target)
+            if not active:
+                await self.refresh_repo.revoke_all_for_user(target.id)
+            # 移除提前 commit：改由 _audit_admin 的 record_atomic 同事务原子提交，审计失败整体回滚
+            await self.db.refresh(target)
 
         await self._audit_admin(
             action="user.enable" if active else "user.disable",
@@ -443,12 +445,12 @@ class UserService:
                 )
             password = new_password or ""
 
-        target.hashed_password = await async_get_password_hash(password)
-        target.password_changed_at = now_utc()
-        target.updated_at = now_utc()
-        await self.user_repo.update(target)
-        await self.refresh_repo.revoke_all_for_user(target.id)
-        await self.db.commit()
+            target.hashed_password = await async_get_password_hash(password)
+            target.password_changed_at = now_utc()
+            target.updated_at = now_utc()
+            await self.user_repo.update(target)
+            await self.refresh_repo.revoke_all_for_user(target.id)
+            # 移除提前 commit：改由 _audit_admin 的 record_atomic 同事务原子提交，审计失败整体回滚
 
         await self._audit_admin(
             action="user.reset_password",
@@ -499,8 +501,8 @@ class UserService:
             await self.db.execute(
                 text(f"DELETE FROM {table} WHERE user_id=:i"), {"i": target.id}
             )
-        await self.db.delete(target)
-        await self.db.commit()
+            await self.db.delete(target)
+            # 移除提前 commit：改由 _audit_admin 的 record_atomic 同事务原子提交，审计失败整体回滚
 
         await self._audit_admin(
             action="user.delete",
@@ -555,7 +557,8 @@ class UserService:
         detail: dict,
         client_meta: Optional[dict],
     ) -> None:
-        await AuditService().record(
+        # 原子提交：审计与主操作同事务；审计写失败整体回滚（管理员审计不丢，门槛#2）
+        await self.audit.record_atomic(
             action=action,
             resource_type="user",
             resource_id=str(target_id) if target_id else None,

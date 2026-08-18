@@ -7,10 +7,16 @@
 """
 
 from arq.connections import RedisSettings
+from arq.cron import cron
 
 from app.core.config import settings
 from app.core.loguru_logger import get_logger
 from app.core.queue.tasks import TASKS
+from app.services.maintenance_cron import (
+    data_retention_cron,
+    exception_retention_cron,
+    token_gc_cron,
+)
 
 logger = get_logger("queue.worker")
 
@@ -41,6 +47,11 @@ class WorkerSettings:
     """arq 读取此类来配置 worker。新增任务只需登记到 tasks.TASKS。"""
 
     functions = TASKS
+    cron_jobs = [
+        cron(token_gc_cron, minute=0),                       # 每小时整点：过期 refresh token 清理
+        cron(data_retention_cron, hour=3, minute=0),         # 每日 03:00：登录历史 / 审计日志保留期
+        cron(exception_retention_cron, hour=3, minute=30),   # 每日 03:30：异常日志保留期
+    ]
     redis_settings = RedisSettings.from_dsn(_BROKER_URL)
     on_startup = on_startup
     on_shutdown = on_shutdown
