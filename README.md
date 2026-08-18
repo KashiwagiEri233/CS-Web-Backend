@@ -30,7 +30,7 @@ alembic upgrade head
 
 # 4. 启动（--env 1 开发热重载 / --prod 生产 4 workers）
 python run.py --env 1
-# 或直接（uvicorn 默认 :8000；本地联调端口见仓库根 Makefile 的 BACKEND_PORT=9000）：
+# 或直接（uvicorn 默认 :8000；端口约定见仓库根 README「快速开始 · 高频事实速查表」）：
 uvicorn app.main:app --reload
 ```
 
@@ -46,7 +46,7 @@ uvicorn app.main:app --reload
 
 - `SECRET_KEY`（≥32 字节）、`DATABASE_PASSWORD`、`ALLOWED_ORIGINS`（前端地址，如 `http://localhost:2333`）
 - `TOTP_ENCRYPTION_KEY`（2FA 加密）、`COMMUNITY_IP_HASH_SECRET`（浏览去重 IP 哈希，≥16 字节必填）、`PASSWORD_RESET_DEFAULT`（默认重置密码）
-- `BACKEND_URL` 是前端侧配置（BFF 指向本仓库，默认 `http://localhost:9000`）
+- `BACKEND_URL` 是前端侧配置（BFF 指向本仓库）；前后端地址/端口约定见仓库根 README「快速开始 · 高频事实速查表」
 
 ## 模块清单
 
@@ -65,16 +65,11 @@ uvicorn app.main:app --reload
 
 ## 与前端的分工
 
-```
-浏览器 ──> Next.js (CS-Web-Frontend) ──proxy──> FastAPI (本仓库)
-           · UI + 页面 + 客户端状态        · 全部业务 API（/api/v1）
-           · BFF 薄转发（src/app/api/**）   · PostgreSQL + 迁移
-           · JWT 存 HttpOnly Cookie        · JWT 签发/校验/轮换
-```
+> 全栈架构图与前后端职责边界见仓库根 README「架构」章节（以根仓为唯一事实源）。
 
-- 前端 `backend-client.ts` 负责：Cookie 注入 Authorization、401 静默刷新重试、snake_case → camelCase 翻译
-- 本地联调：前端 `BACKEND_URL=http://localhost:9000`，前端地址加入后端 `ALLOWED_ORIGINS`
-- 生产 Cookie 用 `__Host-` 前缀（Secure + Path=/）
+- 本仓库为**唯一业务/数据 owner**：FastAPI + PostgreSQL（Alembic 管理 schema），JWT 双 token 认证、签发与轮换。
+- 前端 `backend-client.ts` 负责：Cookie 注入 Authorization、401 静默刷新重试、snake_case → camelCase 翻译。
+- 生产 Cookie 用 `__Host-` 前缀（Secure + Path=/）；本地联调前端地址须加入后端 `ALLOWED_ORIGINS`。
 
 ## 数据库与迁移
 
