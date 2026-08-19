@@ -21,7 +21,7 @@ from app.schemas.event import (
     EventSettingsIn,
 )
 from app.schemas.pagination import compute_total_pages
-from app.services.event_service import EventService
+from app.services.event.event_service import EventService
 
 router = APIRouter(dependencies=[Depends(require_admin_2fa())])
 

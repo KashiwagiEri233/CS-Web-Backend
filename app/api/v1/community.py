@@ -31,13 +31,13 @@ from app.models.community import CommunityPost
 from app.models.user import User
 from app.schemas.community import post_to_dict
 from app.schemas.pagination import PaginatedResponse, PaginationParams
-from app.services.community_category import CategoryService
-from app.services.community_comment import CommentService
-from app.services.community_feed import FeedService
-from app.services.community_interaction import FavoriteService, ReactionService
-from app.services.community_post import PostService
-from app.services.community_report import ReportService
-from app.services.community_series import SeriesService
+from app.services.community.community_category import CategoryService
+from app.services.community.community_comment import CommentService
+from app.services.community.community_feed import FeedService
+from app.services.community.community_interaction import FavoriteService, ReactionService
+from app.services.community.community_post import PostService
+from app.services.community.community_report import ReportService
+from app.services.community.community_series import SeriesService
 from app.utils.image_validate import is_valid_image_mime
 
 router = APIRouter()
@@ -226,7 +226,7 @@ async def get_post(
 ) -> Any:
     post = await service.get_post(post_id, current_user.id if current_user else None)
     client_ip = get_client_meta(request).get("ip_address")
-    from app.services.community_utils import hash_ip_for_view
+    from app.services.community.community_utils import hash_ip_for_view
 
     await service.increment_view(
         post_id,
@@ -247,7 +247,7 @@ async def get_post_by_slug(
         slug, current_user.id if current_user else None
     )
     client_ip = get_client_meta(request).get("ip_address")
-    from app.services.community_utils import hash_ip_for_view
+    from app.services.community.community_utils import hash_ip_for_view
 
     await service.increment_view(
         post.id,

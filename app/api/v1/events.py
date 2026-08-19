@@ -16,7 +16,7 @@ from app.schemas.event import (
     EventRegistrationOut,
 )
 from app.schemas.pagination import PaginatedResponse, PaginationParams
-from app.services.event_service import EventService
+from app.services.event.event_service import EventService
 
 router = APIRouter()
 

@@ -12,7 +12,7 @@ from app.models.permission import Permission
 from app.repositories.rbac_repo import RBACRepository
 from app.schemas.rbac import AdminRoleCreate, AdminRoleUpdate
 from app.core.constants import RBAC_USER_PERMISSION_CACHE_TTL_SECONDS
-from app.services.rbac_assignments import RBACAssignmentMixin
+from app.services.rbac.rbac_assignments import RBACAssignmentMixin
 
 logger = get_logger("rbac")
 

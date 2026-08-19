@@ -25,7 +25,7 @@ from app.core.exceptions import ErrorCode, PermissionDeniedException, Validation
 from app.database import get_db
 from app.dependencies import get_current_active_user
 from app.models.user import User
-from app.services.rbac_service import RBACService
+from app.services.rbac.rbac_service import RBACService
 from app.services.totp_service import TOTPService
 
 

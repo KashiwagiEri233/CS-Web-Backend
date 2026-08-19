@@ -27,7 +27,7 @@ from app.schemas.rbac import (
     AdminRoleUpdate,
 )
 from app.services.audit_service import AuditService
-from app.services.rbac_service import RBACService
+from app.services.rbac.rbac_service import RBACService
 
 router = APIRouter(dependencies=[Depends(require_admin_2fa())])
 

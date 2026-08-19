@@ -15,10 +15,10 @@ from app.dependencies_services import (
 from app.middleware.rbac import require_admin_2fa, require_permission
 from app.models.user import User
 from app.schemas.community import post_to_dict
-from app.services.community_category import CategoryService
-from app.services.community_comment import CommentService
-from app.services.community_post import PostService
-from app.services.community_report import ReportService
+from app.services.community.community_category import CategoryService
+from app.services.community.community_comment import CommentService
+from app.services.community.community_post import PostService
+from app.services.community.community_report import ReportService
 
 router = APIRouter(dependencies=[Depends(require_admin_2fa())])
 

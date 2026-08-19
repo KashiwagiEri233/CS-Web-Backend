@@ -30,8 +30,8 @@ from app.repositories.community_repo import (
     CommunityInteractionRepository,
     CommunityPostRepository,
 )
-from app.services.community_notifications import notify_mentions
-from app.services.community_utils import generate_slug, to_author_summary
+from app.services.community.community_notifications import notify_mentions
+from app.services.community.community_utils import generate_slug, to_author_summary
 from app.services.view_count import record_view
 
 
