@@ -25,8 +25,16 @@ import sys
 from pathlib import Path
 
 # 将后端仓库根加入 sys.path，使脚本可独立运行（不依赖外部 PYTHONPATH）。
-# 脚本现已位于 tools/scripts/，需向上三级到达仓库根。
-_BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
+# 脚本位于 tools/scripts/contract/ 下，向上若干级到达仓库根；
+# 用「直到找到 pyproject.toml」兜底，避免目录层级变动导致路径错位
+#（此前写死 .parent.parent.parent 在脚本移入 contract/ 子目录后少算一级，
+# 致 `from app.main import app` 失败、契约门禁实质上从未跑通）。
+_BACKEND_ROOT = Path(__file__).resolve().parent
+while not (_BACKEND_ROOT / "pyproject.toml").exists():
+    parent = _BACKEND_ROOT.parent
+    if parent == _BACKEND_ROOT:
+        break
+    _BACKEND_ROOT = parent
 if str(_BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(_BACKEND_ROOT))
 
@@ -34,6 +42,8 @@ if str(_BACKEND_ROOT) not in sys.path:
 
 os.environ.setdefault("SECRET_KEY", "contract-export-placeholder-32bytes-minimum")
 os.environ.setdefault("TOTP_ENCRYPTION_KEY", "contract-export-placeholder-32bytes-min")
+os.environ.setdefault("AUTH_SESSION_SECRET", "contract-export-session-secret-32bytes-min")
+os.environ.setdefault("COMMUNITY_IP_HASH_SECRET", "contract-export-community-hash-secret-32")
 os.environ.setdefault("DATABASE_PASSWORD", "contract-export")
 os.environ.setdefault("AUTH_ENABLED", "true")
 

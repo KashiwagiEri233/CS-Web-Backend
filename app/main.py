@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import APIRouter, Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from app import __version__
+from app import __version__, __codename__
 from app.api import api_router
 from app.core.config import settings
 from app.core.lifecycle import (
@@ -86,11 +86,13 @@ async def lifespan(app: FastAPI):
 
     try:
         # —— 应用级一次性展示（非任务，不进注册表）——
+        # 展示版 = 核心版本 + 发布代号（如 1.0.0.七夕）；机器版本 __version__ 始终合规三段式。
+        release_label = __version__ + (f".{__codename__}" if __codename__ else "")
         logger.info(
             "\n"
             + _STARTUP_BANNER.format(
                 name=settings.PROJECT_NAME,
-                version=__version__,
+                version=release_label,
             )
         )
         logger.info("FastAPI RBAC Framework 启动中...")
@@ -103,14 +105,14 @@ async def lifespan(app: FastAPI):
         # —— 启动任务：遍历注册表执行（critical 失败会 raise → 中止启动）——
         await run_startup()
 
-        logger.info(f"FastAPI RBAC Framework 已启动成功 - version: {__version__}")
+        logger.info(f"FastAPI RBAC Framework 已启动成功 - version: {release_label}")
 
         try:
             yield
         finally:
             # —— 关闭任务：即使 lifespan 被取消/抛错，也必须释放后台任务与连接 ——
             await run_shutdown()
-            logger.info(f"应用已安全关闭 - version: {__version__}")
+            logger.info(f"应用已安全关闭 - version: {release_label}")
             # 排空异步日志队列（LOG_ENQUEUE=True 时日志由后台线程落盘）。
             # 必须放在最后一条日志之后：否则关闭阶段的日志会随进程退出一起丢掉。
             await flush_logs()
