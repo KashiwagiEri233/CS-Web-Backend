@@ -15,6 +15,7 @@ from app.core.timezone import now_utc
 from app.models.exception_log import ExceptionLog
 from app.repositories.base import dml_rowcount
 from app.repositories.exception_log_stats import fetch_exception_statistics
+from app.repositories.base import paginate
 
 
 class ExceptionLogRepository:
@@ -114,7 +115,7 @@ class ExceptionLogRepository:
         total_result = await self.db.execute(count_query)
         total = int(total_result.scalar() or 0)
 
-        result = await self.db.execute(query.offset(skip).limit(limit))
+        result = await self.db.execute(paginate(query, skip, limit))
         exception_logs = result.scalars().all()
 
         return list(exception_logs), total

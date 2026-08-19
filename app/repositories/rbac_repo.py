@@ -7,6 +7,7 @@ from sqlalchemy.orm import selectinload
 from app.models.user import User, user_roles
 from app.models.role import Role, role_permissions
 from app.models.permission import Permission
+from app.repositories.base import paginate
 
 
 class RBACRepository:
@@ -111,7 +112,7 @@ class RBACRepository:
         """获取角色列表（含各自权限），可分页。limit=None 表示不分页。"""
         stmt = select(Role).options(selectinload(Role.permissions))
         if limit is not None:
-            stmt = stmt.offset(skip).limit(limit)
+            stmt = paginate(stmt, skip, limit)
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
 
@@ -126,7 +127,7 @@ class RBACRepository:
         """获取权限列表，可分页。limit=None 表示不分页。"""
         stmt = select(Permission)
         if limit is not None:
-            stmt = stmt.offset(skip).limit(limit)
+            stmt = paginate(stmt, skip, limit)
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
 

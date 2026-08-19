@@ -21,6 +21,7 @@ from app.models.points import PointsTransaction
 from app.models.resource import Resource
 from app.models.task import Task, TaskClaim
 from app.repositories.base import dml_rowcount
+from app.repositories.base import paginate
 
 
 class ExamRepository:
@@ -49,12 +50,11 @@ class ExamRepository:
                 )
             ).scalar_one()
         )
-        stmt = (
+        stmt = paginate(
             select(Exam)
             .where(*conditions)
-            .order_by(Exam.created_at.desc())
-            .offset(skip)
-            .limit(limit)
+            .order_by(Exam.created_at.desc()),
+            skip, limit
         )
         rows = await self.db.execute(stmt)
         return list(rows.scalars().all()), total
@@ -80,7 +80,7 @@ class ExamRepository:
         return True
 
     async def list_questions(self, exam_id: int) -> list[ExamQuestion]:
-        stmt = (
+        stmt = paginate(
             select(ExamQuestion)
             .where(ExamQuestion.exam_id == exam_id)
             .order_by(ExamQuestion.sort_order.asc(), ExamQuestion.id.asc())
@@ -253,9 +253,8 @@ class ResourceRepository:
         stmt = (
             select(Resource)
             .where(*conditions)
-            .order_by(Resource.created_at.desc())
-            .offset(skip)
-            .limit(limit)
+            .order_by(Resource.created_at.desc()),
+            skip, limit
         )
         rows = await self.db.execute(stmt)
         return list(rows.scalars().all()), total
@@ -312,12 +311,11 @@ class TaskRepository:
                 )
             ).scalar_one()
         )
-        stmt = (
+        stmt = paginate(
             select(Task)
             .where(*conditions)
-            .order_by(Task.created_at.desc())
-            .offset(skip)
-            .limit(limit)
+            .order_by(Task.created_at.desc()),
+            skip, limit
         )
         rows = await self.db.execute(stmt)
         return list(rows.scalars().all()), total

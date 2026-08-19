@@ -27,6 +27,7 @@ from app.models.community import (
     CommunityReport,
 )
 from app.models.user import User
+from app.repositories.base import paginate
 
 
 class CommunityCategoryRepository:
@@ -154,12 +155,11 @@ class CommunityPostRepository:
                 CommunityPost.created_at.desc(),
             ),
         }.get(sort, ())
-        stmt = (
+        stmt = paginate(
             select(CommunityPost)
             .where(*conditions)
-            .order_by(*order)
-            .offset(skip)
-            .limit(limit)
+            .order_by(*order),
+            skip, limit
         )
         rows = await self.db.execute(stmt)
         return list(rows.scalars().all()), total
@@ -262,18 +262,17 @@ class CommunityCommentRepository:
                 )
             ).scalar_one()
         )
-        stmt = (
+        stmt = paginate(
             select(CommunityComment)
             .where(*conditions)
-            .order_by(CommunityComment.created_at.asc())
-            .offset(skip)
-            .limit(limit)
+            .order_by(CommunityComment.created_at.asc()),
+            skip, limit
         )
         rows = await self.db.execute(stmt)
         return list(rows.scalars().all()), total
 
     async def list_nested(self, parent_comment_id: int) -> list[CommunityComment]:
-        stmt = (
+        stmt = paginate(
             select(CommunityComment)
             .where(
                 CommunityComment.parent_comment_id == parent_comment_id,
@@ -303,9 +302,8 @@ class CommunityCommentRepository:
         stmt = (
             select(CommunityComment)
             .where(*conditions)
-            .order_by(CommunityComment.created_at.desc())
-            .offset(skip)
-            .limit(limit)
+            .order_by(CommunityComment.created_at.desc()),
+            skip, limit
         )
         rows = await self.db.execute(stmt)
         return list(rows.scalars().all()), total
@@ -424,7 +422,7 @@ class CommunityInteractionRepository:
     async def list_favorite_posts(
         self, user_id: int, *, skip: int, limit: int
     ) -> tuple[list[CommunityPost], int]:
-        stmt = (
+        stmt = paginate(
             select(CommunityPost)
             .join(CommunityFavorite, CommunityFavorite.target_id == CommunityPost.id)
             .where(
@@ -432,9 +430,8 @@ class CommunityInteractionRepository:
                 CommunityFavorite.target_type == "post",
                 CommunityPost.status == "published",
             )
-            .order_by(CommunityFavorite.created_at.desc())
-            .offset(skip)
-            .limit(limit)
+            .order_by(CommunityFavorite.created_at.desc()),
+            skip, limit
         )
         rows = await self.db.execute(stmt)
         total = int(
@@ -486,7 +483,7 @@ class CommunityInteractionRepository:
     async def list_mentions(
         self, user_id: int, limit: int = 20
     ) -> list[CommunityMention]:
-        stmt = (
+        stmt = paginate(
             select(CommunityMention)
             .where(CommunityMention.mentioned_user_id == user_id)
             .order_by(CommunityMention.created_at.desc())
@@ -533,9 +530,8 @@ class CommunityFollowRepository:
             select(User)
             .join(CommunityFollow, CommunityFollow.following_id == User.id)
             .where(CommunityFollow.follower_id == user_id)
-            .order_by(CommunityFollow.created_at.desc())
-            .offset(skip)
-            .limit(limit)
+            .order_by(CommunityFollow.created_at.desc()),
+            skip, limit
         )
         rows = await self.db.execute(stmt)
         total = int(
@@ -552,13 +548,12 @@ class CommunityFollowRepository:
     async def list_followers(
         self, user_id: int, *, skip: int, limit: int
     ) -> tuple[list[User], int]:
-        stmt = (
+        stmt = paginate(
             select(User)
             .join(CommunityFollow, CommunityFollow.follower_id == User.id)
             .where(CommunityFollow.following_id == user_id)
-            .order_by(CommunityFollow.created_at.desc())
-            .offset(skip)
-            .limit(limit)
+            .order_by(CommunityFollow.created_at.desc()),
+            skip, limit
         )
         rows = await self.db.execute(stmt)
         total = int(
@@ -582,7 +577,7 @@ class CommunityFollowRepository:
         """
         if not user_ids:
             return {}
-        following_stmt = (
+        following_stmt = paginate(
             select(CommunityFollow.follower_id, func.count())
             .where(CommunityFollow.follower_id.in_(user_ids))
             .group_by(CommunityFollow.follower_id)
@@ -663,10 +658,9 @@ class CommunityReportRepository:
         stmt = (
             select(CommunityReport)
             .where(*conditions)
-            .order_by(CommunityReport.created_at.desc())
-            .offset(skip)
-            .limit(limit)
-        )
+            .order_by(CommunityReport.created_at.desc()),
+    skip, limit
+)
         rows = await self.db.execute(stmt)
         return list(rows.scalars().all()), total
 
