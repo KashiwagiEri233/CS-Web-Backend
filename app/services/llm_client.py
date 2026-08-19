@@ -1,7 +1,7 @@
 """LLM 客户端：OpenAI 兼容协议 + Anthropic 协议双适配（流式）。
 
-- ``provider=openai``：POST {base_url}/chat/completions（DeepSeek/通义/Kimi/
-  Ollama/vLLM 等 OpenAI 兼容网关均可，base_url 默认 https://api.openai.com/v1）。
+- ``provider=openai``：POST {base_url}/chat/completions（OpenAI 兼容网关：
+  Ollama/vLLM 等本地或第三方兼容服务均可，base_url 默认 https://api.openai.com/v1）。
 - ``provider=anthropic``：POST https://api.anthropic.com/v1/messages。
 - 返回统一事件流：{'type':'delta','text'} / {'type':'tool_calls','calls':[...]}
   / {'type':'usage','prompt_tokens','completion_tokens','total_tokens'}

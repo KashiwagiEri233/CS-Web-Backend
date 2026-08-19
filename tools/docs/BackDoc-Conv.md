@@ -249,7 +249,7 @@ LLM 相关代码集中在 `app/services/llm_client.py`（客户端）与 `app/se
 
 `llm_client.stream_chat()` 是统一流式入口，对上层屏蔽底层协议差异：
 
-- **双协议适配**：`provider=openai` → 走 OpenAI 兼容 `/chat/completions`（支持 DeepSeek / 通义 / Kimi / 本地 vLLM，经 `LLM_BASE_URL` 自定义网关）；`provider=anthropic` → 走 `https://api.anthropic.com/v1/messages`。两者都走 SSE 流式，并在内部做**消息格式互转**（`_to_anthropic_messages` 把 OpenAI 风格 `tool_calls` / `role=tool` 转 Anthropic 的 `tool_use` / `tool_result` blocks）。
+- **双协议适配**：`provider=openai` → 走 OpenAI 兼容 `/chat/completions`（支持 Ollama、vLLM 等本地/第三方 OpenAI 兼容网关，经 `LLM_BASE_URL` 自定义网关）；`provider=anthropic` → 走 `https://api.anthropic.com/v1/messages`。两者都走 SSE 流式，并在内部做**消息格式互转**（`_to_anthropic_messages` 把 OpenAI 风格 `tool_calls` / `role=tool` 转 Anthropic 的 `tool_use` / `tool_result` blocks）。
 - **统一事件流**：流式产出事件 dict——`delta`（增量文本）/ `tool_calls`（工具调用）/ `usage`（token 计量）/ `done` / `error`，上层（Agent / 路由）只消费这套事件，不感知协议。
 - **配置优先级**：用户级配置 `overrides`（来自 `LlmConfig`，API Key 经 `totp_encryption` 解密）> 全局 `Settings`（`.env`）。`overrides` 缺省时回落全局。
 - **无 key 降级规则模式**：`check_enabled(overrides)` 在 `LLM_PROVIDER="none"` 或无 `LLM_API_KEY` 时抛 `LLMConfigError`；调用方（`auxilio_agent.run_chat`）捕获后**降级为规则推荐摘要**（直接基于 `analyze_learning_profile` 等已有数据给出文字建议），而非报错。新增 LLM 调用点必须沿用此降级路径，禁止在 LLM 未配置时让接口 500。

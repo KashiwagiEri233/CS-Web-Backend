@@ -271,7 +271,7 @@ Auxilio 是面向**已登录用户**的学习助手，提供 SSE 流式对话与
 |---|---|---|
 | `LLM_PROVIDER` | `none` | `openai` / `anthropic` / `none`；`none` = 不发起任何外部 LLM 请求 |
 | `LLM_API_KEY` | 空 | 仅存于 `.env`，绝不落库 / 日志 / 前端 |
-| `LLM_BASE_URL` | 空 | OpenAI 兼容网关（DeepSeek / 通义 / Kimi / 本地 vLLM） |
+| `LLM_BASE_URL` | 空 | OpenAI 兼容网关（Ollama、vLLM 等本地/第三方网关） |
 | `LLM_MODEL` | `gpt-4o-mini` | 模型名 |
 | `LLM_TIMEOUT` | `60` | 单次调用超时（秒），透传 httpx |
 | `LLM_MAX_TOKENS` | `1024` | 单轮最大生成 token，透传请求体 |
