@@ -140,11 +140,22 @@ class ContributionService:
             )
             if cache is not None:
                 return self._to_payload(cache, stale=True)
-            raise
+            # 无缓存且抓取失败：返回结构化「不可达」标记（前端据此展示友好错误态），不再抛 500
+            return {
+                "platform": "github",
+                "username": username,
+                "year": target_year,
+                "data": [],
+                "total": 0,
+                "streak": 0,
+                "fetched_at": None,
+                "stale": False,
+                "unreachable": True,
+            }
 
     async def _fetch_github(self, username: str, year: int) -> tuple[dict[str, int], int]:
         url = _GITHUB_CONTRIBUTIONS_URL.format(username=username)
-        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=8, follow_redirects=True) as client:
             resp = await client.get(
                 url,
                 headers={"User-Agent": _UA, "Accept": "text/html"},
