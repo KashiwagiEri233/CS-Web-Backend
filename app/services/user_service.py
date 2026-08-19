@@ -32,9 +32,11 @@ from app.models.exam import Exam, ExamAttempt, ExamQuestion
 from app.models.role import Role
 from app.models.user import User
 from app.repositories.activity_participation_repo import ActivityParticipationRepository
+from app.repositories.base import paginate
 from app.repositories.refresh_token_repo import RefreshTokenRepository
 from app.repositories.user_repo import UserRepository
 from app.schemas.auth import UserOut
+from app.schemas.pagination import compute_total_pages
 from app.schemas.profile import ProfileUpdate
 from app.schemas.user import AdminUserUpdate
 from app.services.audit_service import AuditService
@@ -196,13 +198,13 @@ class UserService:
                 )
             ).scalar_one()
         )
-        stmt = (
+        stmt = paginate(
             select(User)
             .options(selectinload(User.roles))
             .where(*conditions)
-            .order_by(User.created_at.desc())
-            .offset((page - 1) * page_size)
-            .limit(page_size)
+            .order_by(User.created_at.desc()),
+            (page - 1) * page_size,
+            page_size,
         )
         users = list((await self.db.execute(stmt)).scalars().all())
 
@@ -220,7 +222,7 @@ class UserService:
             "total": total,
             "page": page,
             "page_size": page_size,
-            "total_pages": (total + page_size - 1) // page_size,
+            "total_pages": compute_total_pages(total, page_size),
         }
 
     async def update_user_admin(

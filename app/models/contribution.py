@@ -41,7 +41,7 @@ class ContributionCache(Base):
     total: Mapped[int] = mapped_column(Integer, default=0)
     streak: Mapped[int] = mapped_column(Integer, default=0)
     fetched_at: Mapped[datetime] = mapped_column(
-        DateTime, default=now_utc, onupdate=now_utc
+        DateTime(timezone=True), default=now_utc, onupdate=now_utc
     )
 
     def __repr__(self) -> str:

@@ -12,13 +12,13 @@ from __future__ import annotations
 
 import json
 from app.core.constants import LLM_BUDGET_TOKENS_PER_K, SECONDS_PER_HOUR
-from datetime import datetime
 from typing import AsyncIterator, Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.timezone import now_utc
 from app.models.user import User
 from app.repositories.auxilio_tool_repo import AuxilioToolRepository
 from app.services import llm_client
@@ -148,7 +148,7 @@ async def execute_tool(name: str, arguments: str, db: AsyncSession, user: User) 
         return json.dumps(profile, ensure_ascii=False)[:4000]
 
     if name == "get_exam_countdown":
-        now = datetime.utcnow()
+        now = now_utc()
         rows = await repo.upcoming_exams(limit=3)
         return json.dumps(
             [

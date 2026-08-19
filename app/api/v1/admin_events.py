@@ -20,6 +20,7 @@ from app.schemas.event import (
     EventRegistrationOut,
     EventSettingsIn,
 )
+from app.schemas.pagination import compute_total_pages
 from app.services.event_service import EventService
 
 router = APIRouter(dependencies=[Depends(require_admin_2fa())])
@@ -68,7 +69,7 @@ async def list_all_events(
         "total": total,
         "page": 1,
         "page_size": total,
-        "total_pages": 1 if total > 0 else 0,
+        "total_pages": compute_total_pages(total, page_size),
     }
 
 

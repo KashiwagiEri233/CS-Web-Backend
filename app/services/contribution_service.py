@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.constants import CONTRIBUTION_CACHE_TTL_SECONDS
+from app.core.timezone import now_utc
 from app.models.contribution import ContributionCache
 
 _GITHUB_CONTRIBUTIONS_URL = "https://github.com/users/{username}/contributions"
@@ -76,7 +77,7 @@ class ContributionService:
         force_refresh: bool = False,
     ) -> dict:
         """获取 GitHub 贡献热力图。返回 {platform, username, year, data, total, streak, fetched_at, stale}。"""
-        now = datetime.utcnow()
+        now = now_utc()
         target_year = year or now.year
         username = username.strip().lstrip("@")
 

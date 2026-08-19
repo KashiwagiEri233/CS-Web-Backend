@@ -35,9 +35,9 @@ class Exam(Base):
         String(20), nullable=False, default="draft", index=True
     )
     start_time: Mapped[Optional[datetime]] = mapped_column(
-        DateTime, nullable=True, index=True
+        DateTime(timezone=True), nullable=True, index=True
     )
-    end_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    end_time: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     duration_minutes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     # 技术方向标签（JSON 数组）
     tech_tags: Mapped[Optional[list]] = mapped_column(

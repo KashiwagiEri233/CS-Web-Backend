@@ -13,7 +13,6 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -22,6 +21,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.timezone import now_utc
 from app.database import get_db
 from app.dependencies import get_current_active_user
 from app.dependencies_services import get_auxilio_service
@@ -85,7 +85,7 @@ async def chat(
         tool_records: list[dict] = []
         new_title: Optional[str] = None
         usage: Optional[dict] = None
-        started = datetime.utcnow()
+        started = now_utc()
         try:
             async for ev in auxilio_agent.run_chat(db, user, history):
                 if ev.get("type") == "delta":
@@ -116,7 +116,7 @@ async def chat(
                             prompt_tokens=usage.get("prompt_tokens") or 0,
                             completion_tokens=usage.get("completion_tokens") or 0,
                             total_tokens=usage.get("total_tokens") or 0,
-                            latency_ms=int((datetime.utcnow() - started).total_seconds() * 1000),
+                            latency_ms=int((now_utc() - started).total_seconds() * 1000),
                         )
                     )
                     await db.commit()
