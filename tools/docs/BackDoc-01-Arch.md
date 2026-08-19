@@ -2,12 +2,12 @@
 
 > 更新人：3yearsZ
 > 最后更新：2026-08-08（v0.9.8：新增第 9 章「工作台与学习助手子系统」；业务模块契约全量并入本文 **Part B**）
-> 关联：编码规范见 [BackDoc-Conv.md](BackDoc-Conv.md)；扩展约定见 `../AGENTS.md`；项目定位见 `../CLAUDE.md`；安全与权限见 [BackDoc-02-Sec.md](BackDoc-02-Sec.md)；基础设施见 [BackDoc-Infra.md](BackDoc-Infra.md)；业务模块契约见本文 **Part B**；入职与工程约定见根级 `docs/Onboarding.md`（附录 B）
+> 关联：编码规范见 [BackDoc-Conv.md](BackDoc-Conv.md)；扩展约定与项目定位见 `../AGENTS.md`；安全与权限见 [BackDoc-02-Sec.md](BackDoc-02-Sec.md)；基础设施见 [BackDoc-Infra.md](BackDoc-Infra.md)；业务模块契约见本文 **Part B**；入职与工程约定见根级 `docs/Onboarding.md`（附录 B）
 
 > **文档定位**：后端系统设计与模块关系权威文档（reference）。Source of truth：分层架构、横切关注点、请求生命周期、目录职责矩阵、关键不变量、扩展指引、**业务模块契约（Part B：认证 / 用户 / RBAC / 审计 / 工作台 / 学习助手 / API 统计中间件）**。前端 BFF 架构与 API 契约见 `CS-Web-Frontend/tools/docs/FrontDoc-01-Arch.md`。
 
 本项目（企业级 FastAPI RBAC 权限管理脚手架）的系统设计与模块关系文档。
-编码规范见 `BackDoc-Conv.md`，扩展约定见 `../AGENTS.md`，项目定位见 `../CLAUDE.md`。
+编码规范见 `BackDoc-Conv.md`，扩展约定与项目定位见 `../AGENTS.md`。
 
 ---
 
@@ -255,11 +255,12 @@ Model 层  contribution_cache / api_call_logs / conversations / chat_messages /
 | `api_call_logs` | `ApiCallLog` | user_id(NULL), endpoint, method, status, latency_ms, created_at | ApiUsageMiddleware |
 | `conversations` | `Conversation` | user_id, title, created_at, updated_at | auxilio API |
 | `chat_messages` | `ChatMessage` | conversation_id, role, content, tool_calls(JSONB), created_at | auxilio API |
+| `chat_events` | `ChatEvent` | conversation_id, user_id, seq, event_type, payload(JSONB), created_at | auxilio API（Trajectory 事件流，append-only） |
 | `focus_sessions` | `FocusSession` | user_id, duration_seconds, phase, sound_source, started_at | workbench POST /focus-sessions |
 | `llm_usage_logs` | `LlmUsageLog` | user_id, provider, model, prompt/completion/total_tokens, latency_ms, status | auxilio API（流式结束后） |
 | `llm_configs` | `LlmConfig` | user_id(PK), provider, api_key_encrypted, base_url, model, updated_at | workbench PUT /llm-config |
 
-迁移链（Alembic，当前 head = `d3e4f5a6b7c8`）：
+迁移链（Alembic，当前 head = `d4e5f6a7b8c9`）：
 
 ```
 a3b4c5d6e7f8 (chinese_fts_zhparser)
@@ -652,7 +653,8 @@ rule-based + LLM 可选的学习助手。SSE 流式对话，支持 OpenAI / Anth
 ### 服务职责
 
 - **AuxilioService**（`app/services/auxilio_service.py`）：基于用户答题历史（`exam_attempts` + `exam.tech_tags`）计算各标签正确率，正确率 < 60%（`WEAKNESS_THRESHOLD`）标记为薄弱点，并按薄弱标签推荐已审核资源（`resource`，最多 10 条）。
-- **auxilio_agent**（`app/services/auxilio_agent.py`）：学习助手编排核心。`run_chat()` 产出统一事件流（`delta` / `tool_call` / `tool_result` / `usage` / `done` / `error`），最多 `MAX_TOOL_ROUNDS = 3` 轮工具循环；注入系统提示词（`build_system_prompt`）并注册 7 个 Skills（`TOOL_SCHEMAS`，见下）；数据访问收敛至 `app/repositories/auxilio_tool_repo.py`（`AuxilioToolRepository`，只读）。
+- **auxilio_agent**（`app/services/auxilio_agent.py`）：学习助手编排核心。`run_chat()` 产出统一事件流（`delta` / `tool_call` / `tool_result` / `usage` / `done` / `error`），最多 `MAX_TOOL_ROUNDS = 3` 轮工具循环；注入系统提示词（`build_system_prompt`）并以声明式注册表 `TOOL_REGISTRY`（`ToolSpec`）注册 7 个 Skills（`TOOL_SCHEMAS` 由注册表推导，见下）；数据访问收敛至 `app/repositories/auxilio_tool_repo.py`（`AuxilioToolRepository`，只读）。
+- **Trajectory 事件日志（融合点 2）**：`/auxilio/chat` 路由在事件循环内将每个事件（`delta` / `tool_call` / `tool_result` / `done` / `error`）append-only 落 `chat_events`（conversation_id / user_id / seq 自增 / event_type / payload JSONB / created_at），best-effort 失败不影响对话；`chat_messages` 保留为对外快照，`chat_events` 用于回放与调试。
 - **llm_client**（`app/services/llm_client.py`）：统一流式入口 `stream_chat()`，按 `provider` 分流 OpenAI 兼容（`/chat/completions`）与 Anthropic（`/v1/messages`）双协议，产出统一事件 dict；`check_enabled()` 在未配置时抛 `LLMConfigError`（上层捕获后降级规则模式）。
 
 ### Skills（7 个，`auxilio_agent.TOOL_SCHEMAS`）
@@ -728,8 +730,7 @@ LLM 配置（全局 / 用户级）详见 Part A §9.3：`LLM_PROVIDER`（默认 
 
 ## 13. 参考文档
 
-- `../CLAUDE.md` — 项目定位、技术栈、硬性禁止项、启动/配置/测试速查。
-- `../AGENTS.md` — AI Agent 扩展约定、中心注册点、Alembic 迁移管理、不变量。
+- `../AGENTS.md` — 项目定位、扩展约定、中心注册点、Alembic 迁移管理、不变量、硬性禁止项。
 - `BackDoc-Conv.md` — 编码规范、命名、质量红线、安全/错误处理约定。
 - `../tools/tests/README.md` — 测试目录组织与运行方式。
 - `README.md` — 文档索引与分类约定；详解见 `BackDoc-02-Sec.md`、`BackDoc-Infra.md` 与本文 Part B。

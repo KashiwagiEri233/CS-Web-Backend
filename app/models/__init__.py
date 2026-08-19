@@ -42,7 +42,7 @@ from app.models.task import Task, TaskClaim
 from app.models.points import PointsTransaction
 from app.models.contribution import ContributionCache
 from app.models.api_usage import ApiCallLog
-from app.models.conversation import Conversation, ChatMessage
+from app.models.conversation import ChatEvent, ChatMessage, Conversation
 from app.models.focus import FocusSession
 from app.models.llm_usage import LlmUsageLog
 from app.models.llm_config import LlmConfig
@@ -95,6 +95,7 @@ __all__ = [
     "ApiCallLog",
     "Conversation",
     "ChatMessage",
+    "ChatEvent",
     "FocusSession",
     "LlmUsageLog",
     "LlmConfig",
