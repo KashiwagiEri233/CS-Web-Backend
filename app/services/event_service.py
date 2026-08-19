@@ -205,6 +205,14 @@ class EventService:
                 message="活动不存在", resource_type="event", resource_id=str(event_id)
             )
 
+        await self.auto_archive()
+        await self.db.refresh(event)
+        if event.status == "ended":
+            raise ConflictException(
+                message="活动已结束，不可报名",
+                error_code=ErrorCode.Event.EVENT_ENDED,
+            )
+
         existing = await self.reg_repo.get(user_id, event_id)
         if existing is not None and existing.status == "registered":
             raise ConflictException(
