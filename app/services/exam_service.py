@@ -1,4 +1,4 @@
-﻿"""考试服务：CRUD / 组卷 / 答题判分 / 排名。"""
+"""考试服务：CRUD / 组卷 / 答题判分 / 排名。"""
 
 from __future__ import annotations
 

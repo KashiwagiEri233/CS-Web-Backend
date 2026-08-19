@@ -1,4 +1,4 @@
-﻿"""活动仓储：events / event_registrations / event_checkins / settings。"""
+"""活动仓储：events / event_registrations / event_checkins / settings。"""
 
 from __future__ import annotations
 

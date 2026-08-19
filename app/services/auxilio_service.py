@@ -1,4 +1,4 @@
-﻿"""Auxilio 学习助手服务：考试记录 → 薄弱标签 → 资源推荐。"""
+"""Auxilio 学习助手服务：考试记录 → 薄弱标签 → 资源推荐。"""
 
 from __future__ import annotations
 

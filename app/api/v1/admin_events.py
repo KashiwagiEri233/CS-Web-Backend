@@ -1,4 +1,4 @@
-﻿"""活动管理 API（管理员）：CRUD / 报名管理 / 签到 / 批量 / 统计 / 设置。"""
+"""活动管理 API（管理员）：CRUD / 报名管理 / 签到 / 批量 / 统计 / 设置。"""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-﻿"""组件注册表服务：items / variants / guides。"""
+"""组件注册表服务：items / variants / guides。"""
 
 from __future__ import annotations
 
