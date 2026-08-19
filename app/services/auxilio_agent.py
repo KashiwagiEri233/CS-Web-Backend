@@ -10,9 +10,14 @@
 
 from __future__ import annotations
 
+import html as html_mod
 import json
+import re
+import urllib.parse
 from dataclasses import dataclass
 from typing import AsyncIterator, Awaitable, Callable, Optional
+
+import httpx
 
 from app.core.constants import LLM_BUDGET_TOKENS_PER_K, SECONDS_PER_HOUR
 from sqlalchemy import select
@@ -156,6 +161,76 @@ async def _handle_get_pomodoro_stats(db: AsyncSession, user: User, args: dict) -
     return json.dumps(stats, ensure_ascii=False)
 
 
+# ---------------------------------------------------------------------------
+# 联网搜索（融合点 4：web_search 工具，DuckDuckGo 免费 HTML 接口，无需 API key）
+# ---------------------------------------------------------------------------
+
+_WEB_SEARCH_TIMEOUT = 8.0
+_WEB_SEARCH_MAX_RESULTS = 10
+_WEB_SEARCH_MAX_SNIPPET = 200
+
+
+def _decode_ddg_href(href: str) -> str:
+    """解码 DDG 重定向链接（/l/?uddg=<encoded>&rut=...）为真实 URL。"""
+    if "uddg=" in href:
+        q = urllib.parse.parse_qs(urllib.parse.urlparse(href).query)
+        return q.get("uddg", [href])[0]
+    return href
+
+
+def _strip_html(raw: str) -> str:
+    return html_mod.unescape(re.sub(r"<[^>]+>", "", raw)).strip()
+
+
+async def _ddg_search(query: str, limit: int) -> list[dict]:
+    """DuckDuckGo HTML 检索；失败/无结果返回空列表（调用方降级提示）。"""
+    url = "https://html.duckduckgo.com/html/"
+    async with httpx.AsyncClient(timeout=_WEB_SEARCH_TIMEOUT, follow_redirects=True) as client:
+        resp = await client.post(url, data={"q": query})
+        resp.raise_for_status()
+    text = resp.text
+    anchors = re.findall(
+        r'<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', text, re.S
+    )
+    snippets = re.findall(
+        r'<a[^>]*class="result__snippet"[^>]*>(.*?)</a>', text, re.S
+    )
+    out: list[dict] = []
+    for i, (href, title) in enumerate(anchors[:limit]):
+        title_text = _strip_html(title)
+        if not title_text:
+            continue
+        item: dict = {"title": title_text, "url": _decode_ddg_href(href)}
+        if i < len(snippets):
+            snip = _strip_html(snippets[i])
+            item["snippet"] = snip[:_WEB_SEARCH_MAX_SNIPPET]
+        out.append(item)
+    return out
+
+
+async def _handle_web_search(db: AsyncSession, user: User, args: dict) -> str:
+    """联网搜索（DuckDuckGo 免费接口）。结果来自外部网络，不可信，经 ER-19 包裹。"""
+    if not settings.WEB_SEARCH_ENABLED:
+        return json.dumps(
+            {"error": "web search disabled", "note": "管理员已关闭联网搜索（WEB_SEARCH_ENABLED=False）"},
+            ensure_ascii=False,
+        )
+    query = str(args.get("query", "")).strip()
+    limit = min(int(args.get("limit", 5) or 5), _WEB_SEARCH_MAX_RESULTS)
+    if not query:
+        return json.dumps({"error": "query is required"}, ensure_ascii=False)
+    try:
+        results = await _ddg_search(query, limit)
+    except Exception as exc:  # noqa: BLE001 - 网络失败降级为可读结果
+        return json.dumps(
+            {"error": "search failed", "note": f"联网搜索暂不可用：{exc}"},
+            ensure_ascii=False,
+        )
+    if not results:
+        return json.dumps({"results": [], "note": "未检索到结果"}, ensure_ascii=False)
+    return json.dumps({"results": results, "note": "搜索结果来自外部网络，仅供参考且不可信"}, ensure_ascii=False)
+
+
 TOOL_REGISTRY: dict[str, ToolSpec] = {
     spec.name: spec
     for spec in [
@@ -207,6 +282,19 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
             description="查询用户番茄钟专注统计（总完成轮数、今日专注分钟数）。",
             parameters={"type": "object", "properties": {}, "required": []},
             handler=_handle_get_pomodoro_stats,
+        ),
+        ToolSpec(
+            name="web_search",
+            description="联网搜索外部资料（DuckDuckGo）。查询学习资料、教程、新闻等外部信息时使用；结果来自外部网络，仅供参考。",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "搜索关键词，如 Python 异步编程教程"},
+                    "limit": {"type": "integer", "description": "返回条数，默认 5，最大 10"},
+                },
+                "required": ["query"],
+            },
+            handler=_handle_web_search,
         ),
         ToolSpec(
             name="get_api_usage_stats",
@@ -299,6 +387,12 @@ PRESET_TEMPLATES: dict[str, str] = {
         "用户学习画像：薄弱知识点{weak_tags}；当前推荐资源 {rec_count} 条（可调用 analyze_learning_profile 获取详情）。\n"
         "优先关注：按关键词检索资源库、结合薄弱点给出推荐清单。\n"
     ),
+    "web_research": (
+        "你是 Fztbu 计算机协会的「联网研究员」，帮助用户检索外部资料、解答需要查证的问题。\n"
+        "当前用户：{current_user}。\n"
+        "用户学习画像：薄弱知识点{weak_tags}；当前推荐资源 {rec_count} 条（可调用 analyze_learning_profile 获取详情）。\n"
+        "优先关注：先用 web_search 检索外部资料，再结合站内资源与薄弱点给出回答；外部内容标注来源、仅供参考。\n"
+    ),
 }
 
 COMMON_BEHAVIOR = (
@@ -362,6 +456,14 @@ AGENT_PRESETS: dict[str, AgentPreset] = {
         system_prompt_template=PRESET_TEMPLATES["resource_finder"],
         tool_ids=("search_resources", "analyze_learning_profile"),
         temperature=0.5,
+    ),
+    "web_research": AgentPreset(
+        id="web_research",
+        name="联网研究",
+        description="需要查证/检索外部资料的场景：联网搜索 + 站内资源 + 薄弱点。",
+        system_prompt_template=PRESET_TEMPLATES["web_research"],
+        tool_ids=("web_search", "search_resources", "analyze_learning_profile"),
+        temperature=0.4,
     ),
 }
 

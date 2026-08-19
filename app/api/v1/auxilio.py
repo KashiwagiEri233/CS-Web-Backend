@@ -42,6 +42,8 @@ class ChatTurn(BaseModel):
 class ChatRequest(BaseModel):
     conversation_id: Optional[int] = None
     messages: list[ChatTurn] = Field(min_length=1, max_length=40)
+    #: Agent 预设（AGENT_PRESETS 键，如 exam_sprint / web_research）；缺省服务端按消息启发式匹配
+    preset_id: Optional[str] = None
 
 
 def sse(event: dict) -> str:
@@ -88,7 +90,7 @@ async def chat(
         event_seq = 0  # Trajectory 事件序号（对话内自增）
         started = now_utc()
         try:
-            async for ev in auxilio_agent.run_chat(db, user, history):
+            async for ev in auxilio_agent.run_chat(db, user, history, preset_id=req.preset_id):
                 # Trajectory 事件落库（融合点 2，append-only，best-effort 不影响对话）
                 event_seq += 1
                 try:
@@ -205,6 +207,35 @@ async def list_messages(
                 "createdAt": m.created_at.isoformat() if m.created_at else None,
             }
             for m in rows
+        ]
+    }
+
+
+@router.get("/conversations/{conversation_id}/events")
+async def list_events(
+    conversation_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_active_user),
+):
+    """Trajectory 事件回放（融合点 2 的消费端）：按 seq 返回会话全事件流。"""
+    await _own_conversation(db, user, conversation_id)
+    rows = (
+        await db.execute(
+            select(ChatEvent)
+            .where(ChatEvent.conversation_id == conversation_id)
+            .order_by(ChatEvent.seq.asc())
+        )
+    ).scalars().all()
+    return {
+        "events": [
+            {
+                "id": e.id,
+                "seq": e.seq,
+                "eventType": e.event_type,
+                "payload": e.payload or {},
+                "createdAt": e.created_at.isoformat() if e.created_at else None,
+            }
+            for e in rows
         ]
     }
 
