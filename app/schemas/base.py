@@ -1,6 +1,6 @@
 """API 出参基类。
 
-双时区约定（见 CLAUDE.md）：核心/存储一律 UTC，对外展示用 settings.TIMEZONE。
+双时区约定（见 AGENTS.md）：核心/存储一律 UTC，对外展示用 settings.TIMEZONE。
 本基类在**序列化边界**统一把 datetime 字段从 UTC 转为本地时区并输出 ISO 字符串，
 这样路由层/服务层无需逐处手动转换——凡是出参模型继承 TZModel 即自动本地化。
 

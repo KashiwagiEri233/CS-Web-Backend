@@ -9,5 +9,5 @@
 #   - __codename__ 是「发布代号」：可为节日标签（如 "七夕"）或 MMDD 日期（如 "0819"），
 #     纯展示用途，拼成 "1.0.0.七夕" / "1.0.0.0819"。前端页脚、CHANGELOG 标题用展示版，
 #     打包文件（pyproject/package.json 的 version 字段/uv.lock）只用 __version__ 核心段。
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 __codename__ = "七夕"

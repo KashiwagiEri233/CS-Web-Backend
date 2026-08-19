@@ -80,6 +80,9 @@ async def get_github_contributions(
         year=year or None,
         force_refresh=refresh,
     )
+    if payload.get("unreachable"):
+        # 抓取不可达（无缓存兜底）：返回 ok=False 的友好错误，前端据此展示「无法连接 GitHub」+ 重试
+        return {"ok": False, "error": "github_unreachable", "message": "无法连接 GitHub，请稍后重试"}
     return {"ok": True, **payload}
 
 

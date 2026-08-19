@@ -1,4 +1,4 @@
-﻿"""活动服务：CRUD / 报名（限额+唯一约束）/ 签到核销 / 归档 / 设置 / 统计。
+"""活动服务：CRUD / 报名（限额+唯一约束）/ 签到核销 / 归档 / 设置 / 统计。
 
 业务事件（event.created / event.registered / event.cancelled）经 event_bus 发布，
 通知订阅者见 app/services/notification_events.py。

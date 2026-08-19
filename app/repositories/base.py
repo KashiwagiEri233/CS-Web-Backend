@@ -11,7 +11,7 @@
 
 from typing import Any, Generic, Optional, Protocol, Type, TypeVar, cast
 
-from sqlalchemy import select
+from sqlalchemy import Select, select
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,6 +33,15 @@ def dml_rowcount(result: Any) -> int:
     实际返回 ``CursorResult``，此处集中做一次 cast，避免各 repo 重复忽略类型错误。
     """
     return int(cast(CursorResult, result).rowcount or 0)
+
+
+def paginate(stmt: "Select", skip: int, limit: int) -> "Select":
+    """统一施加分页偏移与上限，消除各 repo 重复手写 ``offset+limit``。
+
+    仅做语句变换（返回带 offset/limit 的新 Select），不执行查询；
+    count 查询与取数执行仍由各 repo 自行负责。
+    """
+    return stmt.offset(skip).limit(limit)
 
 
 class BaseRepository(Generic[ModelT]):

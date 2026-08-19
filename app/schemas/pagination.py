@@ -14,6 +14,18 @@ from pydantic import BaseModel, model_validator
 T = TypeVar("T")
 
 
+def compute_total_pages(total: int, size: int) -> int:
+    """统一 total_pages 算法（全项目分页响应共用）。
+
+    规则：``ceil(total / size)`` 且**至少 1**（0 数据也视为 1 页），与
+    ``PaginatedResponse`` 内部规则一致；``size <= 0``（如 admin_events 整表单页空表时
+    size=0）回退 1，避免除零。调用方不再手算，消除边界算法漂移。
+    """
+    if size <= 0:
+        return 1
+    return max(1, math.ceil(total / size))
+
+
 class PaginationParams:
     """分页查询参数依赖。用法：``pagination: PaginationParams = Depends()``。
 
@@ -60,6 +72,5 @@ class PaginatedResponse(BaseModel, Generic[T]):
 
     @model_validator(mode="after")
     def _compute_total_pages(self) -> "PaginatedResponse[T]":
-        if self.limit > 0:
-            self.total_pages = max(1, math.ceil(self.total / self.limit))
+        self.total_pages = compute_total_pages(self.total, self.limit)
         return self

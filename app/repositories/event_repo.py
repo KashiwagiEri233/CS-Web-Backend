@@ -1,4 +1,4 @@
-﻿"""活动仓储：events / event_registrations / event_checkins / settings。"""
+"""活动仓储：events / event_registrations / event_checkins / settings。"""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from app.core.timezone import now_utc
 from app.models.event import Event, EventCheckin, EventRegistration
 from app.models.setting import Setting
 from app.repositories.base import dml_rowcount
+from app.repositories.base import paginate
 
 
 class EventRepository:
@@ -49,12 +50,11 @@ class EventRepository:
                 )
             ).scalar_one()
         )
-        stmt = (
+        stmt = paginate(
             select(Event)
             .where(*conditions)
-            .order_by(Event.is_pinned.desc(), Event.date.desc())
-            .offset(skip)
-            .limit(limit)
+            .order_by(Event.is_pinned.desc(), Event.date.desc()),
+            skip, limit
         )
         rows = await self.db.execute(stmt)
         return list(rows.scalars().all()), total

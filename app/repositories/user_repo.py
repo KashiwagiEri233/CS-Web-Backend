@@ -5,6 +5,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.user import User
 from app.repositories.base import BaseRepository
+from app.repositories.base import paginate
 
 
 class UserRepository(BaseRepository[User]):
@@ -15,12 +16,11 @@ class UserRepository(BaseRepository[User]):
 
     async def list_active(self, skip: int = 0, limit: int = 100) -> list[User]:
         """分页获取未软删用户。"""
-        stmt = (
+        stmt = paginate(
             select(User)
             .where(User.deleted_at.is_(None))
-            .order_by(User.id)
-            .offset(skip)
-            .limit(limit)
+            .order_by(User.id),
+            skip, limit
         )
         result = await self.db.execute(stmt)
         return list(result.scalars().all())

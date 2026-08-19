@@ -118,5 +118,5 @@ tools/docs/            # 验证指南（BackDoc-Infra.md §六 迁移验证）�
 | 文档 | 内容 |
 |---|---|
 | `tools/docs/BackDoc-Infra.md §六 迁移验证` | Linux/PG 环境验证指引（各 Phase 集成测试、2FA/密码兼容检查清单） |
-| `CLAUDE.md` / `AGENTS.md` | 项目定位、扩展约定、Alembic 管理、不变量 |
+| `AGENTS.md` | 项目定位、扩展约定、Alembic 管理、不变量 |
 | `tools/docs/BackDoc-Conv.md` | 编码规范与质量红线 |

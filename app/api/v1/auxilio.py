@@ -13,7 +13,6 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -22,10 +21,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.timezone import now_utc
 from app.database import get_db
 from app.dependencies import get_current_active_user
 from app.dependencies_services import get_auxilio_service
-from app.models.conversation import ChatMessage, Conversation
+from app.models.conversation import ChatEvent, ChatMessage, Conversation
 from app.models.llm_usage import LlmUsageLog
 from app.models.user import User
 from app.services import auxilio_agent
@@ -85,9 +85,25 @@ async def chat(
         tool_records: list[dict] = []
         new_title: Optional[str] = None
         usage: Optional[dict] = None
-        started = datetime.utcnow()
+        event_seq = 0  # Trajectory 事件序号（对话内自增）
+        started = now_utc()
         try:
             async for ev in auxilio_agent.run_chat(db, user, history):
+                # Trajectory 事件落库（融合点 2，append-only，best-effort 不影响对话）
+                event_seq += 1
+                try:
+                    db.add(
+                        ChatEvent(
+                            conversation_id=conv.id,
+                            user_id=user.id,
+                            seq=event_seq,
+                            event_type=str(ev.get("type", "")),
+                            payload=ev,
+                        )
+                    )
+                    await db.commit()
+                except Exception:  # noqa: BLE001 - 事件落库失败不影响对话
+                    await db.rollback()
                 if ev.get("type") == "delta":
                     assistant_text.append(ev.get("text", ""))
                 elif ev.get("type") == "tool_call":
@@ -116,7 +132,7 @@ async def chat(
                             prompt_tokens=usage.get("prompt_tokens") or 0,
                             completion_tokens=usage.get("completion_tokens") or 0,
                             total_tokens=usage.get("total_tokens") or 0,
-                            latency_ms=int((datetime.utcnow() - started).total_seconds() * 1000),
+                            latency_ms=int((now_utc() - started).total_seconds() * 1000),
                         )
                     )
                     await db.commit()

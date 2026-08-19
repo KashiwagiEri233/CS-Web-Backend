@@ -11,14 +11,15 @@
 from __future__ import annotations
 
 import json
-from app.core.constants import LLM_BUDGET_TOKENS_PER_K, SECONDS_PER_HOUR
-from datetime import datetime
-from typing import AsyncIterator, Optional
+from dataclasses import dataclass
+from typing import AsyncIterator, Awaitable, Callable, Optional
 
+from app.core.constants import LLM_BUDGET_TOKENS_PER_K, SECONDS_PER_HOUR
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.timezone import now_utc
 from app.models.user import User
 from app.repositories.auxilio_tool_repo import AuxilioToolRepository
 from app.services import llm_client
@@ -27,77 +28,198 @@ from app.services.auxilio_service import AuxilioService
 MAX_TOOL_ROUNDS = 3
 
 # ---------------------------------------------------------------------------
-# Skills 注册表
+# Skills 声明式注册表（融合点 1：吸收 DSH「一切皆插件」配置化思想）
 # ---------------------------------------------------------------------------
+# 工具以 (schema + handler) 声明式注册；TOOL_SCHEMAS 由注册表推导（exposed=True
+# 才暴露给模型）。新增工具只需注册一条 + 一个 handler，无需改 execute_tool。
+# handler 约定：async (db, user, args: dict) -> str（返回可注入上下文的 JSON 字符串）。
 
-TOOL_SCHEMAS: list[dict] = [
-    {
-        "name": "analyze_learning_profile",
-        "description": "分析用户答题历史，返回薄弱知识点（正确率 < 60%）和推荐学习资源列表。学习相关问题的首选工具。",
-        "parameters": {
-            "type": "object",
-            "properties": {},
-            "required": [],
-        },
-    },
-    {
-        "name": "get_exam_countdown",
-        "description": "查询最近进行中的考试及其截止时间，计算距离结束还有多少天/小时。",
-        "parameters": {
-            "type": "object",
-            "properties": {},
-            "required": [],
-        },
-    },
-    {
-        "name": "list_tasks",
-        "description": "列出当前已发布的协会任务（标题/分类/积分/状态），最多 10 条。",
-        "parameters": {
-            "type": "object",
-            "properties": {},
-            "required": [],
-        },
-    },
-    {
-        "name": "list_my_claims",
-        "description": "列出当前用户已认领的任务。",
-        "parameters": {
-            "type": "object",
-            "properties": {},
-            "required": [],
-        },
-    },
-    {
-        "name": "search_resources",
-        "description": "在资源库中按关键词搜索已审核通过的学习资源（标题/描述模糊匹配）。",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "keyword": {"type": "string", "description": "搜索关键词，如 动态规划"},
-                "limit": {"type": "integer", "description": "返回条数，默认 5，最大 10"},
+ToolHandler = Callable[..., Awaitable[str]]
+
+
+@dataclass(frozen=True)
+class ToolSpec:
+    name: str
+    description: str
+    parameters: dict
+    handler: ToolHandler
+    #: exposed=False 的工具不进入 TOOL_SCHEMAS（模型不可见），execute_tool 仍可调用
+    exposed: bool = True
+
+    @property
+    def schema(self) -> dict:
+        return {
+            "name": self.name,
+            "description": self.description,
+            "parameters": self.parameters,
+        }
+
+
+async def _handle_analyze_learning_profile(db: AsyncSession, user: User, args: dict) -> str:
+    profile = await AuxilioService(db).analyze_learning_profile(user.id)
+    return json.dumps(profile, ensure_ascii=False)[:4000]
+
+
+async def _handle_get_exam_countdown(db: AsyncSession, user: User, args: dict) -> str:
+    now = now_utc()
+    rows = await AuxilioToolRepository(db).upcoming_exams(limit=3)
+    return json.dumps(
+        [
+            {
+                "title": e.title,
+                "end_time": e.end_time.isoformat() if e.end_time else None,
+                "ends_in_hours": round((e.end_time - now).total_seconds() / SECONDS_PER_HOUR, 1)
+                if e.end_time
+                else None,
+            }
+            for e in rows
+        ],
+        ensure_ascii=False,
+    )
+
+
+async def _handle_list_tasks(db: AsyncSession, user: User, args: dict) -> str:
+    rows = await AuxilioToolRepository(db).published_tasks(limit=10)
+    return json.dumps(
+        [
+            {
+                "id": t.id,
+                "title": t.title,
+                "category": t.category,
+                "points": t.points,
+                "claimants": t.claimant_count if hasattr(t, "claimant_count") else None,
+            }
+            for t in rows
+        ],
+        ensure_ascii=False,
+    )
+
+
+async def _handle_list_my_claims(db: AsyncSession, user: User, args: dict) -> str:
+    rows = await AuxilioToolRepository(db).my_claims(user.id, limit=10)
+    return json.dumps(
+        [
+            {"id": t.id, "title": t.title, "category": t.category, "points": t.points}
+            for t, _claim in rows
+        ],
+        ensure_ascii=False,
+    )
+
+
+async def _handle_search_resources(db: AsyncSession, user: User, args: dict) -> str:
+    keyword = str(args.get("keyword", "")).strip()
+    limit = min(int(args.get("limit", 5) or 5), 10)
+    if not keyword:
+        return json.dumps({"error": "keyword is required"}, ensure_ascii=False)
+    rows = await AuxilioToolRepository(db).search_resources(keyword, limit)
+    return json.dumps(
+        [
+            {
+                "id": r.id,
+                "title": r.title,
+                "url": r.url,
+                "type": r.resource_type,
+                "tags": r.tech_tags or [],
+            }
+            for r in rows
+        ],
+        ensure_ascii=False,
+    )
+
+
+async def _handle_get_llm_usage_stats(db: AsyncSession, user: User, args: dict) -> str:
+    stats = await AuxilioToolRepository(db).llm_usage_stats(user.id)
+    return json.dumps(
+        {**stats, "note": "来自 llm_usage_logs 埋点（每次模型调用记录 token 消耗）"},
+        ensure_ascii=False,
+    )
+
+
+async def _handle_get_api_usage_stats(db: AsyncSession, user: User, args: dict) -> str:
+    # ER-18：全站 API 用量属管理员可观测性范畴。普通用户经学习助手工具
+    # 仅能获取本人的调用统计；管理员可获取全站聚合。避免越权暴露全站用量。
+    from app.middleware.rbac import is_admin_role
+
+    repo = AuxilioToolRepository(db)
+    if is_admin_role(user):
+        stats = await repo.api_usage_stats()
+    else:
+        stats = await repo.api_usage_stats(user.id)
+    return json.dumps(
+        {**stats, "note": "统计来自 api_call_logs 埋点，含 LLM 调用"},
+        ensure_ascii=False,
+    )
+
+
+async def _handle_get_pomodoro_stats(db: AsyncSession, user: User, args: dict) -> str:
+    stats = await AuxilioToolRepository(db).pomodoro_stats(user.id)
+    return json.dumps(stats, ensure_ascii=False)
+
+
+TOOL_REGISTRY: dict[str, ToolSpec] = {
+    spec.name: spec
+    for spec in [
+        ToolSpec(
+            name="analyze_learning_profile",
+            description="分析用户答题历史，返回薄弱知识点（正确率 < 60%）和推荐学习资源列表。学习相关问题的首选工具。",
+            parameters={"type": "object", "properties": {}, "required": []},
+            handler=_handle_analyze_learning_profile,
+        ),
+        ToolSpec(
+            name="get_exam_countdown",
+            description="查询最近进行中的考试及其截止时间，计算距离结束还有多少天/小时。",
+            parameters={"type": "object", "properties": {}, "required": []},
+            handler=_handle_get_exam_countdown,
+        ),
+        ToolSpec(
+            name="list_tasks",
+            description="列出当前已发布的协会任务（标题/分类/积分/状态），最多 10 条。",
+            parameters={"type": "object", "properties": {}, "required": []},
+            handler=_handle_list_tasks,
+        ),
+        ToolSpec(
+            name="list_my_claims",
+            description="列出当前用户已认领的任务。",
+            parameters={"type": "object", "properties": {}, "required": []},
+            handler=_handle_list_my_claims,
+        ),
+        ToolSpec(
+            name="search_resources",
+            description="在资源库中按关键词搜索已审核通过的学习资源（标题/描述模糊匹配）。",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "keyword": {"type": "string", "description": "搜索关键词，如 动态规划"},
+                    "limit": {"type": "integer", "description": "返回条数，默认 5，最大 10"},
+                },
+                "required": ["keyword"],
             },
-            "required": ["keyword"],
-        },
-    },
-    {
-        "name": "get_llm_usage_stats",
-        "description": "查询学习助手大模型调用统计（总调用次数、今日调用次数、token 消耗量）。",
-        "parameters": {
-            "type": "object",
-            "properties": {},
-            "required": [],
-        },
-    },
-    {
-        "name": "get_pomodoro_stats",
-        "description": "查询用户番茄钟专注统计（总完成轮数、今日专注分钟数）。",
-        "parameters": {
-            "type": "object",
-            "properties": {},
-            "required": [],
-        },
-    },
-]
+            handler=_handle_search_resources,
+        ),
+        ToolSpec(
+            name="get_llm_usage_stats",
+            description="查询学习助手大模型调用统计（总调用次数、今日调用次数、token 消耗量）。",
+            parameters={"type": "object", "properties": {}, "required": []},
+            handler=_handle_get_llm_usage_stats,
+        ),
+        ToolSpec(
+            name="get_pomodoro_stats",
+            description="查询用户番茄钟专注统计（总完成轮数、今日专注分钟数）。",
+            parameters={"type": "object", "properties": {}, "required": []},
+            handler=_handle_get_pomodoro_stats,
+        ),
+        ToolSpec(
+            name="get_api_usage_stats",
+            description="(内部) 查询 API 调用统计。",
+            parameters={"type": "object", "properties": {}, "required": []},
+            handler=_handle_get_api_usage_stats,
+            exposed=False,  # ER-18：不暴露给模型；execute_tool 保留直接调用（测试覆盖权限边界）
+        ),
+    ]
+}
+
+#: 暴露给模型的工具 schema（OpenAI / Anthropic 双协议共用，llm_client 内转换）
+TOOL_SCHEMAS: list[dict] = [spec.schema for spec in TOOL_REGISTRY.values() if spec.exposed]
 
 TOOL_NAMES = [t["name"] for t in TOOL_SCHEMAS]
 
@@ -131,111 +253,20 @@ def wrap_untrusted_tool_result(name: str, payload: str) -> str:
 
 
 async def execute_tool(name: str, arguments: str, db: AsyncSession, user: User) -> str:
-    """执行工具，返回可注入上下文的 JSON 字符串。
+    """执行注册表工具，返回可注入上下文的 JSON 字符串。
 
-    数据访问统一收敛到 `AuxilioToolRepository`（见 app/repositories/auxilio_tool_repo.py），
-    本函数只负责参数解析与结果序列化。
+    分发逻辑收敛到 `TOOL_REGISTRY`（schema + handler 声明式注册）；数据访问统一
+    收敛到 `AuxilioToolRepository`（见 app/repositories/auxilio_tool_repo.py）。
+    未知工具返回 {"error": ...}（与历史行为一致）；handler 异常由调用方捕获。
     """
+    spec = TOOL_REGISTRY.get(name)
+    if spec is None:
+        return json.dumps({"error": f"unknown tool: {name}"}, ensure_ascii=False)
     try:
         args = json.loads(arguments) if arguments else {}
     except json.JSONDecodeError:
         args = {}
-
-    repo = AuxilioToolRepository(db)
-
-    if name == "analyze_learning_profile":
-        profile = await AuxilioService(db).analyze_learning_profile(user.id)
-        return json.dumps(profile, ensure_ascii=False)[:4000]
-
-    if name == "get_exam_countdown":
-        now = datetime.utcnow()
-        rows = await repo.upcoming_exams(limit=3)
-        return json.dumps(
-            [
-                {
-                    "title": e.title,
-                    "end_time": e.end_time.isoformat() if e.end_time else None,
-                    "ends_in_hours": round((e.end_time - now).total_seconds() / SECONDS_PER_HOUR, 1)
-                    if e.end_time
-                    else None,
-                }
-                for e in rows
-            ],
-            ensure_ascii=False,
-        )
-
-    if name == "list_tasks":
-        rows = await repo.published_tasks(limit=10)
-        return json.dumps(
-            [
-                {
-                    "id": t.id,
-                    "title": t.title,
-                    "category": t.category,
-                    "points": t.points,
-                    "claimants": t.claimant_count if hasattr(t, "claimant_count") else None,
-                }
-                for t in rows
-            ],
-            ensure_ascii=False,
-        )
-
-    if name == "list_my_claims":
-        rows = await repo.my_claims(user.id, limit=10)
-        return json.dumps(
-            [
-                {"id": t.id, "title": t.title, "category": t.category, "points": t.points}
-                for t, _claim in rows
-            ],
-            ensure_ascii=False,
-        )
-
-    if name == "search_resources":
-        keyword = str(args.get("keyword", "")).strip()
-        limit = min(int(args.get("limit", 5) or 5), 10)
-        if not keyword:
-            return json.dumps({"error": "keyword is required"}, ensure_ascii=False)
-        rows = await repo.search_resources(keyword, limit)
-        return json.dumps(
-            [
-                {
-                    "id": r.id,
-                    "title": r.title,
-                    "url": r.url,
-                    "type": r.resource_type,
-                    "tags": r.tech_tags or [],
-                }
-                for r in rows
-            ],
-            ensure_ascii=False,
-        )
-
-    if name == "get_llm_usage_stats":
-        stats = await repo.llm_usage_stats(user.id)
-        return json.dumps(
-            {**stats, "note": "来自 llm_usage_logs 埋点（每次模型调用记录 token 消耗）"},
-            ensure_ascii=False,
-        )
-
-    if name == "get_api_usage_stats":
-        # ER-18：全站 API 用量属管理员可观测性范畴。普通用户经学习助手工具
-        # 仅能获取本人的调用统计；管理员可获取全站聚合。避免越权暴露全站用量。
-        from app.middleware.rbac import is_admin_role
-
-        if is_admin_role(user):
-            stats = await repo.api_usage_stats()
-        else:
-            stats = await repo.api_usage_stats(user.id)
-        return json.dumps(
-            {**stats, "note": "统计来自 api_call_logs 埋点，含 LLM 调用"},
-            ensure_ascii=False,
-        )
-
-    if name == "get_pomodoro_stats":
-        stats = await repo.pomodoro_stats(user.id)
-        return json.dumps(stats, ensure_ascii=False)
-
-    return json.dumps({"error": f"unknown tool: {name}"}, ensure_ascii=False)
+    return await spec.handler(db, user, args)
 
 
 # ---------------------------------------------------------------------------

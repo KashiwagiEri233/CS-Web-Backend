@@ -2,15 +2,15 @@
 
 > 更新人：3yearsZ
 > 最后更新：2026-08-08（对齐代码约定 v0.9.8：补充 ASGI 中间件、LLM 双协议客户端与无 key 降级、Agent 工具循环、后台 asyncio 任务、camelCase 响应、迁移命名/head 等约定）
-> 关联：通用工程规范见根 [`RootDoc-EngConv.md`](../../../docs/RootDoc-EngConv.md)；扩展约定见 `../AGENTS.md`；项目定位见 `../CLAUDE.md`；架构见 [BackDoc-01-Arch.md](BackDoc-01-Arch.md)
+> 关联：通用工程规范见根 [`RootDoc-EngConv.md`](../../../docs/RootDoc-EngConv.md)；扩展约定与项目定位见 `../AGENTS.md`；架构见 [BackDoc-01-Arch.md](BackDoc-01-Arch.md)
 
 本项目的编码规范、目录组织与通用约定。**所有贡献者（含 AI Agent）在写代码前必须先读本文档**。
 
 > 框架无关的通用工程规范（命名 / DRY / 圈复杂度 / 错误处理 / 安全 / 配置 / 测试 / Git）已提炼到根仓库 `../../../docs/RootDoc-EngConv.md`，本文档侧重 Python/FastAPI 强相关的分层、会话、迁移等约定。
-> 项目级扩展约定（如何加模块、中心注册点、Alembic 迁移）见 `../AGENTS.md`；项目定位与硬性禁止项见 `../CLAUDE.md`。
+> 项目级扩展约定（如何加模块、中心注册点、Alembic 迁移）、项目定位与硬性禁止项见 `../AGENTS.md`。
 > **约定类文档边界**：后端专项约定以本文档为权威；前端专项见 `CS-Web-Frontend/tools/docs/FrontDoc-01-Arch.md`；`docs/Onboarding.md` 附录 A 为新人聚合摘要（非权威），细则指回本文件与 RootDoc-EngConv。
 
-> 文档优先级：场景内具体指令 > `../AGENTS.md` > `../CLAUDE.md` > 本文件 > 通用工作流。
+> 文档优先级：场景内具体指令 > `../AGENTS.md` > 本文件 > 通用工作流。
 
 > 术语统一：本文档中「**子仓库 / submodule**」专指 git 外部子仓库；app 内部的代码模块统称「**子模块**」。数据访问层仍称「**repositories/（数据访问层）**」，不混用「子仓库」一词，以免与 submodule 混淆。
 
@@ -185,7 +185,7 @@ API 的 JSON 入/出参统一 **camelCase 传输**，Python 属性名保持 snak
 
 ## 10. 数据库迁移约定（摘要）
 
-> 完整规则见 `../AGENTS.md` 的「Alembic 迁移管理」章节。
+> 完整规则见 `../AGENTS.md` 的「数据库迁移」章节。
 
 - **铁律**：全环境 **仅 Alembic**；禁止 `Base.metadata.create_all`。建库由 `DB_AUTO_CREATE_DATABASE` 控制，schema 仍只由 Alembic 管理。
 - **启动**：`DB_AUTO_MIGRATE=True` 自动 `upgrade head`；`False` 仅校验版本不一致则 fail fast。
@@ -260,7 +260,7 @@ LLM 相关代码集中在 `app/services/llm_client.py`（客户端）与 `app/se
 `auxilio_agent.run_chat()` 编排「系统提示词注入 + Skills 工具调用 + 流式产出」：
 
 - **固定轮数**：常量 `MAX_TOOL_ROUNDS = 3`（定义在 `auxilio_agent.py`），`for _round in range(MAX_TOOL_ROUNDS)` 控制工具循环上限，**禁止**改成无上限 `while True`，避免模型失控循环。
-- **工具注册表**：可用工具在 `TOOL_SCHEMAS`（list[dict]，含 `name` / `description` / `parameters`）集中声明，并同时提供 OpenAI 与 Anthropic 两套 schema 转换（`_oai_tool_schema` / `_anthropic_tool_schema`）。新增工具须在此登记并补全两个协议的 schema。
+- **工具注册表（声明式）**：可用工具以 `ToolSpec`（name / description / parameters / handler / exposed）在 `TOOL_REGISTRY`（`auxilio_agent.py`）声明式注册，`TOOL_SCHEMAS` 由注册表推导（仅 `exposed=True` 的条目暴露给模型，OpenAI 与 Anthropic 两套 schema 由 `llm_client` 的 `_oai_tool_schema` / `_anthropic_tool_schema` 转换）。新增工具 = 注册一条 `ToolSpec` + 一个 handler（`async (db, user, args) -> str`），无需改 `execute_tool`；`exposed=False` 的工具模型不可见但 `execute_tool` 仍可调用（如 `get_api_usage_stats`，ER-18 权限边界）。
 - **执行与回填**：每轮消费 `tool_calls` → 逐个 `execute_tool(name, arguments, db, user)` 执行（异常转 `{"error":...}` 结果文本，不中断循环）→ 把 `assistant`（含 `tool_calls`）与 `tool` 消息回填 `messages`，进入下一轮。
 - **事件透传**：向 SSE 透传 `delta` / `tool_call` / `tool_result` / `done` / `error` 事件；`done` 携带 `title`（会话标题候选）与 `usage`。
 - **收尾**：若最后一轮只有工具调用无文本，补一句总结性 `delta`；最终 `yield {"type":"done","title":...}`。

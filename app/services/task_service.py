@@ -1,4 +1,4 @@
-﻿"""任务服务：CRUD / 认领（限额）/ 审核（积分联动）。"""
+"""任务服务：CRUD / 认领（限额）/ 审核（积分联动）。"""
 
 from __future__ import annotations
 

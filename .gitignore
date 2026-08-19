@@ -39,6 +39,8 @@ Desktop.ini
 # 运行时数据 / 备份（由 compose 卷挂载到根级 data/ backups/）
 data/
 backups/
+# 运行时上传文件（用户上传附件，由业务目录存放，不入库）
+uploads/
 
 # Redis 快照（运行时数据；可能含会话态，不入库）
 dump.rdb
