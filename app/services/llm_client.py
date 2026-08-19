@@ -61,7 +61,13 @@ def _anthropic_tool_schema(tool: dict) -> dict:
     }
 
 
-async def _stream_openai(messages, tools, system, overrides: Optional[dict] = None) -> AsyncIterator[dict]:
+async def _stream_openai(
+    messages,
+    tools,
+    system,
+    overrides: Optional[dict] = None,
+    temperature: Optional[float] = None,
+) -> AsyncIterator[dict]:
     overrides = overrides or {}
     base = (overrides.get("base_url") or settings.LLM_BASE_URL or "https://api.openai.com/v1").rstrip("/")
     body: dict[str, Any] = {
@@ -72,6 +78,8 @@ async def _stream_openai(messages, tools, system, overrides: Optional[dict] = No
         # 流式末尾返回 usage（token 计量）
         "stream_options": {"include_usage": True},
     }
+    if temperature is not None:
+        body["temperature"] = temperature
     if tools:
         body["tools"] = [_oai_tool_schema(t) for t in tools]
     headers = {"Authorization": f"Bearer {overrides.get('api_key') or settings.LLM_API_KEY}"}
@@ -187,7 +195,13 @@ def _to_anthropic_messages(messages: list[dict]) -> list[dict]:
     return out
 
 
-async def _stream_anthropic(messages, tools, system, overrides: Optional[dict] = None) -> AsyncIterator[dict]:
+async def _stream_anthropic(
+    messages,
+    tools,
+    system,
+    overrides: Optional[dict] = None,
+    temperature: Optional[float] = None,
+) -> AsyncIterator[dict]:
     overrides = overrides or {}
     url = "https://api.anthropic.com/v1/messages"
     body: dict[str, Any] = {
@@ -196,6 +210,8 @@ async def _stream_anthropic(messages, tools, system, overrides: Optional[dict] =
         "stream": True,
         "max_tokens": settings.LLM_MAX_TOKENS,
     }
+    if temperature is not None:
+        body["temperature"] = temperature
     if system:
         body["system"] = system
     if tools:
@@ -279,14 +295,15 @@ async def stream_chat(
     tools: Optional[list[dict]] = None,
     system: Optional[str] = None,
     overrides: Optional[dict] = None,
+    temperature: Optional[float] = None,
 ) -> AsyncIterator[dict]:
     """统一流式入口：yield 事件 dict。overrides 为用户级配置（> 全局 Settings）。"""
     check_enabled(overrides)
     overrides = overrides or {}
     provider = (overrides.get("provider") or settings.LLM_PROVIDER or "").lower()
     if provider == "anthropic":
-        async for ev in _stream_anthropic(messages, tools, system, overrides):
+        async for ev in _stream_anthropic(messages, tools, system, overrides, temperature):
             yield ev
     else:
-        async for ev in _stream_openai(messages, tools, system, overrides):
+        async for ev in _stream_openai(messages, tools, system, overrides, temperature):
             yield ev

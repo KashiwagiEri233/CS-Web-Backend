@@ -657,7 +657,7 @@ rule-based + LLM 可选的学习助手。SSE 流式对话，支持 OpenAI / Anth
 - **Trajectory 事件日志（融合点 2）**：`/auxilio/chat` 路由在事件循环内将每个事件（`delta` / `tool_call` / `tool_result` / `done` / `error`）append-only 落 `chat_events`（conversation_id / user_id / seq 自增 / event_type / payload JSONB / created_at），best-effort 失败不影响对话；`chat_messages` 保留为对外快照，`chat_events` 用于回放与调试。
 - **llm_client**（`app/services/llm_client.py`）：统一流式入口 `stream_chat()`，按 `provider` 分流 OpenAI 兼容（`/chat/completions`）与 Anthropic（`/v1/messages`）双协议，产出统一事件 dict；`check_enabled()` 在未配置时抛 `LLMConfigError`（上层捕获后降级规则模式）。
 
-### Skills（7 个，`auxilio_agent.TOOL_SCHEMAS`）
+### Skills（7 个，`auxilio_agent.TOOL_SCHEMAS`，由 `TOOL_REGISTRY` 推导）
 
 | Skill | 说明 |
 |---|---|
@@ -668,6 +668,19 @@ rule-based + LLM 可选的学习助手。SSE 流式对话，支持 OpenAI / Anth
 | `search_resources` | 资源库按关键词模糊搜索已审核资源 |
 | `get_llm_usage_stats` | 查询学习助手 LLM 调用统计（次数 / token 消耗） |
 | `get_pomodoro_stats` | 查询用户番茄钟专注统计（总轮数 / 今日分钟） |
+
+### Agent 预设（融合点 3，`auxilio_agent.AGENT_PRESETS`）
+
+预设 = 系统提示词模板 + 工具子集 + temperature，按场景组合（`AgentPreset` 声明式注册）：
+
+| 预设 id | 名称 | 工具子集 | temperature |
+|---|---|---|---|
+| `general` | 通用答疑 | 全部 7 个暴露工具 | 默认 |
+| `exam_sprint` | 考试冲刺 | analyze_learning_profile / get_exam_countdown / search_resources | 0.3 |
+| `resource_finder` | 资源检索 | search_resources / analyze_learning_profile | 0.5 |
+
+- `run_chat(preset_id=...)` 显式指定；缺省按用户首条消息关键词启发式匹配（`match_preset`，考试类 → exam_sprint、资源类 → resource_finder，有序优先），无效 id 视同未指定。
+- 前端与 API 契约零改动（预设解析在服务层），工作台 UI 切换留待契约变更时再落地。
 
 ### 配置
 

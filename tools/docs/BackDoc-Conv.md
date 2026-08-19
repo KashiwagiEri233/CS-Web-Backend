@@ -261,6 +261,7 @@ LLM 相关代码集中在 `app/services/llm_client.py`（客户端）与 `app/se
 
 - **固定轮数**：常量 `MAX_TOOL_ROUNDS = 3`（定义在 `auxilio_agent.py`），`for _round in range(MAX_TOOL_ROUNDS)` 控制工具循环上限，**禁止**改成无上限 `while True`，避免模型失控循环。
 - **工具注册表（声明式）**：可用工具以 `ToolSpec`（name / description / parameters / handler / exposed）在 `TOOL_REGISTRY`（`auxilio_agent.py`）声明式注册，`TOOL_SCHEMAS` 由注册表推导（仅 `exposed=True` 的条目暴露给模型，OpenAI 与 Anthropic 两套 schema 由 `llm_client` 的 `_oai_tool_schema` / `_anthropic_tool_schema` 转换）。新增工具 = 注册一条 `ToolSpec` + 一个 handler（`async (db, user, args) -> str`），无需改 `execute_tool`；`exposed=False` 的工具模型不可见但 `execute_tool` 仍可调用（如 `get_api_usage_stats`，ER-18 权限边界）。
+- **Agent 预设**：场景化配置以 `AgentPreset`（id / name / description / system_prompt_template / tool_ids / temperature）在 `AGENT_PRESETS` 声明式注册（现含 `general` / `exam_sprint` / `resource_finder`）。新增预设 = 注册一条 `AgentPreset`（tool_ids 只能引用 exposed 工具）+ 在 `PRESET_TEMPLATES` 提供模板；`run_chat(preset_id=...)` 显式指定或启发式自动匹配（`match_preset`）。提示词模板占位符（`{current_user}` / `{weak_tags}` / `{rec_count}`）统一经 `build_system_prompt` 填充，用户字段仍走 ER-19 包裹。
 - **执行与回填**：每轮消费 `tool_calls` → 逐个 `execute_tool(name, arguments, db, user)` 执行（异常转 `{"error":...}` 结果文本，不中断循环）→ 把 `assistant`（含 `tool_calls`）与 `tool` 消息回填 `messages`，进入下一轮。
 - **事件透传**：向 SSE 透传 `delta` / `tool_call` / `tool_result` / `done` / `error` 事件；`done` 携带 `title`（会话标题候选）与 `usage`。
 - **收尾**：若最后一轮只有工具调用无文本，补一句总结性 `delta`；最终 `yield {"type":"done","title":...}`。
