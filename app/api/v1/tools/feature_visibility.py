@@ -38,6 +38,7 @@ from app.services.feature_visibility_service import (
     FeatureVisibilityService,
     KNOWN_MODULE_KEYS,
 )
+from app.services.totp_service import TOTPService
 
 router = APIRouter()
 

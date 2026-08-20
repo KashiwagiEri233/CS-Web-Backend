@@ -236,7 +236,7 @@ async def test_registration_create_count_stats_status(integration_db_ready):
                     "form_data": {"qq": "1"},
                 }
             )
-            r2 = await reg_repo.create(
+            await reg_repo.create(
                 {
                     "user_id": u2,
                     "event_id": event.id,

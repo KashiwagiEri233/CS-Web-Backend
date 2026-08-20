@@ -21,7 +21,6 @@ from sqlalchemy import text
 from app.core.security import async_get_password_hash
 from app.database import get_session
 from app.main import create_app
-from app.models.component_registry import ComponentRegistryItem
 from app.models.exam import Exam
 from app.models.resource import Resource
 from app.models.task import Task

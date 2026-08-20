@@ -381,7 +381,7 @@ class EventService:
             if reg.id in existing_codes:
                 skipped += 1
                 continue
-            code = f"{secrets.randbelow(VERIFICATION_CODE_MAX - VERIFICATION_CODE_MIN + 1) + VERIFICATION_CODE_MIN}"
+            code = f"{secrets.randbelow(VERIFICATION_CODE_MAX - VERIFICATION_CODE_MIN + 1) + VERIFICATION_CODE_MIN}"  # noqa: E501
             await self.checkin_repo.create(
                 event_id=event_id,
                 registration_id=reg.id,

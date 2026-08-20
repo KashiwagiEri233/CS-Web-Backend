@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from app.schemas.base import TZModel
-from app.core.constants import COMMUNITY_LIMITS, MENTION_PATTERN
+from app.core.constants import COMMUNITY_LIMITS
 
 # ------------------------------------------------------------------ 社区
 

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession

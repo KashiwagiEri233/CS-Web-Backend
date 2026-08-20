@@ -91,4 +91,7 @@ class ChatEvent(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<ChatEvent(conv={self.conversation_id}, seq={self.seq}, {self.event_type})>"
+        return (
+            f"<ChatEvent(conv={self.conversation_id}, seq={self.seq}, "
+            f"{self.event_type})>"
+        )

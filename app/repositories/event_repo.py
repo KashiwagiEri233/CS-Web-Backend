@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from typing import Optional, Sequence
 
-from sqlalchemy import Integer, func, or_, select, type_coerce, update
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import Integer, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timezone import now_utc

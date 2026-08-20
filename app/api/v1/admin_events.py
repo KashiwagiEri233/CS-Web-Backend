@@ -59,11 +59,12 @@ async def list_all_events(
         )
     items = [event_to_out(e) for e in events]
     total = len(items)
+    page_size = max(total, 1)  # 管理端全量列表不分页
     return {
         "items": items,
         "total": total,
         "page": 1,
-        "page_size": total,
+        "page_size": page_size,
         "total_pages": compute_total_pages(total, page_size),
     }
 

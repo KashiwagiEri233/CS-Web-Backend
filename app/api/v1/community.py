@@ -8,11 +8,9 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
 from fastapi.responses import FileResponse
-from sqlalchemy import func, select, text, type_coerce
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.exceptions import NotFoundException, ValidationException
 from app.core.request_context import get_client_meta
 from app.database import get_db

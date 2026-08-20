@@ -11,7 +11,6 @@ from __future__ import annotations
 
 from typing import Optional
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
@@ -22,7 +21,6 @@ from app.core.exceptions import (
 )
 from app.core.timezone import now_utc
 from app.models.community import CommunityComment
-from app.models.user import User
 from app.repositories.community_repo import (
     CommunityCommentRepository,
     CommunityPostRepository,
@@ -31,7 +29,7 @@ from app.services.community.community_notifications import (
     notify_comment_reply,
     notify_mentions,
 )
-from app.services.community.community_utils import to_author_summary
+from app.services.community.community_utils import load_users_by_ids, to_author_summary
 
 
 class CommentService:

@@ -57,7 +57,7 @@ class BusinessSettings(BaseSettings):
     LLM_TIMEOUT: float = Field(60, gt=0)
     LLM_MAX_TOKENS: int = Field(1024, gt=0)
     # 单日每用户 LLM 调用预算（0 = 不限制），防成本失控。
-    # 单位：千 tokens/日，默认 200 = 20 万 tokens；拦截逻辑在 auxilio_agent.run_chat（llm_usage_logs 按日累加）。
+    # 单位：千 tokens/日，默认 200 = 20 万 tokens；拦截逻辑在 auxilio_agent.run_chat（llm_usage_logs 按日累加）。  # noqa: E501
     LLM_DAILY_BUDGET: int = Field(200, ge=0)
     # 学习助手联网搜索工具开关（融合点 4）：false 时 web_search 工具返回未启用提示。
     # 搜索源为 DuckDuckGo 免费 HTML 接口（无需 API key），结果不可信，经 ER-19 包裹注入。

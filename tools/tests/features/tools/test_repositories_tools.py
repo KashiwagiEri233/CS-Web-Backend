@@ -4,7 +4,8 @@
 - ResourceRepository：CRUD / status·resource_type·submitted_by 过滤 / 分页 / increment_view；
 - TaskRepository：CRUD / status·category 过滤 / 认领（create/get/count_active/list_claims_*）；
 - PointsRepository：流水 / last_balance / list_transactions / leaderboard；
-- ComponentRegistryRepository：item / variant（replace_variants·toggle_variant）/ guide（upsert）。
+- ComponentRegistryRepository：item / variant（replace_variants·toggle_variant）/ guide
+  （upsert）。
 
 注意：
 - Resource.tech_tags 过滤（tools_repo.py:235）与 Exam.tech_tags（tools_repo.py:40）仍是
@@ -61,7 +62,8 @@ async def _make_user(db, sfx: str) -> int:
 async def _cleanup(
     db, uids=None, resource_ids=None, task_ids=None, item_ids=None, exam_ids=None
 ) -> None:
-    """按依赖顺序清场：resources / exams / claims→tasks / variants→guides→items / points→users。"""
+    """按依赖顺序清场：resources / exams / claims→tasks /
+    variants→guides→items / points→users。"""
     if resource_ids:
         await db.execute(delete(Resource).where(Resource.id.in_(resource_ids)))
     if exam_ids:

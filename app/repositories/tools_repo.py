@@ -5,9 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import func, select, type_coerce, update
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects import postgresql
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timezone import now_utc

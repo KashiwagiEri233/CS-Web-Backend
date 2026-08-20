@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any, Awaitable, Callable, MutableMapping, Optional
+from typing import Any, Awaitable, Callable, MutableMapping
 
 from app.core.loguru_logger import get_logger
 

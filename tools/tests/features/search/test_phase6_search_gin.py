@@ -135,7 +135,8 @@ async def test_search_uses_gin_index(integration_db_ready, admin_user):
         plan = await db.execute(
             text(
                 "EXPLAIN SELECT id FROM community_posts "
-                "WHERE search_vector @@ websearch_to_tsquery('simple', 'GIN 索引')".replace(
+                "WHERE search_vector @@ "
+                "websearch_to_tsquery('simple', 'GIN 索引')".replace(
                     "'simple'", f"'{settings.FTS_CONFIG}'"
                 )
             )

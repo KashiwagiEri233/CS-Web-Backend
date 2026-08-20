@@ -22,7 +22,7 @@ from app.models.contribution import ContributionCache
 _GITHUB_CONTRIBUTIONS_URL = "https://github.com/users/{username}/contributions"
 _UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
 
-# <td ... data-date="2026-08-01" data-level="3" ...>...</td>，块内含 tooltip "11 contributions"
+# <td ... data-date="2026-08-01" data-level="3" ...>...</td>，块内含 tooltip "11 contributions"  # noqa: E501
 _TD_RE = re.compile(
     r'<td[^>]*data-date="(\d{4}-\d{2}-\d{2})"[^>]*data-level="\d"[^>]*>(.*?)</td>',
     re.S,
@@ -76,7 +76,10 @@ class ContributionService:
         year: int | None = None,
         force_refresh: bool = False,
     ) -> dict:
-        """获取 GitHub 贡献热力图。返回 {platform, username, year, data, total, streak, fetched_at, stale}。"""
+        """获取 GitHub 贡献热力图。
+
+        返回 {platform, username, year, data, total, streak, fetched_at, stale}。
+        """
         now = now_utc()
         target_year = year or now.year
         username = username.strip().lstrip("@")
@@ -91,7 +94,6 @@ class ContributionService:
             )
         ).scalar_one_or_none()
 
-        stale = False
         fresh_enough = (
             cache is not None
             and (now - cache.fetched_at).total_seconds()
@@ -169,7 +171,8 @@ class ContributionService:
         daily = _parse_contributions(resp.text)
         if not daily:
             raise RuntimeError(
-                "no contribution data parsed (username invalid or page structure changed)"
+                "no contribution data parsed "
+                "(username invalid or page structure changed)"
             )
 
         # 本年数据（页面本身是全年滚动窗口，按目标年份过滤）

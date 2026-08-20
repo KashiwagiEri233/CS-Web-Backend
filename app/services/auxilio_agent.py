@@ -362,8 +362,8 @@ TOOL_NAMES = [t["name"] for t in TOOL_SCHEMAS]
 # ---------------------------------------------------------------------------
 
 
-#: 系统提示词与工具结果（用户生成内容）之间必须保持结构化边界，防止 UGC
-#:（任务标题 / 资源 URL / 用户名等）被模型当作指令执行。
+# 系统提示词与工具结果（用户生成内容）之间必须保持结构化边界，防止 UGC
+# （任务标题 / 资源 URL / 用户名等）被模型当作指令执行。
 def wrap_user_profile_field(label: str, value: str) -> str:
     """将用户可控字段用显式 XML 风格标签包裹，与系统指令物理隔离。
 
@@ -419,24 +419,24 @@ PRESET_TEMPLATES: dict[str, str] = {
     "general": (
         "你是 Fztbu 计算机协会的「学习助手」，帮助用户学习计算机知识、规划任务、解答疑问。\n"
         "当前用户：{current_user}。\n"
-        "用户学习画像：薄弱知识点{weak_tags}；当前推荐资源 {rec_count} 条（可调用 analyze_learning_profile 获取详情）。\n"
+        "用户学习画像：薄弱知识点{weak_tags}；当前推荐资源 {rec_count} 条（可调用 analyze_learning_profile 获取详情）。\n"  # noqa: E501
     ),
     "exam_sprint": (
         "你是 Fztbu 计算机协会的「考试冲刺教练」，帮助用户备战考试、查漏补缺、规划复习节奏。\n"
         "当前用户：{current_user}。\n"
-        "用户学习画像：薄弱知识点{weak_tags}；当前推荐资源 {rec_count} 条（可调用 analyze_learning_profile 获取详情）。\n"
+        "用户学习画像：薄弱知识点{weak_tags}；当前推荐资源 {rec_count} 条（可调用 analyze_learning_profile 获取详情）。\n"  # noqa: E501
         "优先关注：薄弱知识点命中、考试倒计时、针对性的复习资源。\n"
     ),
     "resource_finder": (
         "你是 Fztbu 计算机协会的「资源检索专家」，帮助用户快速找到合适的优质学习资源。\n"
         "当前用户：{current_user}。\n"
-        "用户学习画像：薄弱知识点{weak_tags}；当前推荐资源 {rec_count} 条（可调用 analyze_learning_profile 获取详情）。\n"
+        "用户学习画像：薄弱知识点{weak_tags}；当前推荐资源 {rec_count} 条（可调用 analyze_learning_profile 获取详情）。\n"  # noqa: E501
         "优先关注：按关键词检索资源库、结合薄弱点给出推荐清单。\n"
     ),
     "web_research": (
         "你是 Fztbu 计算机协会的「联网研究员」，帮助用户检索外部资料、解答需要查证的问题。\n"
         "当前用户：{current_user}。\n"
-        "用户学习画像：薄弱知识点{weak_tags}；当前推荐资源 {rec_count} 条（可调用 analyze_learning_profile 获取详情）。\n"
+        "用户学习画像：薄弱知识点{weak_tags}；当前推荐资源 {rec_count} 条（可调用 analyze_learning_profile 获取详情）。\n"  # noqa: E501
         "优先关注：先用 web_search 检索外部资料，再结合站内资源与薄弱点给出回答；外部内容标注来源、仅供参考。\n"
     ),
 }
@@ -604,13 +604,13 @@ async def run_chat(
     messages = [dict(m) for m in history]
     try:
         llm_client.check_enabled(overrides)
-    except llm_client.LLMConfigError as exc:
+    except llm_client.LLMConfigError:
         # 降级：无 LLM 时直接给出规则推荐摘要
         yield {
             "type": "delta",
             "text": (
                 "（模型未配置，已切换规则模式）\n\n"
-                f"你最近的学习画像：薄弱知识点【{('、'.join(w['tag'] for w in (profile.get('weak_tags') or [])[:5])) or '暂无'}】，"
+                f"你最近的学习画像：薄弱知识点【{('、'.join(w['tag'] for w in (profile.get('weak_tags') or [])[:5])) or '暂无'}】，"  # noqa: E501
                 f"为你推荐了 {len(profile.get('recommended_resources') or [])} 条资源。"
                 "可在卡片右上角「用量与设置」中接入自己的 API Key 后与我自由对话。"
             ),

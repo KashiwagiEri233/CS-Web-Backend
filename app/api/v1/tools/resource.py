@@ -8,7 +8,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, File, Request, UploadFile
 
-from app.core.exceptions import NotFoundException, ValidationException
+from app.core.exceptions import ValidationException
 from app.dependencies import get_current_active_user
 from app.dependencies_services import get_resource_service
 from app.middleware.rbac import require_permission

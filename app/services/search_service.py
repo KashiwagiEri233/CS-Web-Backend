@@ -15,11 +15,9 @@ from __future__ import annotations
 import asyncio
 from typing import Optional
 
-from sqlalchemy import func, select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
-from app.models.community import CommunityPost
 from app.models.user import User
 from app.repositories.auxilio_tool_repo import AuxilioToolRepository
 from app.services.announcement_service import AnnouncementService

@@ -14,6 +14,7 @@ from app.schemas.event import (
     EventOut,
     EventRegistrationInput,
     EventRegistrationOut,
+    event_to_out,
 )
 from app.schemas.pagination import PaginatedResponse, PaginationParams
 from app.services.event.event_service import EventService

@@ -7,7 +7,6 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, Request
 
 from app.core.request_context import get_client_meta
-from app.dependencies import get_current_active_user
 from app.dependencies_services import get_audit_service, get_component_registry_service
 from app.middleware.rbac import require_permission
 from app.models.user import User

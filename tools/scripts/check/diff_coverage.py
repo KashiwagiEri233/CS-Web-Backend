@@ -135,7 +135,7 @@ def main(argv: list[str] | None = None) -> None:
     report: list[tuple[str, int, int, float]] = []
     for file, lines in sorted(added.items()):
         cov_set = cov.get(file)
-        hit = len([l for l in lines if cov_set is not None and l in cov_set])
+        hit = len([ln for ln in lines if cov_set is not None and ln in cov_set])
         total += len(lines)
         covered += hit
         pct = (hit / len(lines)) * 100 if lines else 100.0

@@ -7,8 +7,6 @@
 API 契约不变（api/v1/community.py 端点 path/method/响应结构保持）。
 """
 
-from typing import Any, Optional
-
 from sqlalchemy import func, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
