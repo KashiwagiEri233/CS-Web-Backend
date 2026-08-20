@@ -11,7 +11,7 @@ import asyncio
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from typing import Optional
+from typing import Optional, Union
 
 from app.core.config import settings
 from app.core.loguru_logger import get_logger
@@ -40,8 +40,9 @@ def _smtp_transport() -> Optional[smtplib.SMTP]:
 
 def _build_message(
     to: str, subject: str, text: str, html: Optional[str] = None
-) -> MIMEText | MIMEMultipart:
+) -> Union[MIMEText, MIMEMultipart]:
     """构造待发送的 MIME 消息（纯文本，或纯文本 + HTML 的 alternative）。"""
+    msg: Union[MIMEText, MIMEMultipart]
     if html is None:
         msg = MIMEText(text, "plain", "utf-8")
     else:
