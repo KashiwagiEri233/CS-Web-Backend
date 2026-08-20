@@ -545,7 +545,7 @@ async def _user_llm_overrides(db: AsyncSession, user: User) -> dict:
         "provider": cfg.provider or "openai",
         "api_key": api_key,
         "base_url": cfg.base_url or None,
-        "model": cfg.model or "gpt-4o-mini",
+        "model": cfg.model or settings.LLM_MODEL,
     }
 
 

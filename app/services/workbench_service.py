@@ -12,6 +12,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.timezone import now_utc
 from app.core.totp_encryption import encrypt_secret
 from app.models.focus import FocusSession
@@ -63,7 +64,7 @@ class WorkbenchService:
             self.db.add(cfg)
 
         cfg.provider = provider
-        cfg.model = model or "gpt-4o-mini"
+        cfg.model = model or settings.LLM_MODEL
         cfg.base_url = (base_url or "").strip() or None
         cfg.web_search_enabled = web_search_enabled
         cfg.trajectory_enabled = trajectory_enabled

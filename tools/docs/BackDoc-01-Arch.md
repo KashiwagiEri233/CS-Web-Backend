@@ -666,7 +666,7 @@ rule-based + LLM 可选的学习助手。SSE 流式对话，支持 OpenAI / Anth
 | `get_exam_countdown` | 查询最近进行中考试及其截止倒计时 |
 | `list_tasks` | 列出已发布协会任务（标题 / 分类 / 积分 / 状态），最多 10 条 |
 | `list_my_claims` | 列出当前用户已认领的任务 |
-| `search_resources` | 资源库按关键词模糊搜索已审核资源 |
+| `search_resources` | 资源库按标题/描述模糊搜索已审核资源（统一实现：全站搜索与学习助手共用 `AuxilioToolRepository.search_resources`，波次 A1） |
 | `get_llm_usage_stats` | 查询学习助手 LLM 调用统计（次数 / token 消耗） |
 | `get_pomodoro_stats` | 查询用户番茄钟专注统计（总轮数 / 今日分钟） |
 | `web_search` | 联网搜索外部资料（DuckDuckGo 免费接口，无需 key；`WEB_SEARCH_ENABLED` 可关；结果经 ER-19 包裹，不可信） |

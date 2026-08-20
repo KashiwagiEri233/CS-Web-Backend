@@ -14,6 +14,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core.config import settings
 from app.core.timezone import now_utc
 from app.database import Base
 
@@ -31,7 +32,7 @@ class LlmConfig(Base):
     provider: Mapped[str] = mapped_column(String(20), nullable=False, default="openai")
     api_key_encrypted: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     base_url: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
-    model: Mapped[str] = mapped_column(String(120), nullable=False, default="gpt-4o-mini")
+    model: Mapped[str] = mapped_column(String(120), nullable=False, default=settings.LLM_MODEL)
     #: 用户级功能开关（默认开；false 时对应功能对该用户停用）
     web_search_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     trajectory_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

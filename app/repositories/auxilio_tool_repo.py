@@ -10,7 +10,7 @@ from typing import Optional
 
 from datetime import datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timezone import local_to_utc, now_local, now_utc
@@ -75,14 +75,19 @@ class AuxilioToolRepository:
         return list(rows.tuples().all())
 
     async def search_resources(self, keyword: str, limit: int = 5) -> list[Resource]:
-        """按标题模糊搜索已审核的学习资源（按浏览量倒序）。"""
+        """按标题或描述模糊搜索已审核的学习资源（按浏览量倒序）。
+
+        统一实现（重复实现治理波次 A1）：全站搜索 search_service 与学习助手
+        web_search/search_resources 工具均透传本方法，保证同一关键词结果一致。
+        """
         # 转义 LIKE 通配符，避免用户输入中的 % / _ 被当作模式
         escaped = keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        like = f"%{escaped}%"
         rows = await self.db.execute(
             select(Resource)
             .where(
                 Resource.status == "approved",
-                Resource.title.ilike(f"%{escaped}%", escape="\\"),
+                or_(Resource.title.ilike(like, escape="\\"), Resource.description.ilike(like, escape="\\")),
             )
             .order_by(Resource.view_count.desc())
             .limit(limit)

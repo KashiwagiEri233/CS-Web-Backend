@@ -367,7 +367,7 @@ class LlmConfigIn(BaseModel):
     provider: str = Field(default="openai", pattern="^(openai|anthropic)$")
     api_key: Optional[str] = Field(default=None, max_length=300)
     base_url: Optional[str] = Field(default=None, max_length=300)
-    model: str = Field(default="gpt-4o-mini", max_length=120)
+    model: str = Field(default=settings.LLM_MODEL, max_length=120)
     #: 用户级功能开关（前端设置面板）
     web_search_enabled: bool = True
     trajectory_enabled: bool = True
