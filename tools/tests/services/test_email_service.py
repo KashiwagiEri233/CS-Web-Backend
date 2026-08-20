@@ -181,4 +181,4 @@ async def test_send_verification_code_calls_send_mail_with_subject_and_code():
     for digit in "123456":
         assert digit in html
     assert "${" not in html
-    assert 'Content-Type' not in html
+    assert "Content-Type" not in html
