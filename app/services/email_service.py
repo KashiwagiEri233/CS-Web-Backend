@@ -75,7 +75,9 @@ def _send_sync(to: str, subject: str, text: str, html: Optional[str] = None) -> 
             pass
 
 
-async def send_mail(to: str, subject: str, text: str, html: Optional[str] = None) -> None:
+async def send_mail(
+    to: str, subject: str, text: str, html: Optional[str] = None
+) -> None:
     """发送邮件（异步封装）。SMTP_HOST 为空时仅记日志。
 
     QUEUE_ENABLED=True 时经 arq 队列异步发送（含自动重试）；
