@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.constants import WORKBENCH_MAX_DURATION_SECONDS
-from app.core.timezone import local_to_utc, now_local
+from app.core.timezone import now_local, local_day_start_utc
 from app.dependencies import get_current_active_user
 from app.dependencies import get_db
 from app.dependencies_services import get_contribution_service, get_workbench_service
@@ -50,12 +50,6 @@ def _local_today() -> date:
     """配置时区的今天（替代 ``date.today()``，避免服务器本地时区漂移）。"""
     return now_local().date()
 
-
-def _local_day_start_utc(d: date) -> datetime:
-    """配置时区某日的零点，转换为 UTC aware（存储层比较口径）。"""
-    start = local_to_utc(datetime.combine(d, datetime.min.time()))
-    assert start is not None  # 入参恒非 None
-    return start
 
 
 @router.get("/contributions/github")
@@ -95,7 +89,7 @@ async def get_api_usage_stats(
 ):
     """API 调用统计：今日计数 + 近 N 天趋势 + endpoint 分布。"""
     today = _local_today()
-    since = _local_day_start_utc(today - timedelta(days=days - 1))
+    since = local_day_start_utc(today - timedelta(days=days - 1))
 
     # 近 N 天按日聚合（按配置时区取日，与 today/since 口径一致）
     daily_rows = (
@@ -122,7 +116,7 @@ async def get_api_usage_stats(
     ).all()
 
     # 今日统计
-    today_start = _local_day_start_utc(today)
+    today_start = local_day_start_utc(today)
     today_total = (
         await db.execute(
             select(func.count()).where(ApiCallLog.created_at >= today_start)
@@ -190,7 +184,7 @@ async def get_pomodoro_stats(
 ):
     """番茄钟专注统计：总轮数 / 总时长 / 今日 / 近 N 天分布（喂给学习助手 Skill）。"""
     today = _local_today()
-    since = _local_day_start_utc(today - timedelta(days=days - 1))
+    since = local_day_start_utc(today - timedelta(days=days - 1))
 
     total_sessions = (
         await db.execute(
@@ -208,7 +202,7 @@ async def get_pomodoro_stats(
             )
         )
     ).scalar_one()
-    today_start = _local_day_start_utc(today)
+    today_start = local_day_start_utc(today)
     today_minutes = (
         await db.execute(
             select(func.coalesce(func.sum(FocusSession.duration_seconds), 0) / 60.0).where(
@@ -263,7 +257,7 @@ async def get_llm_usage_stats(
 ):
     """学习助手 LLM 用量：调用次数 / token 消耗 / 近 N 天趋势 / 模型分布。"""
     today = _local_today()
-    since = _local_day_start_utc(today - timedelta(days=days - 1))
+    since = local_day_start_utc(today - timedelta(days=days - 1))
 
     # 总计
     total_calls = (
@@ -280,7 +274,7 @@ async def get_llm_usage_stats(
     ).scalar_one()
 
     # 今日
-    today_start = _local_day_start_utc(today)
+    today_start = local_day_start_utc(today)
     today_calls = (
         await db.execute(
             select(func.count()).where(

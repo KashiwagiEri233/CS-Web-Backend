@@ -20,16 +20,9 @@ from app.middleware.rbac import require_admin_2fa, require_permission
 from app.models.user import User
 from app.schemas.auth import UserOut
 from app.schemas.user import AdminUserListOut, AdminUserOut, AdminUserUpdate
-from app.services.user.user_service import UserService
+from app.services.user.user_service import UserService, to_admin_out
 
 router = APIRouter(dependencies=[Depends(require_admin_2fa())])
-
-
-def _to_admin_out(user: User) -> dict:
-    """UserOut + roles（前端管理员视图需要角色列表）。"""
-    base = UserOut.model_validate(user).model_dump()
-    base["roles"] = [r.name for r in user.roles]
-    return base
 
 
 def _is_admin(user: User) -> bool:
@@ -75,7 +68,7 @@ async def update_user_admin(
     user = await user_service.update_user_admin(
         current_user, user_id, body, client_meta=get_client_meta(request)
     )
-    return _to_admin_out(user)
+    return to_admin_out(user)
 
 
 @router.post("/{user_id}/disable", response_model=AdminUserOut)
@@ -89,7 +82,7 @@ async def disable_user(
     user = await user_service.set_user_active_admin(
         current_user, user_id, active=False, client_meta=get_client_meta(request)
     )
-    return _to_admin_out(user)
+    return to_admin_out(user)
 
 
 @router.post("/{user_id}/enable", response_model=AdminUserOut)
@@ -103,7 +96,7 @@ async def enable_user(
     user = await user_service.set_user_active_admin(
         current_user, user_id, active=True, client_meta=get_client_meta(request)
     )
-    return _to_admin_out(user)
+    return to_admin_out(user)
 
 
 @router.post("/{user_id}/reset-password-default")

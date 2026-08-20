@@ -55,6 +55,13 @@ _DATA_DIR = Path("data")
 _AVATARS_DIR = _DATA_DIR / "avatars"
 
 
+def to_admin_out(user: User) -> dict:
+    """UserOut + roles（前端管理员视图需要角色列表；admin_users 路由与 user_service 共用，波次 B2 收敛）。"""
+    base = UserOut.model_validate(user).model_dump()
+    base["roles"] = [r.name for r in user.roles]
+    return base
+
+
 class UserService:
     """用户管理服务（CRUD）。"""
 
@@ -212,13 +219,8 @@ class UserService:
         if role != "all":
             users = [u for u in users if role in {r.name for r in u.roles}]
 
-        def _admin_out(u: User) -> dict:
-            base = UserOut.model_validate(u).model_dump()
-            base["roles"] = [r.name for r in u.roles]
-            return base
-
         return {
-            "users": [_admin_out(u) for u in users],
+            "users": [to_admin_out(u) for u in users],
             "total": total,
             "page": page,
             "page_size": page_size,
