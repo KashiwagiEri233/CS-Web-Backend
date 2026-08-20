@@ -25,6 +25,7 @@ from app.repositories.auxilio_tool_repo import AuxilioToolRepository
 from app.services.announcement_service import AnnouncementService
 from app.services.community.community_post import PostService
 from app.services.event.event_service import EventService
+from app.core.query_helpers import fts_condition
 
 # 支持的搜索范围（scope 参数合法值；scope=all 时全部启用）
 SCOPES = ("events", "community", "tools", "announcements", "users")
@@ -38,6 +39,23 @@ def _truncate(value: Optional[str], max_len: int = _SUBTITLE_MAX) -> str:
         return ""
     value = value.replace("\n", " ").strip()
     return value if len(value) <= max_len else value[: max_len - 1] + "…"
+
+
+def _match_text(q: str, *texts: Optional[str]) -> bool:
+    """关键词是否命中任一文本（Python 端小数据集过滤，波次 B2b 收敛）。"""
+    ql = q.lower()
+    return any(ql in (t or "").lower() for t in texts)
+
+
+def _item(type_: str, id_: object, title: str, subtitle: Optional[str], url: str) -> dict:
+    """统一 SearchResultItem 构造（波次 B2b 收敛 5 处重复组装）。"""
+    return {
+        "type": type_,
+        "id": id_,
+        "title": title,
+        "subtitle": _truncate(subtitle),
+        "url": url,
+    }
 
 
 class SearchService:
@@ -82,53 +100,29 @@ class SearchService:
     async def _search_events(self, q: str, limit: int) -> dict:
         service = EventService(self.db)
         events, total = await service.list_events(search=q, limit=limit)
-        items = [
-            {
-                "type": "event",
-                "id": e.id,
-                "title": e.title,
-                "subtitle": _truncate(e.description),
-                "url": "/events",
-            }
-            for e in events
-        ]
+        items = [_item("event", e.id, e.title, e.description, "/events") for e in events]
         return {"items": items, "total": total}
 
     async def _search_community(self, q: str, limit: int) -> dict:
         service = PostService(self.db)
         posts, total = await service.list_posts(search=q, limit=limit)
         items = [
-            {
-                "type": "post",
-                "id": p.id,
-                "title": p.title,
-                "subtitle": _truncate(p.excerpt or p.content_markdown),
-                "url": f"/community/{p.id}",
-            }
+            _item("post", p.id, p.title, p.excerpt or p.content_markdown, f"/community/{p.id}")
             for p in posts
         ]
         return {"items": items, "total": total}
 
     async def _search_users(self, q: str, limit: int) -> dict:
         """用户检索：复用 User.search_vector 全文检索（与 community/members 同源）。"""
-        ts_query = func.websearch_to_tsquery(
-            text(f"'{settings.FTS_CONFIG}'"), q
-        )
         stmt = (
             select(User)
-            .where(User.deleted_at.is_(None), User.search_vector.op("@@")(ts_query))
+            .where(User.deleted_at.is_(None), fts_condition(User, q))
             .order_by(User.created_at.desc())
             .limit(limit)
         )
         users = (await self.db.scalars(stmt)).all()
         items = [
-            {
-                "type": "user",
-                "id": u.id,
-                "title": u.display_name or u.username,
-                "subtitle": _truncate(u.bio),
-                "url": f"/users/{u.id}",
-            }
+            _item("user", u.id, u.display_name or u.username, u.bio, f"/users/{u.id}")
             for u in users
         ]
         return {"items": items, "total": len(users)}
@@ -137,22 +131,8 @@ class SearchService:
         """公告：生效列表数据量小，Python 端按 title/content 过滤。"""
         service = AnnouncementService(self.db)
         announcements = await service.list_active()
-        ql = q.lower()
-        matched = [
-            a
-            for a in announcements
-            if ql in (a.title or "").lower() or ql in (a.content or "").lower()
-        ]
-        items = [
-            {
-                "type": "announcement",
-                "id": a.id,
-                "title": a.title,
-                "subtitle": _truncate(a.content),
-                "url": "",
-            }
-            for a in matched[:limit]
-        ]
+        matched = [a for a in announcements if _match_text(q, a.title, a.content)]
+        items = [_item("announcement", a.id, a.title, a.content, "") for a in matched[:limit]]
         return {"items": items, "total": len(matched)}
 
     async def _search_resources(self, q: str, limit: int) -> dict:
@@ -162,14 +142,5 @@ class SearchService:
         保证同一关键词全站搜索与学习助手结果一致；不再受 100 条内存过滤上限。
         """
         rows = await AuxilioToolRepository(self.db).search_resources(q, limit=limit)
-        items = [
-            {
-                "type": "resource",
-                "id": r.id,
-                "title": r.title,
-                "subtitle": _truncate(r.description),
-                "url": "/tools",
-            }
-            for r in rows
-        ]
+        items = [_item("resource", r.id, r.title, r.description, "/tools") for r in rows]
         return {"items": items, "total": len(items)}

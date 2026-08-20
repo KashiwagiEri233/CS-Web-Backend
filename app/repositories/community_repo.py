@@ -28,6 +28,8 @@ from app.models.community import (
 )
 from app.models.user import User
 from app.repositories.base import paginate
+from app.core.query_helpers import fts_condition
+from app.core.query_helpers import jsonb_contains
 
 
 class CommunityCategoryRepository:
@@ -114,9 +116,7 @@ class CommunityPostRepository:
             # 注意：tags 列类型为 JSON().with_variant(JSONB)，ColumnElement.contains
             # 会退化成字符串 LIKE（运行时报 invalid input syntax for type json）；
             # 用 type_coerce 显式按 JSONB 比较，走 @> 包含（2026-08-10 回归修复）。
-            conditions.append(
-                type_coerce(CommunityPost.tags, JSONB).contains([tag.strip()])
-            )
+            conditions.append(jsonb_contains(CommunityPost.tags, [tag.strip()]))
         if series_id:
             conditions.append(CommunityPost.series_id == series_id)
         if author_id:
@@ -125,10 +125,7 @@ class CommunityPostRepository:
             conditions.append(CommunityPost.author_id.in_(following_ids))
         if search and search.strip():
             # 全文检索：search_vector @@ websearch_to_tsquery（GIN 索引加速，AND 语义）
-            ts_query = func.websearch_to_tsquery(
-                text(f"'{settings.FTS_CONFIG}'"), search.strip()
-            )
-            conditions.append(CommunityPost.search_vector.op("@@")(ts_query))
+            conditions.append(fts_condition(CommunityPost, search))
 
         total = int(
             (

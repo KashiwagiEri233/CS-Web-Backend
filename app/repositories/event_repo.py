@@ -13,6 +13,7 @@ from app.models.event import Event, EventCheckin, EventRegistration
 from app.models.setting import Setting
 from app.repositories.base import dml_rowcount
 from app.repositories.base import paginate
+from app.core.query_helpers import jsonb_contains
 
 
 class EventRepository:
@@ -39,9 +40,7 @@ class EventRepository:
             # （Variant），ColumnElement.contains 会退化成通用字符串 LIKE（编译为
             # `col LIKE '%' || $n::JSONB || '%'`），实际调用抛 invalid input syntax
             # for type json。type_coerce(..., JSONB).contains([tag]) 走 JSONB `@>`。
-            conditions.append(
-                type_coerce(Event.tags, JSONB).contains([tag.strip()])
-            )
+            conditions.append(jsonb_contains(Event.tags, [tag.strip()]))
 
         total = int(
             (

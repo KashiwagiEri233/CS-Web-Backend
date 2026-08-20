@@ -39,6 +39,8 @@ from app.services.community.community_post import PostService
 from app.services.community.community_report import ReportService
 from app.services.community.community_series import SeriesService
 from app.utils.image_validate import is_valid_image_mime
+from app.core.query_helpers import fts_condition
+from app.core.query_helpers import jsonb_contains
 
 router = APIRouter()
 
@@ -137,13 +139,10 @@ async def list_members(
         # ER-23 回归修复：tech_tags 列类型为 JSON().with_variant(JSONB)，
         # ColumnElement.contains 会退化成字符串 LIKE（运行时报错）；用 type_coerce
         # 显式按 JSONB 比较，走 @> 包含（2026-08-10，与 community_repo.py 同源修复）。
-        conds.append(type_coerce(User.tech_tags, JSONB).contains([tag]))
+        conds.append(jsonb_contains(User.tech_tags, [tag]))
     if search:
         # 全文检索：search_vector @@ websearch_to_tsquery（GIN 索引加速）
-        ts_query = func.websearch_to_tsquery(
-            text(f"'{settings.FTS_CONFIG}'"), search.strip()
-        )
-        conds.append(User.search_vector.op("@@")(ts_query))
+        conds.append(fts_condition(User, search))
 
     # 活跃用户需关联发帖数；普通排序可直接查用户
     base = select(User).where(*conds)

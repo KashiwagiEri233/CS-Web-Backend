@@ -193,15 +193,7 @@ class CommentService:
     async def _load_author_summaries(self, comments: list[CommunityComment]) -> None:
         if not comments:
             return
-        author_ids = {c.author_id for c in comments}
-        users = {
-            u.id: u
-            for u in (
-                await self.db.execute(select(User).where(User.id.in_(author_ids)))
-            )
-            .scalars()
-            .all()
-        }
+        users = await load_users_by_ids(self.db, (c.author_id for c in comments))
         for comment in comments:
             user = users.get(comment.author_id)
             setattr(comment, "author", to_author_summary(user) if user else None)
