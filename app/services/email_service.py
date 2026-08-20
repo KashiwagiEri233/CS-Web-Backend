@@ -40,7 +40,7 @@ def _smtp_transport() -> Optional[smtplib.SMTP]:
 
 def _build_message(
     to: str, subject: str, text: str, html: Optional[str] = None
-) -> MIMEText:
+) -> MIMEText | MIMEMultipart:
     """构造待发送的 MIME 消息（纯文本，或纯文本 + HTML 的 alternative）。"""
     if html is None:
         msg = MIMEText(text, "plain", "utf-8")
