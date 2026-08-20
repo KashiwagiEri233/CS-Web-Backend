@@ -1,7 +1,7 @@
 # 后端编码规范（BackDoc-03-Conv）
 
 > 更新人：3yearsZ
-> 最后更新：2026-08-20（版本基线更新至 1.0.1；此前 v0.9.8：补充 ASGI 中间件、LLM 双协议客户端与无 key 降级、Agent 工具循环、后台 asyncio 任务、camelCase 响应、迁移命名/head 等约定）
+> 最后更新：2026-08-20（版本基线 1.0.1）
 > 关联：通用工程规范见根 [`RootDoc-EngConv.md`](../../../docs/RootDoc-EngConv.md)；扩展约定与项目定位见 `../AGENTS.md`；架构见 [BackDoc-01-Arch.md](BackDoc-01-Arch.md)
 
 本项目的编码规范、目录组织与通用约定。**所有贡献者（含 AI Agent）在写代码前必须先读本文档**。
