@@ -258,9 +258,9 @@ Model 层  contribution_cache / api_call_logs / conversations / chat_messages /
 | `chat_events` | `ChatEvent` | conversation_id, user_id, seq, event_type, payload(JSONB), created_at | auxilio API（Trajectory 事件流，append-only） |
 | `focus_sessions` | `FocusSession` | user_id, duration_seconds, phase, sound_source, started_at | workbench POST /focus-sessions |
 | `llm_usage_logs` | `LlmUsageLog` | user_id, provider, model, prompt/completion/total_tokens, latency_ms, status | auxilio API（流式结束后） |
-| `llm_configs` | `LlmConfig` | user_id(PK), provider, api_key_encrypted, base_url, model, updated_at | workbench PUT /llm-config |
+| `llm_configs` | `LlmConfig` | user_id(PK), provider, api_key_encrypted, base_url, model, web_search_enabled, trajectory_enabled, updated_at | workbench PUT /llm-config |
 
-迁移链（Alembic，当前 head = `d4e5f6a7b8c9`）：
+迁移链（Alembic，当前 head = `e5f6a7b8c9d0`）：
 
 ```
 a3b4c5d6e7f8 (chinese_fts_zhparser)

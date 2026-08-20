@@ -368,6 +368,9 @@ class LlmConfigIn(BaseModel):
     api_key: Optional[str] = Field(default=None, max_length=300)
     base_url: Optional[str] = Field(default=None, max_length=300)
     model: str = Field(default="gpt-4o-mini", max_length=120)
+    #: 用户级功能开关（前端设置面板）
+    web_search_enabled: bool = True
+    trajectory_enabled: bool = True
 
 
 @router.get("/llm-config")
@@ -382,13 +385,15 @@ async def get_llm_config(
         await db.execute(select(LlmConfig).where(LlmConfig.user_id == user.id))
     ).scalar_one_or_none()
     if cfg is None:
-        return {"ok": True, "configured": False}
+        return {"ok": True, "configured": False, "webSearchEnabled": True, "trajectoryEnabled": True}
     return {
         "ok": True,
         "configured": bool(cfg.api_key_encrypted),
         "provider": cfg.provider,
         "baseUrl": cfg.base_url,
         "model": cfg.model,
+        "webSearchEnabled": cfg.web_search_enabled,
+        "trajectoryEnabled": cfg.trajectory_enabled,
         # 掩码回显（前 4 后 4），便于前端感知已配置
         "apiKeyMasked": _mask_secret(cfg.api_key_encrypted),
     }
@@ -421,4 +426,6 @@ async def update_llm_config(
         payload.model,
         payload.base_url,
         payload.api_key,
+        payload.web_search_enabled,
+        payload.trajectory_enabled,
     )

@@ -170,6 +170,20 @@ _WEB_SEARCH_MAX_RESULTS = 10
 _WEB_SEARCH_MAX_SNIPPET = 200
 
 
+async def user_feature_flag(db: AsyncSession, user_id: int, column: str) -> bool:
+    """读取用户级功能开关（llm_configs 列）；无配置/无记录时默认开（与旧行为一致）。"""
+    if db is None:
+        return True
+    from app.models.llm_config import LlmConfig
+
+    val = (
+        await db.execute(
+            select(getattr(LlmConfig, column)).where(LlmConfig.user_id == user_id)
+        )
+    ).scalar_one_or_none()
+    return True if val is None else bool(val)
+
+
 def _decode_ddg_href(href: str) -> str:
     """解码 DDG 重定向链接（/l/?uddg=<encoded>&rut=...）为真实 URL。"""
     if "uddg=" in href:
@@ -213,6 +227,11 @@ async def _handle_web_search(db: AsyncSession, user: User, args: dict) -> str:
     if not settings.WEB_SEARCH_ENABLED:
         return json.dumps(
             {"error": "web search disabled", "note": "管理员已关闭联网搜索（WEB_SEARCH_ENABLED=False）"},
+            ensure_ascii=False,
+        )
+    if user is not None and not await user_feature_flag(db, user.id, "web_search_enabled"):
+        return json.dumps(
+            {"error": "web search disabled", "note": "你已在设置中关闭联网搜索"},
             ensure_ascii=False,
         )
     query = str(args.get("query", "")).strip()

@@ -88,24 +88,31 @@ async def chat(
         new_title: Optional[str] = None
         usage: Optional[dict] = None
         event_seq = 0  # Trajectory 事件序号（对话内自增）
+        # 用户级 Trajectory 开关（llm_configs.trajectory_enabled；默认开）
+        trajectory_on = True
+        try:
+            trajectory_on = await auxilio_agent.user_feature_flag(db, user.id, "trajectory_enabled")
+        except Exception:  # noqa: BLE001 - 开关读取失败按默认开处理
+            trajectory_on = True
         started = now_utc()
         try:
             async for ev in auxilio_agent.run_chat(db, user, history, preset_id=req.preset_id):
                 # Trajectory 事件落库（融合点 2，append-only，best-effort 不影响对话）
-                event_seq += 1
-                try:
-                    db.add(
-                        ChatEvent(
-                            conversation_id=conv.id,
-                            user_id=user.id,
-                            seq=event_seq,
-                            event_type=str(ev.get("type", "")),
-                            payload=ev,
+                if trajectory_on:
+                    event_seq += 1
+                    try:
+                        db.add(
+                            ChatEvent(
+                                conversation_id=conv.id,
+                                user_id=user.id,
+                                seq=event_seq,
+                                event_type=str(ev.get("type", "")),
+                                payload=ev,
+                            )
                         )
-                    )
-                    await db.commit()
-                except Exception:  # noqa: BLE001 - 事件落库失败不影响对话
-                    await db.rollback()
+                        await db.commit()
+                    except Exception:  # noqa: BLE001 - 事件落库失败不影响对话
+                        await db.rollback()
                 if ev.get("type") == "delta":
                     assistant_text.append(ev.get("text", ""))
                 elif ev.get("type") == "tool_call":
