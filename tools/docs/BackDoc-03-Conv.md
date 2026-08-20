@@ -8,7 +8,7 @@
 
 > 框架无关的通用工程规范（命名 / DRY / 圈复杂度 / 错误处理 / 安全 / 配置 / 测试 / Git）已提炼到根仓库 `../../../docs/RootDoc-EngConv.md`，本文档侧重 Python/FastAPI 强相关的分层、会话、迁移等约定。
 > 项目级扩展约定（如何加模块、中心注册点、Alembic 迁移）、项目定位与硬性禁止项见 `../AGENTS.md`。
-> **约定类文档边界**：后端专项约定以本文档为权威；前端专项见 `CS-Web-Frontend/tools/docs/FrontDoc-01-Arch.md`；`docs/Onboarding.md` 附录 A 为新人聚合摘要（非权威），细则指回本文件与 RootDoc-EngConv。
+> **约定类文档边界**：专项权威与所有权矩阵见 `docs/DocGovernance.md` §2；通用规范见根 `RootDoc-EngConv.md`（细则指回权威文件）。
 
 > 文档优先级：场景内具体指令 > `../AGENTS.md` > 本文件 > 通用工作流。
 
