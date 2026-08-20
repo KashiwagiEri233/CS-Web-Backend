@@ -37,8 +37,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     return p.parse_args(argv)
 
 
-def parse_coverage_xml(xml_path: str, src: str) -> dict[str, set[int]]:
-    """coverage.xml → {仓库相对路径: 已覆盖行号集合}。
+def parse_coverage_xml(xml_path: str, src: str) -> dict[str, tuple[set[int], set[int]]]:
+    """coverage.xml → {仓库相对路径: (可测行号集合, 已覆盖行号集合)}。
 
     coverage.py 的 xml 报告 filename 相对 ``source`` 根（本仓为 app/），
     git diff 路径是 ``app/...`` 仓库相对形式——此处统一归一到后者。
@@ -49,7 +49,7 @@ def parse_coverage_xml(xml_path: str, src: str) -> dict[str, set[int]]:
         )
     root = ET.parse(xml_path).getroot()
     cwd = str(Path.cwd())
-    cov: dict[str, set[int]] = {}
+    cov: dict[str, tuple[set[int], set[int]]] = {}
     for cls in root.iter("class"):
         filename = cls.get("filename") or ""
         if not filename:
@@ -61,12 +61,13 @@ def parse_coverage_xml(xml_path: str, src: str) -> dict[str, set[int]]:
         # 相对 source 根（core/constants.py）→ 仓库相对（app/core/constants.py）
         if not filename.startswith(src + "/"):
             filename = f"{src}/{filename}"
+        measured = {int(line.get("number")) for line in cls.iter("line")}
         covered = {
             int(line.get("number"))
             for line in cls.iter("line")
             if int(line.get("hits") or 0) > 0
         }
-        cov[filename] = covered
+        cov[filename] = (measured, covered)
     return cov
 
 
@@ -106,6 +107,9 @@ def get_added_lines(base: str, src: str) -> dict[str, list[int]]:
                 continue
             if p.startswith("b/"):
                 p = p[2:]
+            if not p.endswith(".py"):
+                cur_lines = None
+                continue
             cur_lines = []
             added[p] = cur_lines
         elif line.startswith("@@"):
@@ -134,12 +138,20 @@ def main(argv: list[str] | None = None) -> None:
     covered = 0
     report: list[tuple[str, int, int, float]] = []
     for file, lines in sorted(added.items()):
-        cov_set = cov.get(file)
-        hit = len([ln for ln in lines if cov_set is not None and ln in cov_set])
-        total += len(lines)
+        cov_data = cov.get(file)
+        if cov_data is None:
+            check_lines = lines
+            covered_set: set[int] = set()
+        else:
+            measured, covered_set = cov_data
+            check_lines = [ln for ln in lines if ln in measured]
+        if not check_lines:
+            continue
+        hit = len([ln for ln in check_lines if ln in covered_set])
+        total += len(check_lines)
         covered += hit
-        pct = (hit / len(lines)) * 100 if lines else 100.0
-        report.append((file, len(lines), hit, pct))
+        pct = (hit / len(check_lines)) * 100
+        report.append((file, len(check_lines), hit, pct))
 
     pct_total = (covered / total) * 100 if total else 100.0
     print(
