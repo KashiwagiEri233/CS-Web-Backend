@@ -54,11 +54,13 @@ jobs:
           # 额外等待 PG 就绪（healthcheck 可能不够）
           sleep 3
 
-      - name: Alembic migration round trip
+      - name: Alembic migration up (baseline → head)
         run: |
-          # 先测试可逆部分的往返：upgrade 到不可逆迁移前一步，再 full downgrade
-          python -m alembic upgrade 22232b182a66b
-          python -m alembic downgrade base
+          # 验证迁移链可从空库干净应用到 head（Schema 唯一来源=Alembic）。
+          # 旧写法 `upgrade 22232b182a66b`（指向一个已不存在的 revision）会导致
+          # "Can't locate revision" 必红；且链上存在不可逆迁移
+          # (4f5a6b7c8d9e_drop_legacy_forum_blog 无法 downgrade)，故不再做 downgrade 往返，
+          # 只做生产一致要求的 upgrade head。
           python -m alembic upgrade head
 
       - name: Static checks

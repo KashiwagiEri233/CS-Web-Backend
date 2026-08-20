@@ -3,11 +3,11 @@
 
 用法：
     # 生成/更新基线（审批后执行）：
-    python scripts/export_openapi.py --baseline > openapi.baseline.json
+    python tools/scripts/contract/export_openapi.py --baseline > openapi.baseline.json
     # 或：make contract-baseline
 
     # 比对当前契约与基线（CI 门禁，发现差异即非零退出）：
-    python scripts/export_openapi.py --check openapi.baseline.json
+    python tools/scripts/contract/export_openapi.py --check openapi.baseline.json
     # 或：make contract-check
 
 说明：

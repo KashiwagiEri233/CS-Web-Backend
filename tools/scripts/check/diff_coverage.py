@@ -10,7 +10,10 @@
       --xml build/coverage.xml --src app
 
 退出码：0 通过（或无新增行）；1 覆盖率不足 / 运行错误。
-仅标准库（xml.etree / subprocess / argparse），与 scripts/check_version_sync.py 同风格。
+仅标准库（xml.etree / subprocess / argparse），与根仓脚本 scripts/check/check_version_sync.py 同风格。
+
+与前端 `tools/scripts/check/diff-coverage.mjs` 为同一门禁（ER-45）的两端实现（本仓 app/**、前端 src/**），
+CLI 参数 `--base/--threshold/--src` 保持一致；调整阈值/报告格式时需两端同步。
 """
 
 from __future__ import annotations

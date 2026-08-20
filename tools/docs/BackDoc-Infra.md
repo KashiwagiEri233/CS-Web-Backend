@@ -361,7 +361,7 @@ otel-collector 等）。**默认关闭**：`OTEL_ENABLED=False` 时完全 no-op�
 
 | 检查项 | 预期 |
 |---|---|
-| `alembic heads` | 单一 head：`d3e4f5a6b7c8` |
+| `alembic heads` | 单一 head：`e5f6a7b8c9d0` |
 | `alembic upgrade head` | 成功；42 张表建成（框架 8 + 业务 34，含 two_factor_auth） |
 | `alembic check` | 无 drift（模型 ↔ 数据库一致） |
 | `alembic downgrade -1 && upgrade head` | 往返成功 |
