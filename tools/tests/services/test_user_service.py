@@ -14,7 +14,7 @@ from app.core.exceptions import (
     PermissionDeniedException,
     ValidationException,
 )
-from app.services.user_service import UserService
+from app.services.user.user_service import UserService
 
 
 @pytest.fixture
@@ -25,7 +25,7 @@ def user_service(monkeypatch) -> UserService:
     __init__ 正常执行，新增依赖初始化会在此暴露。
     """
     monkeypatch.setattr(
-        "app.services.user_service.async_get_password_hash",
+        "app.services.user.user_service.async_get_password_hash",
         AsyncMock(side_effect=lambda raw: f"hash:{raw}"),
     )
     db = MagicMock()
@@ -168,7 +168,7 @@ async def test_update_profile_ignores_is_active(user_service, monkeypatch):
 async def test_update_profile_allows_password_change(user_service, monkeypatch):
     svc = user_service
     monkeypatch.setattr(
-        "app.services.user_service.async_verify_password",
+        "app.services.user.user_service.async_verify_password",
         AsyncMock(return_value=True),
     )
     user = MagicMock(
@@ -202,7 +202,7 @@ async def test_update_profile_rejects_wrong_old_password(user_service, monkeypat
     """旧密码错误拒绝改密，且不会进入字段更新流程。"""
     svc = user_service
     verify = AsyncMock(return_value=False)
-    monkeypatch.setattr("app.services.user_service.async_verify_password", verify)
+    monkeypatch.setattr("app.services.user.user_service.async_verify_password", verify)
     user = MagicMock(id=3, hashed_password="h")
 
     with pytest.raises(InvalidCredentialsException):

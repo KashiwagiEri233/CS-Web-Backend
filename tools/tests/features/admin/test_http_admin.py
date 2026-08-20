@@ -35,7 +35,7 @@ from app.database import get_session
 from app.main import create_app
 from app.models.user import User
 from app.repositories.rbac_repo import RBACRepository
-from app.services.rbac_service import RBACService
+from app.services.rbac.rbac_service import RBACService
 from app.services.totp_service import TOTPService
 
 pytestmark = pytest.mark.integration

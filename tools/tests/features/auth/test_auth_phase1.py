@@ -17,7 +17,7 @@ import pytest
 from app.core.password_compat import hash_scrypt, is_bcrypt_hash
 from app.core.timezone import now_utc
 from app.database import get_session
-from app.services.auth_service import AuthService, derive_username
+from app.services.auth.auth_service import AuthService, derive_username
 from app.services.password_reset_service import PasswordResetService
 from app.services.verification_service import VerificationService
 from app.core import totp as totp_core

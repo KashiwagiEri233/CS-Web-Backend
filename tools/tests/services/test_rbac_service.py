@@ -9,10 +9,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-import app.services.rbac_service as rbac_svc_module
+import app.services.rbac.rbac_service as rbac_svc_module
 from app.core.exceptions import PermissionDeniedException
-from app.services.rbac_seed_data import ADMIN_ROLE_NAME
-from app.services.rbac_service import RBACService
+from app.services.rbac.rbac_seed_data import ADMIN_ROLE_NAME
+from app.services.rbac.rbac_service import RBACService
 
 
 def _stub_cache() -> MagicMock:

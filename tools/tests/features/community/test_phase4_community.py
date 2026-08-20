@@ -21,13 +21,16 @@ from app.database import get_session
 from app.models.community import CommunityCategory, CommunityPost
 from app.models.user import User
 from app.services import view_count
-from app.services.community_category import CategoryService
-from app.services.community_comment import CommentService
-from app.services.community_feed import FeedService
-from app.services.community_interaction import FavoriteService, ReactionService
-from app.services.community_post import PostService
-from app.services.community_report import ReportService
-from app.services.community_series import SeriesService
+from app.services.community.community_category import CategoryService
+from app.services.community.community_comment import CommentService
+from app.services.community.community_feed import FeedService
+from app.services.community.community_interaction import (
+    FavoriteService,
+    ReactionService,
+)
+from app.services.community.community_post import PostService
+from app.services.community.community_report import ReportService
+from app.services.community.community_series import SeriesService
 
 
 def _sfx() -> str:

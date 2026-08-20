@@ -18,7 +18,7 @@ from app.database import get_session
 from app.models.event import Event
 from app.models.user import User
 from app.schemas.event import EventInput
-from app.services.event_service import EventService
+from app.services.event.event_service import EventService
 
 
 def _sfx() -> str:

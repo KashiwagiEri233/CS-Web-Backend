@@ -20,10 +20,10 @@ from app.models.user import User
 from app.schemas.announcement import AnnouncementInput
 from app.schemas.join import JoinApplicationInput
 from app.services.announcement_service import AnnouncementService
-from app.services.auth_service import AuthService
+from app.services.auth.auth_service import AuthService
 from app.services.join_service import JoinService
 from app.services.notification_service import NotificationService
-from app.services.user_service import UserService
+from app.services.user.user_service import UserService
 
 
 def _sfx() -> str:

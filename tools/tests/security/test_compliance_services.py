@@ -198,7 +198,7 @@ async def test_execute_tool_api_usage_stats_scoping(monkeypatch):
 async def test_rbac_cache_invalidation_failure_warn_vs_fail_closed(monkeypatch):
     """缓存失效失败：grant/低风险（raise_on_failure=False）仅告警不抛错；
     revoke/降权高风险（raise_on_failure=True）抛错（fail-closed，拒绝服务优于越权）。"""
-    from app.services import rbac_service as rs
+    from app.services.rbac import rbac_service as rs
 
     class _FailingCache:
         async def delete(self, key):

@@ -16,8 +16,8 @@ from sqlalchemy import text
 from app.core.config import settings
 from app.database import get_session
 from app.models.user import User
-from app.services.community_category import CategoryService
-from app.services.community_post import PostService
+from app.services.community.community_category import CategoryService
+from app.services.community.community_post import PostService
 
 from ._helpers import _cleanup_users, _make_user, _sfx
 
