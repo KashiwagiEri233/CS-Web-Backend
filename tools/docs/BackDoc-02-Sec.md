@@ -9,7 +9,7 @@
 > 变更触发：后端鉴权契约变更 / 安全配置变更 / 限流策略变更 / 新增权限点
 > Stale 信号：接口签名与 `app/core/security.py` 等实现不一致 / 配置项未随环境变量变更更新 / 仍把前端 BFF 职责（Origin 校验/UI 角色兜底）写成后端职责
 
-> **范围声明**：本文档仅覆盖**后端**运行时安全责任。前端 BFF 层（Origin 校验、Cookie 托管、UI 角色路由保护、按钮显隐）见前端 `FrontDoc-02-Sec.md`；后端承载 JWT 签发与校验、密码哈希（bcrypt）、TOTP/2FA 加密与验证、RBAC `require_permission` 强制、速率限制、审计日志写入、session/refresh_token 表。
+> **范围声明**：本文仅覆盖后端运行时安全；前端 BFF 安全见 `CS-Web-Frontend/tools/docs/FrontDoc-02-Sec.md`。
 
 ---
 
