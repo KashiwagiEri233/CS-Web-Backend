@@ -24,7 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.timezone import now_utc
+from app.core.timezone import now_utc, iso_or_none
 from app.models.user import User
 from app.repositories.auxilio_tool_repo import AuxilioToolRepository
 from app.services import llm_client
@@ -72,7 +72,7 @@ async def _handle_get_exam_countdown(db: AsyncSession, user: User, args: dict) -
         [
             {
                 "title": e.title,
-                "end_time": e.end_time.isoformat() if e.end_time else None,
+                "end_time": iso_or_none(e.end_time),
                 "ends_in_hours": round((e.end_time - now).total_seconds() / SECONDS_PER_HOUR, 1)
                 if e.end_time
                 else None,

@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.constants import CONTRIBUTION_CACHE_TTL_SECONDS
-from app.core.timezone import now_utc
+from app.core.timezone import now_utc, iso_or_none
 from app.models.contribution import ContributionCache
 
 _GITHUB_CONTRIBUTIONS_URL = "https://github.com/users/{username}/contributions"
@@ -182,6 +182,6 @@ class ContributionService:
             "data": cache.data or [],
             "total": cache.total,
             "streak": cache.streak,
-            "fetched_at": cache.fetched_at.isoformat() if cache.fetched_at else None,
+            "fetched_at": iso_or_none(cache.fetched_at),
             "stale": stale,
         }

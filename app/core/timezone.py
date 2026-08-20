@@ -76,3 +76,8 @@ def local_day_start_utc(d: Optional[date] = None) -> datetime:
     start = local_to_utc(datetime.combine(day, datetime.min.time()))
     assert start is not None  # 入参恒非 None
     return start
+
+
+def iso_or_none(dt: Optional[datetime]) -> Optional[str]:
+    """datetime → ISO 字符串；None 原样返回（重复实现治理波次 D2 B17）。"""
+    return dt.isoformat() if dt else None
