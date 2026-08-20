@@ -331,7 +331,8 @@ async def test_component_registry(integration_db_ready):
             # toggle
             variant_id = updated.variants[0].id
             toggled = await svc.toggle_variant(item.id, variant_id, False)
-            assert toggled.variants[0].is_enabled is False
+            # toggle_variant 返回最新变体列表（list[ComponentVariantOut]），直接索引
+            assert toggled[0].is_enabled is False
 
             await svc.delete_component(item.id)
         finally:

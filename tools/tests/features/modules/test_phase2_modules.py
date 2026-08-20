@@ -93,8 +93,10 @@ async def test_announcement_lifecycle(integration_db_ready):
     sfx = _sfx()
     async with get_session() as db:
         svc = AnnouncementService(db)
+        # created_by 外键须指向真实 users 行，故创建超管作为创建者
+        creator = await _make_user(db, f"ann_{sfx}@t.com", superuser=True)
         created = await svc.create(
-            1,
+            creator.id,
             AnnouncementInput(
                 title=f"公告-{sfx}",
                 content="内容",
@@ -111,7 +113,7 @@ async def test_announcement_lifecycle(integration_db_ready):
 
             # 过期公告不生效
             expired = await svc.create(
-                1,
+                creator.id,
                 AnnouncementInput(
                     title=f"过期-{sfx}",
                     content="x",
@@ -137,6 +139,7 @@ async def test_announcement_lifecycle(integration_db_ready):
                 delete(Announcement).where(Announcement.title.like(f"%{sfx}%"))
             )
             await db.commit()
+            await _cleanup_users(db, creator.id)
 
 
 @pytest.mark.integration

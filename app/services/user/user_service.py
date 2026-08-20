@@ -382,13 +382,13 @@ class UserService:
                 message="状态无变化", error_code=ErrorCode.Validation.NO_CHANGE
             )
 
-            target.is_active = active
-            target.updated_at = now_utc()
-            await self.user_repo.update(target)
-            if not active:
-                await self.refresh_repo.revoke_all_for_user(target.id)
-            # 移除提前 commit：改由 _audit_admin 的 record_atomic 同事务原子提交，审计失败整体回滚
-            await self.db.refresh(target)
+        target.is_active = active
+        target.updated_at = now_utc()
+        await self.user_repo.update(target)
+        if not active:
+            await self.refresh_repo.revoke_all_for_user(target.id)
+        # 移除提前 commit：改由 _audit_admin 的 record_atomic 同事务原子提交，审计失败整体回滚
+        await self.db.refresh(target)
 
         await self._audit_admin(
             action="user.enable" if active else "user.disable",
@@ -449,12 +449,13 @@ class UserService:
                 )
             password = new_password or ""
 
-            target.hashed_password = await async_get_password_hash(password)
-            target.password_changed_at = now_utc()
-            target.updated_at = now_utc()
-            await self.user_repo.update(target)
-            await self.refresh_repo.revoke_all_for_user(target.id)
-            # 移除提前 commit：改由 _audit_admin 的 record_atomic 同事务原子提交，审计失败整体回滚
+        # 默认密码与自定义密码分支都须应用新密码哈希 + 撤销旧 refresh token
+        target.hashed_password = await async_get_password_hash(password)
+        target.password_changed_at = now_utc()
+        target.updated_at = now_utc()
+        await self.user_repo.update(target)
+        await self.refresh_repo.revoke_all_for_user(target.id)
+        # 移除提前 commit：改由 _audit_admin 的 record_atomic 同事务原子提交，审计失败整体回滚
 
         await self._audit_admin(
             action="user.reset_password",
