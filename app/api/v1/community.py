@@ -463,18 +463,22 @@ async def toggle_follow(
 @router.get("/follows")
 async def list_follows(
     type: str = "following",
-    page: int = 1,
-    page_size: int = Query(20, alias="pageSize"),
+    pagination: PaginationParams = Depends(),
     service: FeedService = Depends(get_feed_service),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
-    skip = (max(1, page) - 1) * page_size
     if type == "followers":
         return await service.list_followers(
-            current_user.id, current_user_id=current_user.id, skip=skip, limit=page_size
+            current_user.id,
+            current_user_id=current_user.id,
+            skip=pagination.skip,
+            limit=pagination.limit,
         )
     return await service.list_following(
-        current_user.id, current_user_id=current_user.id, skip=skip, limit=page_size
+        current_user.id,
+        current_user_id=current_user.id,
+        skip=pagination.skip,
+        limit=pagination.limit,
     )
 
 
