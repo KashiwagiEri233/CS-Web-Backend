@@ -52,10 +52,9 @@ class ExamRepository:
             ).scalar_one()
         )
         stmt = paginate(
-            select(Exam)
-            .where(*conditions)
-            .order_by(Exam.created_at.desc()),
-            skip, limit
+            select(Exam).where(*conditions).order_by(Exam.created_at.desc()),
+            skip,
+            limit,
         )
         rows = await self.db.execute(stmt)
         return list(rows.scalars().all()), total
@@ -239,9 +238,7 @@ class ResourceRepository:
         if tag and tag.strip():
             # 2026-08-10 修复：Resource.tech_tags 为 JSON().with_variant(JSONB())（Variant），
             # contains 退化成字符串 LIKE 且实际调用报错；type_coerce(JSONB) 走 @> 包含。
-            conditions.append(
-                jsonb_contains(Resource.tech_tags, [tag.strip()])
-            )
+            conditions.append(jsonb_contains(Resource.tech_tags, [tag.strip()]))
         if submitted_by:
             conditions.append(Resource.submitted_by == submitted_by)
         total = int(
@@ -252,10 +249,9 @@ class ResourceRepository:
             ).scalar_one()
         )
         stmt = (
-            select(Resource)
-            .where(*conditions)
-            .order_by(Resource.created_at.desc()),
-            skip, limit
+            select(Resource).where(*conditions).order_by(Resource.created_at.desc()),
+            skip,
+            limit,
         )
         rows = await self.db.execute(stmt)
         return list(rows.scalars().all()), total
@@ -313,10 +309,9 @@ class TaskRepository:
             ).scalar_one()
         )
         stmt = paginate(
-            select(Task)
-            .where(*conditions)
-            .order_by(Task.created_at.desc()),
-            skip, limit
+            select(Task).where(*conditions).order_by(Task.created_at.desc()),
+            skip,
+            limit,
         )
         rows = await self.db.execute(stmt)
         return list(rows.scalars().all()), total

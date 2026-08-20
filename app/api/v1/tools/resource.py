@@ -114,9 +114,7 @@ async def admin_list_resources(
     service: ResourceService = Depends(get_resource_service),
     current_user: User = Depends(require_permission("resource", "read")),
 ) -> Any:
-    items, total = await service.list_resources(
-        status=status, skip=skip, limit=limit
-    )
+    items, total = await service.list_resources(status=status, skip=skip, limit=limit)
     return {"items": [_resource_out(r) for r in items], "total": total}
 
 
@@ -175,5 +173,7 @@ async def pending_resources(
     service: ResourceService = Depends(get_resource_service),
     current_user: User = Depends(require_permission("resource", "read")),
 ) -> Any:
-    items, total = await service.list_resources(status="pending", skip=skip, limit=limit)
+    items, total = await service.list_resources(
+        status="pending", skip=skip, limit=limit
+    )
     return {"items": [_resource_out(r) for r in items], "total": total}

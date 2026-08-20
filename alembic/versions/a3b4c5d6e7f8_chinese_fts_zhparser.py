@@ -32,8 +32,7 @@ def upgrade() -> None:
     # 不可用（如本地开发 PG 未装 zhparser 扩展）则全程回退 pg_catalog.simple。
     # 关键：回退路径绝不引用未创建的 `chinese` 名称，避免
     # `text search configuration name "chinese" must be schema-qualified` 错误。
-    op.execute(
-        """
+    op.execute("""
         DO $$
         DECLARE
             v_use_chinese boolean := false;
@@ -89,8 +88,7 @@ def upgrade() -> None:
                 v_cfg
             );
         END $$;
-        """
-    )
+        """)
 
 
 def downgrade() -> None:

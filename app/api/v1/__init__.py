@@ -55,16 +55,12 @@ api_router.include_router(tools.resource.router, prefix="/tools", tags=["资源"
 api_router.include_router(tools.task.router, prefix="/tools", tags=["任务"])
 api_router.include_router(tools.points.router, prefix="/tools", tags=["积分"])
 api_router.include_router(auxilio.router, tags=["学习助手"])
-api_router.include_router(
-    auxilio.analysis_router, prefix="/tools", tags=["学习助手"]
-)
+api_router.include_router(auxilio.analysis_router, prefix="/tools", tags=["学习助手"])
 api_router.include_router(
     tools.component_registry.router, prefix="/tools", tags=["组件注册表"]
 )
 api_router.include_router(workbench.router, tags=["工作台"])
-api_router.include_router(
-    tools.feature_visibility.router, tags=["功能模块可见性"]
-)
+api_router.include_router(tools.feature_visibility.router, tags=["功能模块可见性"])
 api_router.include_router(search.router, prefix="/search", tags=["搜索"])
 
 if settings.DEBUG:

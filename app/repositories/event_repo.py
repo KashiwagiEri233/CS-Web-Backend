@@ -53,7 +53,8 @@ class EventRepository:
             select(Event)
             .where(*conditions)
             .order_by(Event.is_pinned.desc(), Event.date.desc()),
-            skip, limit
+            skip,
+            limit,
         )
         rows = await self.db.execute(stmt)
         return list(rows.scalars().all()), total

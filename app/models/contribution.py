@@ -26,7 +26,9 @@ class ContributionCache(Base):
 
     __tablename__ = "contribution_cache"
     __table_args__ = (
-        UniqueConstraint("user_id", "platform", "year", name="uq_contribution_user_platform_year"),
+        UniqueConstraint(
+            "user_id", "platform", "year", name="uq_contribution_user_platform_year"
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

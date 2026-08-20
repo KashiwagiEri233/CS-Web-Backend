@@ -32,9 +32,7 @@ class ApiCallLog(Base):
     method: Mapped[str] = mapped_column(String(10), nullable=False)
     status: Mapped[int] = mapped_column(Integer, nullable=False, default=200)
     latency_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=now_utc, index=True
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, index=True)
 
     def __repr__(self) -> str:
         return f"<ApiCallLog({self.method} {self.endpoint} {self.status})>"

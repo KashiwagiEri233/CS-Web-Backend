@@ -108,10 +108,14 @@ class AuxilioService:
         await self.db.commit()
         return conv
 
-    async def append_user_message(self, conversation_id: int, user_msg_content: str) -> None:
+    async def append_user_message(
+        self, conversation_id: int, user_msg_content: str
+    ) -> None:
         """既有会话：仅追加一条用户消息并提交。"""
         self.db.add(
-            ChatMessage(conversation_id=conversation_id, role="user", content=user_msg_content)
+            ChatMessage(
+                conversation_id=conversation_id, role="user", content=user_msg_content
+            )
         )
         await self.db.commit()
 

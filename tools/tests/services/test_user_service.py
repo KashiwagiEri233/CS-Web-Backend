@@ -74,7 +74,9 @@ async def test_get_user_returns_user(user_service, monkeypatch):
 # ---- update_user ----
 
 
-async def test_update_user_applies_fields_and_hashes_password(user_service, monkeypatch):
+async def test_update_user_applies_fields_and_hashes_password(
+    user_service, monkeypatch
+):
     svc = user_service
     user = MagicMock(
         id=3, email="old@t.com", full_name="old", hashed_password="h", deleted_at=None
@@ -255,7 +257,9 @@ async def test_delete_user_succeeds(user_service, monkeypatch):
 # ---- 超级用户操纵防护 ----
 
 
-async def test_update_user_blocks_non_superuser_editing_superuser(user_service, monkeypatch):
+async def test_update_user_blocks_non_superuser_editing_superuser(
+    user_service, monkeypatch
+):
     """非超管 actor 更新超管账号 → 拒绝（防提权接管）。"""
     svc = user_service
     target = MagicMock(id=3, deleted_at=None, is_superuser=True)
@@ -267,7 +271,9 @@ async def test_update_user_blocks_non_superuser_editing_superuser(user_service, 
     svc.user_repo.update.assert_not_called()
 
 
-async def test_update_user_allows_superuser_editing_superuser(user_service, monkeypatch):
+async def test_update_user_allows_superuser_editing_superuser(
+    user_service, monkeypatch
+):
     """超管 actor 更新超管账号 → 放行。"""
     svc = user_service
     target = MagicMock(
@@ -287,7 +293,9 @@ async def test_update_user_allows_superuser_editing_superuser(user_service, monk
     assert target.full_name == "x"
 
 
-async def test_delete_user_blocks_non_superuser_deleting_superuser(user_service, monkeypatch):
+async def test_delete_user_blocks_non_superuser_deleting_superuser(
+    user_service, monkeypatch
+):
     """非超管 actor 删除超管账号 → 拒绝。"""
     svc = user_service
     target = MagicMock(id=9, deleted_at=None, is_superuser=True)

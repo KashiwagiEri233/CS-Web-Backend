@@ -27,7 +27,7 @@ from pathlib import Path
 # 将后端仓库根加入 sys.path，使脚本可独立运行（不依赖外部 PYTHONPATH）。
 # 脚本位于 tools/scripts/contract/ 下，向上若干级到达仓库根；
 # 用「直到找到 pyproject.toml」兜底，避免目录层级变动导致路径错位
-#（此前写死 .parent.parent.parent 在脚本移入 contract/ 子目录后少算一级，
+# （此前写死 .parent.parent.parent 在脚本移入 contract/ 子目录后少算一级，
 # 致 `from app.main import app` 失败、契约门禁实质上从未跑通）。
 _BACKEND_ROOT = Path(__file__).resolve().parent
 while not (_BACKEND_ROOT / "pyproject.toml").exists():
@@ -42,8 +42,12 @@ if str(_BACKEND_ROOT) not in sys.path:
 
 os.environ.setdefault("SECRET_KEY", "contract-export-placeholder-32bytes-minimum")
 os.environ.setdefault("TOTP_ENCRYPTION_KEY", "contract-export-placeholder-32bytes-min")
-os.environ.setdefault("AUTH_SESSION_SECRET", "contract-export-session-secret-32bytes-min")
-os.environ.setdefault("COMMUNITY_IP_HASH_SECRET", "contract-export-community-hash-secret-32")
+os.environ.setdefault(
+    "AUTH_SESSION_SECRET", "contract-export-session-secret-32bytes-min"
+)
+os.environ.setdefault(
+    "COMMUNITY_IP_HASH_SECRET", "contract-export-community-hash-secret-32"
+)
 os.environ.setdefault("DATABASE_PASSWORD", "contract-export")
 os.environ.setdefault("AUTH_ENABLED", "true")
 
@@ -80,6 +84,7 @@ def export_spec() -> dict:
     # 写入四源版本（app/__init__.py __version__），保留「四源版本 → 冻结契约」追溯链；
     # 比对侧 (check_spec) 仍忽略 info.version，不参与契约差异判定（见下方 check 分支）。
     from app import __version__ as app_version
+
     info["version"] = app_version
     spec["info"] = info
     return spec

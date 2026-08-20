@@ -92,9 +92,11 @@ class ContributionService:
         ).scalar_one_or_none()
 
         stale = False
-        fresh_enough = cache is not None and (
-            now - cache.fetched_at
-        ).total_seconds() < CONTRIBUTION_CACHE_TTL_SECONDS
+        fresh_enough = (
+            cache is not None
+            and (now - cache.fetched_at).total_seconds()
+            < CONTRIBUTION_CACHE_TTL_SECONDS
+        )
 
         if fresh_enough and not force_refresh:
             return self._to_payload(cache, stale=False)
@@ -153,7 +155,9 @@ class ContributionService:
                 "unreachable": True,
             }
 
-    async def _fetch_github(self, username: str, year: int) -> tuple[dict[str, int], int]:
+    async def _fetch_github(
+        self, username: str, year: int
+    ) -> tuple[dict[str, int], int]:
         url = _GITHUB_CONTRIBUTIONS_URL.format(username=username)
         async with httpx.AsyncClient(timeout=8, follow_redirects=True) as client:
             resp = await client.get(
@@ -164,12 +168,12 @@ class ContributionService:
 
         daily = _parse_contributions(resp.text)
         if not daily:
-            raise RuntimeError("no contribution data parsed (username invalid or page structure changed)")
+            raise RuntimeError(
+                "no contribution data parsed (username invalid or page structure changed)"
+            )
 
         # 本年数据（页面本身是全年滚动窗口，按目标年份过滤）
-        year_daily = {
-            d: c for d, c in daily.items() if d.startswith(f"{year}-")
-        }
+        year_daily = {d: c for d, c in daily.items() if d.startswith(f"{year}-")}
         total = sum(year_daily.values())
         return year_daily, total
 

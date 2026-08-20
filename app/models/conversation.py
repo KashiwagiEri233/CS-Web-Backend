@@ -53,7 +53,9 @@ class ChatMessage(Base):
     role: Mapped[str] = mapped_column(String(20), nullable=False)  # user | assistant
     content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     # 该条 assistant 消息触发的工具调用记录 [{name, arguments}]
-    tool_calls: Mapped[Optional[list]] = mapped_column(JSONDict, nullable=True, default=list)
+    tool_calls: Mapped[Optional[list]] = mapped_column(
+        JSONDict, nullable=True, default=list
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
 
     def __repr__(self) -> str:
@@ -84,7 +86,9 @@ class ChatEvent(Base):
     payload: Mapped[Optional[dict]] = mapped_column(JSONDict, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
 
-    __table_args__ = (UniqueConstraint("conversation_id", "seq", name="uq_chat_events_conv_seq"),)
+    __table_args__ = (
+        UniqueConstraint("conversation_id", "seq", name="uq_chat_events_conv_seq"),
+    )
 
     def __repr__(self) -> str:
         return f"<ChatEvent(conv={self.conversation_id}, seq={self.seq}, {self.event_type})>"

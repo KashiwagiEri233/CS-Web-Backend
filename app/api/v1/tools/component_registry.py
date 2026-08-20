@@ -64,7 +64,9 @@ async def update_component(
     current_user: User = Depends(require_permission("component", "update")),
 ) -> Any:
     meta = get_client_meta(request)
-    return await service.update_component(component_id, body, current_user.id, meta, audit)
+    return await service.update_component(
+        component_id, body, current_user.id, meta, audit
+    )
 
 
 @router.delete("/components/{component_id}")
@@ -147,9 +149,7 @@ async def apply_preset(
     current_user: User = Depends(require_permission("component", "update")),
 ) -> Any:
     meta = get_client_meta(request)
-    return await service.apply_preset(
-        component_id, body, current_user.id, meta, audit
-    )
+    return await service.apply_preset(component_id, body, current_user.id, meta, audit)
 
 
 # ------------------------------------------------------------------ 迁移状态
@@ -201,6 +201,4 @@ async def create_guide(
     current_user: User = Depends(require_permission("component", "update")),
 ) -> Any:
     meta = get_client_meta(request)
-    return await service.create_guide(
-        component_id, body, current_user.id, meta, audit
-    )
+    return await service.create_guide(component_id, body, current_user.id, meta, audit)

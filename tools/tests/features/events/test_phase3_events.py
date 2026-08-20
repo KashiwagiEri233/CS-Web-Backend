@@ -89,7 +89,9 @@ async def test_event_crud_and_archive(integration_db_ready, admin_user):
             assert fetched.registered_count == 0
 
             updated = await svc.update_event(
-                admin_user, created.id, EventInput(title=f"改名-{sfx}", description="新")
+                admin_user,
+                created.id,
+                EventInput(title=f"改名-{sfx}", description="新"),
             )
             assert updated.title == f"改名-{sfx}"
 
@@ -171,7 +173,9 @@ async def test_checkin_flow(integration_db_ready, admin_user):
         user = await _make_user(db, f"ck_{sfx}@t.com")
         admin = await _make_user(db, f"ckadm_{sfx}@t.com")
         try:
-            event = await svc.create_event(admin_user, EventInput(title=f"签到活动-{sfx}"))
+            event = await svc.create_event(
+                admin_user, EventInput(title=f"签到活动-{sfx}")
+            )
             await svc.register(user.id, event.id)
 
             # 生成签到码

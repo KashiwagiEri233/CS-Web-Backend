@@ -42,7 +42,9 @@ class PaginationParams:
         skip: int = Query(0, ge=0, description="跳过的记录数（与 page 互斥）"),
         limit: int = Query(100, ge=1, le=500, description="每页返回的最大记录数"),
         page: Optional[int] = Query(
-            None, ge=1, description="页码（1-based，提供时与 page_size 一起计算 skip/limit）"
+            None,
+            ge=1,
+            description="页码（1-based，提供时与 page_size 一起计算 skip/limit）",
         ),
         page_size: Optional[int] = Query(
             None, ge=1, le=500, description="每页大小（提供时覆盖 limit）"

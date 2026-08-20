@@ -28,7 +28,9 @@ from pathlib import Path
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="PR 级 diff 覆盖率门禁（ER-45）")
-    p.add_argument("--base", default="origin/main", help="diff 基线 ref（默认 origin/main）")
+    p.add_argument(
+        "--base", default="origin/main", help="diff 基线 ref（默认 origin/main）"
+    )
     p.add_argument("--threshold", type=float, default=80.0, help="新增行覆盖率阈值 %%")
     p.add_argument("--xml", default="build/coverage.xml", help="coverage.xml 路径")
     p.add_argument("--src", default="app", help="被测源码目录（相对仓库根）")
@@ -42,7 +44,9 @@ def parse_coverage_xml(xml_path: str, src: str) -> dict[str, set[int]]:
     git diff 路径是 ``app/...`` 仓库相对形式——此处统一归一到后者。
     """
     if not Path(xml_path).exists():
-        raise SystemExit(f"coverage.xml 未找到：{xml_path}（请先跑 pytest --cov 生成覆盖率）")
+        raise SystemExit(
+            f"coverage.xml 未找到：{xml_path}（请先跑 pytest --cov 生成覆盖率）"
+        )
     root = ET.parse(xml_path).getroot()
     cwd = str(Path.cwd())
     cov: dict[str, set[int]] = {}
@@ -74,7 +78,15 @@ def get_added_lines(base: str, src: str) -> dict[str, list[int]]:
     added: dict[str, list[int]] = {}
     try:
         diff = subprocess.run(
-            ["git", "diff", "--unified=0", "--no-color", f"{base}...HEAD", "--", f"{src}/**"],
+            [
+                "git",
+                "diff",
+                "--unified=0",
+                "--no-color",
+                f"{base}...HEAD",
+                "--",
+                f"{src}/**",
+            ],
             check=True,
             capture_output=True,
             text=True,

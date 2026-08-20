@@ -34,7 +34,10 @@ from app.schemas.pagination import PaginatedResponse, PaginationParams
 from app.services.community.community_category import CategoryService
 from app.services.community.community_comment import CommentService
 from app.services.community.community_feed import FeedService
-from app.services.community.community_interaction import FavoriteService, ReactionService
+from app.services.community.community_interaction import (
+    FavoriteService,
+    ReactionService,
+)
 from app.services.community.community_post import PostService
 from app.services.community.community_report import ReportService
 from app.services.community.community_series import SeriesService
@@ -658,11 +661,7 @@ async def _is_admin(db: AsyncSession, user: User) -> bool:
     if user.is_superuser:
         return True
     roles = (
-        (
-            await db.execute(
-                select(Role.name).join(Role.users).where(User.id == user.id)
-            )
-        )
+        (await db.execute(select(Role.name).join(Role.users).where(User.id == user.id)))
         .scalars()
         .all()
     )
@@ -680,10 +679,14 @@ async def list_tags(
     from app.models.community import CommunityPost
 
     result = (
-        await db.execute(
-            select(CommunityPost.tags).where(CommunityPost.status == "published")
+        (
+            await db.execute(
+                select(CommunityPost.tags).where(CommunityPost.status == "published")
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     collected: list[str] = []
     seen: set[str] = set()

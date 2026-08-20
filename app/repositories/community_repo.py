@@ -153,10 +153,7 @@ class CommunityPostRepository:
             ),
         }.get(sort, ())
         stmt = paginate(
-            select(CommunityPost)
-            .where(*conditions)
-            .order_by(*order),
-            skip, limit
+            select(CommunityPost).where(*conditions).order_by(*order), skip, limit
         )
         rows = await self.db.execute(stmt)
         return list(rows.scalars().all()), total
@@ -263,7 +260,8 @@ class CommunityCommentRepository:
             select(CommunityComment)
             .where(*conditions)
             .order_by(CommunityComment.created_at.asc()),
-            skip, limit
+            skip,
+            limit,
         )
         rows = await self.db.execute(stmt)
         return list(rows.scalars().all()), total
@@ -300,7 +298,8 @@ class CommunityCommentRepository:
             select(CommunityComment)
             .where(*conditions)
             .order_by(CommunityComment.created_at.desc()),
-            skip, limit
+            skip,
+            limit,
         )
         rows = await self.db.execute(stmt)
         return list(rows.scalars().all()), total
@@ -428,7 +427,8 @@ class CommunityInteractionRepository:
                 CommunityPost.status == "published",
             )
             .order_by(CommunityFavorite.created_at.desc()),
-            skip, limit
+            skip,
+            limit,
         )
         rows = await self.db.execute(stmt)
         total = int(
@@ -528,7 +528,8 @@ class CommunityFollowRepository:
             .join(CommunityFollow, CommunityFollow.following_id == User.id)
             .where(CommunityFollow.follower_id == user_id)
             .order_by(CommunityFollow.created_at.desc()),
-            skip, limit
+            skip,
+            limit,
         )
         rows = await self.db.execute(stmt)
         total = int(
@@ -550,7 +551,8 @@ class CommunityFollowRepository:
             .join(CommunityFollow, CommunityFollow.follower_id == User.id)
             .where(CommunityFollow.following_id == user_id)
             .order_by(CommunityFollow.created_at.desc()),
-            skip, limit
+            skip,
+            limit,
         )
         rows = await self.db.execute(stmt)
         total = int(
@@ -564,9 +566,7 @@ class CommunityFollowRepository:
         )
         return list(rows.scalars().all()), total
 
-    async def bulk_counts(
-        self, user_ids: list[int]
-    ) -> dict[int, tuple[int, int]]:
+    async def bulk_counts(self, user_ids: list[int]) -> dict[int, tuple[int, int]]:
         """批量取回一组用户的 (following, followers) 计数，消除逐用户 N+1。
 
         返回 {user_id: (following_count, follower_count)}；未出现在聚合结果中的
@@ -604,13 +604,17 @@ class CommunityFollowRepository:
         if not target_ids:
             return set()
         rows = (
-            await self.db.execute(
-                select(CommunityFollow.following_id).where(
-                    CommunityFollow.follower_id == follower_id,
-                    CommunityFollow.following_id.in_(target_ids),
+            (
+                await self.db.execute(
+                    select(CommunityFollow.following_id).where(
+                        CommunityFollow.follower_id == follower_id,
+                        CommunityFollow.following_id.in_(target_ids),
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return set(rows)
 
     async def counts(self, user_id: int) -> tuple[int, int]:
@@ -656,8 +660,9 @@ class CommunityReportRepository:
             select(CommunityReport)
             .where(*conditions)
             .order_by(CommunityReport.created_at.desc()),
-    skip, limit
-)
+            skip,
+            limit,
+        )
         rows = await self.db.execute(stmt)
         return list(rows.scalars().all()), total
 

@@ -191,7 +191,9 @@ async def test_refresh_revoked_without_active_family_is_reuse():
     svc.refresh_repo.revoke_family.assert_awaited_once_with("family")
 
 
-async def test_authenticate_missing_user_still_verifies_dummy_hash(auth_service, monkeypatch):
+async def test_authenticate_missing_user_still_verifies_dummy_hash(
+    auth_service, monkeypatch
+):
     svc = auth_service
     svc.user_repo.get_by_username.return_value = None
     verify = AsyncMock(return_value=False)

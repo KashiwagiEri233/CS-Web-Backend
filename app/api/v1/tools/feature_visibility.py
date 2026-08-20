@@ -86,9 +86,7 @@ async def update_feature_visibility(
     _require_root(current_user)
 
     if module_key not in KNOWN_MODULE_KEYS:
-        raise NotFoundException(
-            resource_type="feature_module", resource_id=module_key
-        )
+        raise NotFoundException(resource_type="feature_module", resource_id=module_key)
 
     # 强制 2FA：未启用直接拒绝，不允许「未启用直接放行」绕过。
     if not await totp.is_enabled(current_user.id):

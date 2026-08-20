@@ -55,9 +55,7 @@ class WorkbenchService:
     ) -> dict:
         """保存用户 LLM 配置（API Key AES-256-GCM 加密存储，绝不落明文/日志）。返回配置状态摘要。"""
         cfg = (
-            await self.db.execute(
-                select(LlmConfig).where(LlmConfig.user_id == user_id)
-            )
+            await self.db.execute(select(LlmConfig).where(LlmConfig.user_id == user_id))
         ).scalar_one_or_none()
         if cfg is None:
             cfg = LlmConfig(user_id=user_id)

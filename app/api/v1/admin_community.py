@@ -229,7 +229,9 @@ async def list_reports(
     service: ReportService = Depends(get_report_service),
     current_user: User = Depends(require_permission("community", "read")),
 ) -> Any:
-    reports, total = await service.list_reports(status=status, skip=pagination.skip, limit=pagination.limit)
+    reports, total = await service.list_reports(
+        status=status, skip=pagination.skip, limit=pagination.limit
+    )
     return PaginatedResponse(
         items=[
             {

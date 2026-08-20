@@ -28,7 +28,6 @@ class AuxilioToolRepository:
     def __init__(self, db: AsyncSession):
         self.db: AsyncSession = db
 
-
     async def upcoming_exams(self, limit: int = 3) -> list[Exam]:
         """最近进行中的考试（已发布且未结束，按截止时间升序）。"""
         now = now_utc()
@@ -50,7 +49,9 @@ class AuxilioToolRepository:
         )
         return list(rows.scalars().all())
 
-    async def my_claims(self, user_id: int, limit: int = 10) -> list[tuple[Task, TaskClaim]]:
+    async def my_claims(
+        self, user_id: int, limit: int = 10
+    ) -> list[tuple[Task, TaskClaim]]:
         """用户已认领的任务（按认领时间倒序）。"""
         rows = await self.db.execute(
             select(Task, TaskClaim)
@@ -74,7 +75,10 @@ class AuxilioToolRepository:
             select(Resource)
             .where(
                 Resource.status == "approved",
-                or_(Resource.title.ilike(like, escape="\\"), Resource.description.ilike(like, escape="\\")),
+                or_(
+                    Resource.title.ilike(like, escape="\\"),
+                    Resource.description.ilike(like, escape="\\"),
+                ),
             )
             .order_by(Resource.view_count.desc())
             .limit(limit)
@@ -150,7 +154,9 @@ class AuxilioToolRepository:
         ).scalar_one()
         today_minutes = (
             await self.db.execute(
-                select(func.coalesce(func.sum(FocusSession.duration_seconds), 0) / 60.0).where(
+                select(
+                    func.coalesce(func.sum(FocusSession.duration_seconds), 0) / 60.0
+                ).where(
                     FocusSession.user_id == user_id,
                     FocusSession.phase == "focus",
                     FocusSession.created_at >= today_start,

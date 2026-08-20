@@ -50,7 +50,9 @@ class BusinessSettings(BaseSettings):
     # LLM_PROVIDER: openai（OpenAI 兼容协议）/ anthropic / none（禁用，回退规则推荐）
     LLM_PROVIDER: str = "none"
     LLM_API_KEY: Optional[str] = None  # 密钥只存 .env，绝不落库/日志/前端
-    LLM_BASE_URL: Optional[str] = None  # OpenAI 兼容自定义网关（Ollama、vLLM 等本地/第三方网关）
+    LLM_BASE_URL: Optional[str] = (
+        None  # OpenAI 兼容自定义网关（Ollama、vLLM 等本地/第三方网关）
+    )
     LLM_MODEL: str = "gpt-4o-mini"
     LLM_TIMEOUT: float = Field(60, gt=0)
     LLM_MAX_TOKENS: int = Field(1024, gt=0)

@@ -31,9 +31,7 @@ def hash_ip_for_view(ip: str) -> str:
     """
     secret = settings.COMMUNITY_IP_HASH_SECRET
     if not secret:
-        raise RuntimeError(
-            "COMMUNITY_IP_HASH_SECRET 未配置：拒绝处理访客 IP 匿名化"
-        )
+        raise RuntimeError("COMMUNITY_IP_HASH_SECRET 未配置：拒绝处理访客 IP 匿名化")
     return hmac.new(secret.encode(), ip.encode(), hashlib.sha256).hexdigest()
 
 

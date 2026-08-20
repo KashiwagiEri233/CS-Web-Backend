@@ -60,7 +60,5 @@ async def global_search(
     return SearchResponse(
         query=q.strip(),
         scope=scope,
-        results={
-            name: SearchGroup(**group) for name, group in results.items()
-        },
+        results={name: SearchGroup(**group) for name, group in results.items()},
     )

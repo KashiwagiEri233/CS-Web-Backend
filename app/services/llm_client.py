@@ -69,7 +69,11 @@ async def _stream_openai(
     temperature: Optional[float] = None,
 ) -> AsyncIterator[dict]:
     overrides = overrides or {}
-    base = (overrides.get("base_url") or settings.LLM_BASE_URL or "https://api.openai.com/v1").rstrip("/")
+    base = (
+        overrides.get("base_url")
+        or settings.LLM_BASE_URL
+        or "https://api.openai.com/v1"
+    ).rstrip("/")
     body: dict[str, Any] = {
         "model": overrides.get("model") or settings.LLM_MODEL,
         "messages": messages,
@@ -82,7 +86,9 @@ async def _stream_openai(
         body["temperature"] = temperature
     if tools:
         body["tools"] = [_oai_tool_schema(t) for t in tools]
-    headers = {"Authorization": f"Bearer {overrides.get('api_key') or settings.LLM_API_KEY}"}
+    headers = {
+        "Authorization": f"Bearer {overrides.get('api_key') or settings.LLM_API_KEY}"
+    }
     try:
         async with httpx.AsyncClient(timeout=settings.LLM_TIMEOUT) as client:
             async with client.stream(
@@ -122,7 +128,12 @@ async def _stream_openai(
                     for tc in delta.get("tool_calls") or []:
                         idx = tc.get("index", 0)
                         call = pending_calls.setdefault(
-                            idx, {"id": tc.get("id") or f"call_{idx}", "name": "", "arguments": ""}
+                            idx,
+                            {
+                                "id": tc.get("id") or f"call_{idx}",
+                                "name": "",
+                                "arguments": "",
+                            },
                         )
                         fn = tc.get("function") or {}
                         if fn.get("name"):
@@ -302,7 +313,9 @@ async def stream_chat(
     overrides = overrides or {}
     provider = (overrides.get("provider") or settings.LLM_PROVIDER or "").lower()
     if provider == "anthropic":
-        async for ev in _stream_anthropic(messages, tools, system, overrides, temperature):
+        async for ev in _stream_anthropic(
+            messages, tools, system, overrides, temperature
+        ):
             yield ev
     else:
         async for ev in _stream_openai(messages, tools, system, overrides, temperature):

@@ -47,7 +47,9 @@ def _match_text(q: str, *texts: Optional[str]) -> bool:
     return any(ql in (t or "").lower() for t in texts)
 
 
-def _item(type_: str, id_: object, title: str, subtitle: Optional[str], url: str) -> dict:
+def _item(
+    type_: str, id_: object, title: str, subtitle: Optional[str], url: str
+) -> dict:
     """统一 SearchResultItem 构造（波次 B2b 收敛 5 处重复组装）。"""
     return {
         "type": type_,
@@ -100,14 +102,22 @@ class SearchService:
     async def _search_events(self, q: str, limit: int) -> dict:
         service = EventService(self.db)
         events, total = await service.list_events(search=q, limit=limit)
-        items = [_item("event", e.id, e.title, e.description, "/events") for e in events]
+        items = [
+            _item("event", e.id, e.title, e.description, "/events") for e in events
+        ]
         return {"items": items, "total": total}
 
     async def _search_community(self, q: str, limit: int) -> dict:
         service = PostService(self.db)
         posts, total = await service.list_posts(search=q, limit=limit)
         items = [
-            _item("post", p.id, p.title, p.excerpt or p.content_markdown, f"/community/{p.id}")
+            _item(
+                "post",
+                p.id,
+                p.title,
+                p.excerpt or p.content_markdown,
+                f"/community/{p.id}",
+            )
             for p in posts
         ]
         return {"items": items, "total": total}
@@ -132,7 +142,9 @@ class SearchService:
         service = AnnouncementService(self.db)
         announcements = await service.list_active()
         matched = [a for a in announcements if _match_text(q, a.title, a.content)]
-        items = [_item("announcement", a.id, a.title, a.content, "") for a in matched[:limit]]
+        items = [
+            _item("announcement", a.id, a.title, a.content, "") for a in matched[:limit]
+        ]
         return {"items": items, "total": len(matched)}
 
     async def _search_resources(self, q: str, limit: int) -> dict:
@@ -142,5 +154,7 @@ class SearchService:
         保证同一关键词全站搜索与学习助手结果一致；不再受 100 条内存过滤上限。
         """
         rows = await AuxilioToolRepository(self.db).search_resources(q, limit=limit)
-        items = [_item("resource", r.id, r.title, r.description, "/tools") for r in rows]
+        items = [
+            _item("resource", r.id, r.title, r.description, "/tools") for r in rows
+        ]
         return {"items": items, "total": len(items)}

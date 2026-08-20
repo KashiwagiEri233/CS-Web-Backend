@@ -90,7 +90,9 @@ async def test_token_gc_startup_skips_when_disabled(monkeypatch):
 async def test_exception_retention_startup_runs_once_when_enabled(monkeypatch):
     purged = AsyncMock(return_value=3)
     monkeypatch.setattr(retention, "_purge_once", purged)
-    monkeypatch.setattr(retention.settings, "EXCEPTION_LOG_CLEANUP_INTERVAL_SECONDS", 86400)
+    monkeypatch.setattr(
+        retention.settings, "EXCEPTION_LOG_CLEANUP_INTERVAL_SECONDS", 86400
+    )
     await retention.startup_exception_log_retention()
     purged.assert_awaited_once()
 
@@ -106,17 +108,24 @@ async def test_exception_retention_startup_skips_when_disabled(monkeypatch):
 async def test_data_retention_startup_runs_when_either_interval_enabled(monkeypatch):
     purged = AsyncMock(return_value={"login_history": 1, "audit_log": 2})
     monkeypatch.setattr(data_retention, "_purge_once", purged)
-    monkeypatch.setattr(data_retention.settings, "LOGIN_HISTORY_CLEANUP_INTERVAL_SECONDS", 0)
-    monkeypatch.setattr(data_retention.settings, "AUDIT_LOG_CLEANUP_INTERVAL_SECONDS", 0)
+    monkeypatch.setattr(
+        data_retention.settings, "LOGIN_HISTORY_CLEANUP_INTERVAL_SECONDS", 0
+    )
+    monkeypatch.setattr(
+        data_retention.settings, "AUDIT_LOG_CLEANUP_INTERVAL_SECONDS", 0
+    )
     await data_retention.startup_data_retention()
     purged.assert_not_awaited()
 
-    monkeypatch.setattr(data_retention.settings, "LOGIN_HISTORY_CLEANUP_INTERVAL_SECONDS", 86400)
+    monkeypatch.setattr(
+        data_retention.settings, "LOGIN_HISTORY_CLEANUP_INTERVAL_SECONDS", 86400
+    )
     await data_retention.startup_data_retention()
     purged.assert_awaited_once()
 
 
 # ===== AR-S2 方案 B：arq cron 包装器与注册 =====
+
 
 async def test_cron_wrappers_skip_when_disabled(monkeypatch):
     purged = AsyncMock(return_value=5)
@@ -149,6 +158,7 @@ async def test_data_retention_cron_skips_only_when_both_disabled(monkeypatch):
 
 async def test_cron_jobs_registered():
     import app.core.config as _cfg
+
     if not _cfg.settings.REDIS_URL:
         _cfg.settings.REDIS_URL = "redis://localhost:6379/0"
     from app.core.queue.worker import WorkerSettings

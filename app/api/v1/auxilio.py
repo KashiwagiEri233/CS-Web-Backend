@@ -50,7 +50,9 @@ def sse(event: dict) -> str:
     return f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
 
-async def _own_conversation(db: AsyncSession, user: User, conversation_id: int) -> Conversation:
+async def _own_conversation(
+    db: AsyncSession, user: User, conversation_id: int
+) -> Conversation:
     conv = (
         await db.execute(
             select(Conversation).where(
@@ -91,12 +93,16 @@ async def chat(
         # 用户级 Trajectory 开关（llm_configs.trajectory_enabled；默认开）
         trajectory_on = True
         try:
-            trajectory_on = await auxilio_agent.user_feature_flag(db, user.id, "trajectory_enabled")
+            trajectory_on = await auxilio_agent.user_feature_flag(
+                db, user.id, "trajectory_enabled"
+            )
         except Exception:  # noqa: BLE001 - 开关读取失败按默认开处理
             trajectory_on = True
         started = now_utc()
         try:
-            async for ev in auxilio_agent.run_chat(db, user, history, preset_id=req.preset_id):
+            async for ev in auxilio_agent.run_chat(
+                db, user, history, preset_id=req.preset_id
+            ):
                 # Trajectory 事件落库（融合点 2，append-only，best-effort 不影响对话）
                 if trajectory_on:
                     event_seq += 1
@@ -141,7 +147,9 @@ async def chat(
                             prompt_tokens=usage.get("prompt_tokens") or 0,
                             completion_tokens=usage.get("completion_tokens") or 0,
                             total_tokens=usage.get("total_tokens") or 0,
-                            latency_ms=int((now_utc() - started).total_seconds() * 1000),
+                            latency_ms=int(
+                                (now_utc() - started).total_seconds() * 1000
+                            ),
                         )
                     )
                     await db.commit()
@@ -170,13 +178,17 @@ async def list_conversations(
     limit: int = 20,
 ):
     rows = (
-        await db.execute(
-            select(Conversation)
-            .where(Conversation.user_id == user.id)
-            .order_by(Conversation.updated_at.desc())
-            .limit(min(limit, 50))
+        (
+            await db.execute(
+                select(Conversation)
+                .where(Conversation.user_id == user.id)
+                .order_by(Conversation.updated_at.desc())
+                .limit(min(limit, 50))
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return {
         "conversations": [
             {
@@ -198,12 +210,16 @@ async def list_messages(
 ):
     await _own_conversation(db, user, conversation_id)
     rows = (
-        await db.execute(
-            select(ChatMessage)
-            .where(ChatMessage.conversation_id == conversation_id)
-            .order_by(ChatMessage.created_at.asc(), ChatMessage.id.asc())
+        (
+            await db.execute(
+                select(ChatMessage)
+                .where(ChatMessage.conversation_id == conversation_id)
+                .order_by(ChatMessage.created_at.asc(), ChatMessage.id.asc())
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return {
         "messages": [
             {
@@ -227,12 +243,16 @@ async def list_events(
     """Trajectory 事件回放（融合点 2 的消费端）：按 seq 返回会话全事件流。"""
     await _own_conversation(db, user, conversation_id)
     rows = (
-        await db.execute(
-            select(ChatEvent)
-            .where(ChatEvent.conversation_id == conversation_id)
-            .order_by(ChatEvent.seq.asc())
+        (
+            await db.execute(
+                select(ChatEvent)
+                .where(ChatEvent.conversation_id == conversation_id)
+                .order_by(ChatEvent.seq.asc())
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return {
         "events": [
             {

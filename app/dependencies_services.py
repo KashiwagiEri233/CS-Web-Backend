@@ -22,7 +22,10 @@ from app.services.auxilio_service import AuxilioService
 from app.services.community.community_category import CategoryService
 from app.services.community.community_comment import CommentService
 from app.services.community.community_feed import FeedService
-from app.services.community.community_interaction import FavoriteService, ReactionService
+from app.services.community.community_interaction import (
+    FavoriteService,
+    ReactionService,
+)
 from app.services.community.community_post import PostService
 from app.services.community.community_report import ReportService
 from app.services.community.community_series import SeriesService

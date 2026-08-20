@@ -21,7 +21,11 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.exceptions import ErrorCode, PermissionDeniedException, ValidationException
+from app.core.exceptions import (
+    ErrorCode,
+    PermissionDeniedException,
+    ValidationException,
+)
 from app.database import get_db
 from app.dependencies import get_current_active_user
 from app.models.user import User

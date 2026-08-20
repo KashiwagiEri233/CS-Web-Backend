@@ -108,9 +108,7 @@ async def _cleanup(
                 )
         except Exception:
             pass
-    await db.execute(
-        text("DELETE FROM users WHERE id = ANY(:ids)"), {"ids": user_ids}
-    )
+    await db.execute(text("DELETE FROM users WHERE id = ANY(:ids)"), {"ids": user_ids})
     await db.commit()
 
 
@@ -224,9 +222,7 @@ async def test_tools_http_user_flow(integration_db_ready):
             assert submitted.json()["status"] == "submitted"
 
             # ---- 考试：列表 tag 过滤（tools_repo.py:40 修复的 HTTP 回归）+ 详情 + 题目
-            exam_lst = await client.get(
-                "/api/v1/tools/exam", params={"tag": "python"}
-            )
+            exam_lst = await client.get("/api/v1/tools/exam", params={"tag": "python"})
             assert exam_lst.status_code == 200, exam_lst.text
             assert any(e["id"] == exam_id for e in exam_lst.json()["items"])
             exam_det = await client.get(f"/api/v1/tools/exam/{exam_id}")
@@ -274,9 +270,9 @@ async def test_tools_http_user_flow(integration_db_ready):
             await _cleanup(
                 db,
                 [creator_id, user_id],
-                resource_ids=[resource_id, new_resource_id]
-                if new_resource_id
-                else [resource_id],
+                resource_ids=(
+                    [resource_id, new_resource_id] if new_resource_id else [resource_id]
+                ),
                 task_ids=[task_id],
                 exam_ids=[exam_id],
                 item_ids=[item_id] if item_id else None,

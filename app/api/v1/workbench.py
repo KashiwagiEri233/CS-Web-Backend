@@ -51,12 +51,13 @@ def _local_today() -> date:
     return now_local().date()
 
 
-
 @router.get("/contributions/github")
 async def get_github_contributions(
     user: User = Depends(get_current_active_user),
     service: ContributionService = Depends(get_contribution_service),
-    username: Optional[str] = Query(default=None, description="GitHub 用户名；缺省用绑定资料"),
+    username: Optional[str] = Query(
+        default=None, description="GitHub 用户名；缺省用绑定资料"
+    ),
     year: int = Query(default=0, ge=2015, le=2100),
     refresh: bool = Query(default=False, description="强制刷新"),
 ):
@@ -76,7 +77,11 @@ async def get_github_contributions(
     )
     if payload.get("unreachable"):
         # 抓取不可达（无缓存兜底）：返回 ok=False 的友好错误，前端据此展示「无法连接 GitHub」+ 重试
-        return {"ok": False, "error": "github_unreachable", "message": "无法连接 GitHub，请稍后重试"}
+        return {
+            "ok": False,
+            "error": "github_unreachable",
+            "message": "无法连接 GitHub，请稍后重试",
+        }
     return {"ok": True, **payload}
 
 
@@ -95,7 +100,9 @@ async def get_api_usage_stats(
     daily_rows = (
         await db.execute(
             select(
-                func.date(func.timezone(settings.TIMEZONE, ApiCallLog.created_at)).label("d"),
+                func.date(
+                    func.timezone(settings.TIMEZONE, ApiCallLog.created_at)
+                ).label("d"),
                 func.count().label("c"),
             )
             .where(ApiCallLog.created_at >= since)
@@ -196,7 +203,9 @@ async def get_pomodoro_stats(
     ).scalar_one()
     total_minutes = (
         await db.execute(
-            select(func.coalesce(func.sum(FocusSession.duration_seconds), 0) / 60.0).where(
+            select(
+                func.coalesce(func.sum(FocusSession.duration_seconds), 0) / 60.0
+            ).where(
                 FocusSession.user_id == user.id,
                 FocusSession.phase == "focus",
             )
@@ -205,7 +214,9 @@ async def get_pomodoro_stats(
     today_start = local_day_start_utc(today)
     today_minutes = (
         await db.execute(
-            select(func.coalesce(func.sum(FocusSession.duration_seconds), 0) / 60.0).where(
+            select(
+                func.coalesce(func.sum(FocusSession.duration_seconds), 0) / 60.0
+            ).where(
                 FocusSession.user_id == user.id,
                 FocusSession.phase == "focus",
                 FocusSession.created_at >= today_start,
@@ -217,8 +228,12 @@ async def get_pomodoro_stats(
     daily_rows = (
         await db.execute(
             select(
-                func.date(func.timezone(settings.TIMEZONE, FocusSession.created_at)).label("d"),
-                (func.coalesce(func.sum(FocusSession.duration_seconds), 0) / 60.0).label("m"),
+                func.date(
+                    func.timezone(settings.TIMEZONE, FocusSession.created_at)
+                ).label("d"),
+                (
+                    func.coalesce(func.sum(FocusSession.duration_seconds), 0) / 60.0
+                ).label("m"),
             )
             .where(
                 FocusSession.user_id == user.id,
@@ -261,9 +276,7 @@ async def get_llm_usage_stats(
 
     # 总计
     total_calls = (
-        await db.execute(
-            select(func.count()).where(LlmUsageLog.user_id == user.id)
-        )
+        await db.execute(select(func.count()).where(LlmUsageLog.user_id == user.id))
     ).scalar_one()
     total_tokens = (
         await db.execute(
@@ -304,7 +317,9 @@ async def get_llm_usage_stats(
     daily_rows = (
         await db.execute(
             select(
-                func.date(func.timezone(settings.TIMEZONE, LlmUsageLog.created_at)).label("d"),
+                func.date(
+                    func.timezone(settings.TIMEZONE, LlmUsageLog.created_at)
+                ).label("d"),
                 func.coalesce(func.sum(LlmUsageLog.total_tokens), 0).label("tk"),
                 func.count().label("c"),
             )
@@ -379,7 +394,12 @@ async def get_llm_config(
         await db.execute(select(LlmConfig).where(LlmConfig.user_id == user.id))
     ).scalar_one_or_none()
     if cfg is None:
-        return {"ok": True, "configured": False, "webSearchEnabled": True, "trajectoryEnabled": True}
+        return {
+            "ok": True,
+            "configured": False,
+            "webSearchEnabled": True,
+            "trajectoryEnabled": True,
+        }
     return {
         "ok": True,
         "configured": bool(cfg.api_key_encrypted),

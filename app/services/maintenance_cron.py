@@ -27,8 +27,10 @@ async def token_gc_cron(ctx) -> int:
 
 async def data_retention_cron(ctx) -> dict[str, int]:
     """登录历史 / 审计日志保留期清理（每日 03:00）。"""
-    if (settings.LOGIN_HISTORY_CLEANUP_INTERVAL_SECONDS <= 0
-            and settings.AUDIT_LOG_CLEANUP_INTERVAL_SECONDS <= 0):
+    if (
+        settings.LOGIN_HISTORY_CLEANUP_INTERVAL_SECONDS <= 0
+        and settings.AUDIT_LOG_CLEANUP_INTERVAL_SECONDS <= 0
+    ):
         return {"login_history": 0, "audit_log": 0}
     return await data_retention._purge_once()
 

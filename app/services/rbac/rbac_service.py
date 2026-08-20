@@ -59,9 +59,7 @@ async def _invalidate_user_perm_cache_many(
     try:
         await get_cache().delete_many(keys)
     except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            "权限缓存批量失效失败", count=len(keys), error=str(exc)
-        )
+        logger.warning("权限缓存批量失效失败", count=len(keys), error=str(exc))
         if raise_on_failure:
             raise RuntimeError(
                 f"权限缓存批量失效失败，已中止本次授权变更以避免撤权后残留权限：{exc}"
@@ -96,7 +94,9 @@ class RBACService(RBACAssignmentMixin):
         permissions = await self.rbac_repo.get_authorization_permissions(user_id)
 
         try:
-            await cache.set(key, list(permissions), RBAC_USER_PERMISSION_CACHE_TTL_SECONDS)
+            await cache.set(
+                key, list(permissions), RBAC_USER_PERMISSION_CACHE_TTL_SECONDS
+            )
         except Exception:  # noqa: BLE001
             logger.debug("权限缓存写入失败，忽略", user_id=user_id)
 

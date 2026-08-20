@@ -31,7 +31,11 @@ from app.repositories.community_repo import (
     CommunityPostRepository,
 )
 from app.services.community.community_notifications import notify_mentions
-from app.services.community.community_utils import load_users_by_ids, generate_slug, to_author_summary
+from app.services.community.community_utils import (
+    load_users_by_ids,
+    generate_slug,
+    to_author_summary,
+)
 from app.services.view_count import record_view
 
 
