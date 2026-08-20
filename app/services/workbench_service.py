@@ -12,6 +12,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.timezone import now_utc
 from app.core.totp_encryption import encrypt_secret
 from app.models.focus import FocusSession
@@ -49,6 +50,8 @@ class WorkbenchService:
         model: Optional[str],
         base_url: Optional[str],
         api_key: Optional[str],
+        web_search_enabled: bool = True,
+        trajectory_enabled: bool = True,
     ) -> dict:
         """保存用户 LLM 配置（API Key AES-256-GCM 加密存储，绝不落明文/日志）。返回配置状态摘要。"""
         cfg = (
@@ -61,8 +64,10 @@ class WorkbenchService:
             self.db.add(cfg)
 
         cfg.provider = provider
-        cfg.model = model or "gpt-4o-mini"
+        cfg.model = model or settings.LLM_MODEL
         cfg.base_url = (base_url or "").strip() or None
+        cfg.web_search_enabled = web_search_enabled
+        cfg.trajectory_enabled = trajectory_enabled
         if api_key and api_key.strip():
             cfg.api_key_encrypted = encrypt_secret(api_key.strip())
         cfg.updated_at = now_utc()
@@ -73,4 +78,6 @@ class WorkbenchService:
             "configured": bool(cfg.api_key_encrypted),
             "provider": cfg.provider,
             "model": cfg.model,
+            "webSearchEnabled": cfg.web_search_enabled,
+            "trajectoryEnabled": cfg.trajectory_enabled,
         }

@@ -258,9 +258,9 @@ Model 层  contribution_cache / api_call_logs / conversations / chat_messages /
 | `chat_events` | `ChatEvent` | conversation_id, user_id, seq, event_type, payload(JSONB), created_at | auxilio API（Trajectory 事件流，append-only） |
 | `focus_sessions` | `FocusSession` | user_id, duration_seconds, phase, sound_source, started_at | workbench POST /focus-sessions |
 | `llm_usage_logs` | `LlmUsageLog` | user_id, provider, model, prompt/completion/total_tokens, latency_ms, status | auxilio API（流式结束后） |
-| `llm_configs` | `LlmConfig` | user_id(PK), provider, api_key_encrypted, base_url, model, updated_at | workbench PUT /llm-config |
+| `llm_configs` | `LlmConfig` | user_id(PK), provider, api_key_encrypted, base_url, model, web_search_enabled, trajectory_enabled, updated_at | workbench PUT /llm-config |
 
-迁移链（Alembic，当前 head = `d4e5f6a7b8c9`）：
+迁移链（Alembic，当前 head = `e5f6a7b8c9d0`）：
 
 ```
 a3b4c5d6e7f8 (chinese_fts_zhparser)
@@ -644,9 +644,10 @@ rule-based + LLM 可选的学习助手。SSE 流式对话，支持 OpenAI / Anth
 
 | Method | Path | 鉴权 | 说明 |
 |---|---|---|---|
-| POST | `/auxilio/chat` | 当前活跃用户 | SSE 流式对话（`text/event-stream`，双协议 + Skills） |
+| POST | `/auxilio/chat` | 当前活跃用户 | SSE 流式对话（`text/event-stream`，双协议 + Skills；请求体可选 `preset_id` 指定 Agent 预设） |
 | GET | `/auxilio/conversations` | 当前活跃用户 | 当前用户会话列表（按 `updated_at` 倒序，默认 20 条，最大 50） |
 | GET | `/auxilio/conversations/{conversation_id}/messages` | 当前活跃用户 | 指定会话消息历史（含 `toolCalls`） |
+| GET | `/auxilio/conversations/{conversation_id}/events` | 当前活跃用户 | Trajectory 事件回放（按 `seq` 升序返回 `chat_events` 全事件流，融合点 2 消费端） |
 
 > 路由表为摘要，完整契约（method / path / requestBody / responses / SSE 事件形状）以根仓 `openapi.baseline.json` 为准。
 
@@ -657,7 +658,7 @@ rule-based + LLM 可选的学习助手。SSE 流式对话，支持 OpenAI / Anth
 - **Trajectory 事件日志（融合点 2）**：`/auxilio/chat` 路由在事件循环内将每个事件（`delta` / `tool_call` / `tool_result` / `done` / `error`）append-only 落 `chat_events`（conversation_id / user_id / seq 自增 / event_type / payload JSONB / created_at），best-effort 失败不影响对话；`chat_messages` 保留为对外快照，`chat_events` 用于回放与调试。
 - **llm_client**（`app/services/llm_client.py`）：统一流式入口 `stream_chat()`，按 `provider` 分流 OpenAI 兼容（`/chat/completions`）与 Anthropic（`/v1/messages`）双协议，产出统一事件 dict；`check_enabled()` 在未配置时抛 `LLMConfigError`（上层捕获后降级规则模式）。
 
-### Skills（7 个，`auxilio_agent.TOOL_SCHEMAS`）
+### Skills（8 个，`auxilio_agent.TOOL_SCHEMAS`，由 `TOOL_REGISTRY` 推导）
 
 | Skill | 说明 |
 |---|---|
@@ -665,9 +666,24 @@ rule-based + LLM 可选的学习助手。SSE 流式对话，支持 OpenAI / Anth
 | `get_exam_countdown` | 查询最近进行中考试及其截止倒计时 |
 | `list_tasks` | 列出已发布协会任务（标题 / 分类 / 积分 / 状态），最多 10 条 |
 | `list_my_claims` | 列出当前用户已认领的任务 |
-| `search_resources` | 资源库按关键词模糊搜索已审核资源 |
+| `search_resources` | 资源库按标题/描述模糊搜索已审核资源（统一实现：全站搜索与学习助手共用 `AuxilioToolRepository.search_resources`，波次 A1） |
 | `get_llm_usage_stats` | 查询学习助手 LLM 调用统计（次数 / token 消耗） |
 | `get_pomodoro_stats` | 查询用户番茄钟专注统计（总轮数 / 今日分钟） |
+| `web_search` | 联网搜索外部资料（DuckDuckGo 免费接口，无需 key；`WEB_SEARCH_ENABLED` 可关；结果经 ER-19 包裹，不可信） |
+
+### Agent 预设（融合点 3，`auxilio_agent.AGENT_PRESETS`）
+
+预设 = 系统提示词模板 + 工具子集 + temperature，按场景组合（`AgentPreset` 声明式注册）：
+
+| 预设 id | 名称 | 工具子集 | temperature |
+|---|---|---|---|
+| `general` | 通用答疑 | 全部 8 个暴露工具 | 默认 |
+| `exam_sprint` | 考试冲刺 | analyze_learning_profile / get_exam_countdown / search_resources | 0.3 |
+| `resource_finder` | 资源检索 | search_resources / analyze_learning_profile | 0.5 |
+| `web_research` | 联网研究 | web_search / search_resources / analyze_learning_profile | 0.4 |
+
+- `run_chat(preset_id=...)` 显式指定（`/auxilio/chat` 请求体 `preset_id`）；缺省按用户首条消息关键词启发式匹配（`match_preset`，考试类 → exam_sprint、资源类 → resource_finder，有序优先），无效 id 视同未指定。
+- 工作台小组件为 lite 纯轻聊（不传 preset_id，走启发式）；全量页 `/tools/auxilio`（前端 `modules/auxilio/ui/agent-page.tsx`）提供预设切换。
 
 ### 配置
 

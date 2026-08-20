@@ -14,7 +14,7 @@ FastAPI 0.139 · SQLAlchemy 2.0 async + asyncpg · Alembic · pydantic-settings 
 ## 目录
 ```
 app/
-├── api/v1/        # 路由层（每个资源一个文件，在 v1/__init__.py 汇总注册）
+├── api/v1/        # 路由层（每个资源一个文件，在 v1/__init__.py 汇总注册；tools 子域收 api/v1/tools/ 包）
 ├── core/          # config / loguru_logger / security / redis_client
 │   ├── exceptions/  # 业务异常 + 全局处理器 + ExceptionHandlerMiddleware
 │   ├── cache/       # 可降级通用缓存
@@ -23,7 +23,7 @@ app/
 ├── models/        # ORM 模型（在 models/__init__.py 汇总导出）
 ├── repositories/  # 数据访问层
 ├── schemas/       # Pydantic 入/出参
-├── services/      # 业务逻辑层
+├── services/      # 业务逻辑层（业务域包：auth/community/event/user/rbac + <x>_service.py 平铺，见「分层约定」）
 ├── database.py    # 引擎 + get_db（路由）/ get_session（路由外）/ ensure_database_exists
 ├── dependencies.py
 └── main.py        # 入口：中间件注册、异常处理器、lifespan
@@ -100,7 +100,7 @@ python run.py --env 3 --prod   # 等价的显式写法
 
 | 新增 | 放哪 | 必须登记到 |
 |---|---|---|
-| API 资源 | `app/api/v1/<name>.py`（`router = APIRouter()`） | `app/api/v1/__init__.py` → `api_router.include_router(router, prefix=..., tags=[...])` |
+| API 资源 | `app/api/v1/<name>.py`（`router = APIRouter()`）；tools 子域收 `app/api/v1/tools/<name>.py` | `app/api/v1/__init__.py` → `api_router.include_router(router, prefix=..., tags=[...])`（tools 用 `tools.<name>.router`） |
 | ORM 模型 | `app/models/<name>.py` | `app/models/__init__.py`：import + 加入 `__all__`（否则 alembic autogenerate 看不到） |
 | 业务异常 | 继承 `BaseAppException`（`app/core/exceptions/base_exceptions.py`） | `app/core/exceptions/__init__.py` 的 `__all__`；若需专属处理逻辑，再在 `setup_exception_handlers` 注册 |
 | 错误码 | `ErrorCode` 命名空间（`app/core/exceptions/error_codes.py`） | 见下方「错误码（ErrorCode 注册表）」——禁止裸字符串 |
@@ -118,7 +118,7 @@ python run.py --env 3 --prod   # 等价的显式写法
 1. **模型** `app/models/<x>.py` → 在 `app/models/__init__.py` import 并加进 `__all__`。
 2. **schema** `app/schemas/<x>.py`：Pydantic v2（`model_config = ConfigDict(...)`，需从 ORM 转换时加 `from_attributes=True`）。
 3. **repository** `app/repositories/<x>_repo.py`：构造函数收 `db: AsyncSession`，只做数据访问。
-4. **service** `app/services/<x>_service.py`：构造函数收 `db`，写业务逻辑；不依赖 `Request`（这样 worker/脚本也能复用）。
+4. **service** `app/services/<x>_service.py`：构造函数收 `db`，写业务逻辑；不依赖 `Request`（这样 worker/脚本也能复用）。业务域 service 可收编进 `app/services/<域>/` 包（已包化：`auth/community/event/user/rbac`，见 `docs/模块命名映射表.md`）。
 5. **路由** `app/api/v1/<x>.py`：端点用 `Depends(get_db)`，鉴权用 `Depends(require_permission("<res>","<act>"))`。
 6. 在 `app/api/v1/__init__.py` 注册 router。
 7. **建表/迁移**：按下方「数据库迁移」执行。

@@ -27,8 +27,8 @@ from app.repositories.community_repo import (
     CommunityCommentRepository,
     CommunityPostRepository,
 )
-from app.services.community_notifications import notify_comment_reply, notify_mentions
-from app.services.community_utils import to_author_summary
+from app.services.community.community_notifications import notify_comment_reply, notify_mentions
+from app.services.community.community_utils import to_author_summary
 
 
 class CommentService:
@@ -193,15 +193,7 @@ class CommentService:
     async def _load_author_summaries(self, comments: list[CommunityComment]) -> None:
         if not comments:
             return
-        author_ids = {c.author_id for c in comments}
-        users = {
-            u.id: u
-            for u in (
-                await self.db.execute(select(User).where(User.id.in_(author_ids)))
-            )
-            .scalars()
-            .all()
-        }
+        users = await load_users_by_ids(self.db, (c.author_id for c in comments))
         for comment in comments:
             user = users.get(comment.author_id)
             setattr(comment, "author", to_author_summary(user) if user else None)

@@ -14,7 +14,7 @@ from app.models.user import User
 from app.schemas.pagination import PaginatedResponse, PaginationParams
 from app.schemas.rbac import Role, RoleCreate, RoleUpdate
 from app.services.audit_service import AuditService
-from app.services.rbac_service import RBACService
+from app.services.rbac.rbac_service import RBACService
 
 router = APIRouter()
 

@@ -30,8 +30,8 @@ from app.repositories.community_repo import (
     CommunityInteractionRepository,
     CommunityPostRepository,
 )
-from app.services.community_notifications import notify_mentions
-from app.services.community_utils import generate_slug, to_author_summary
+from app.services.community.community_notifications import notify_mentions
+from app.services.community.community_utils import load_users_by_ids, generate_slug, to_author_summary
 from app.services.view_count import record_view
 
 
@@ -335,16 +335,8 @@ class PostService:
     ) -> None:
         if not posts:
             return
-        author_ids = {p.author_id for p in posts}
         category_ids = {p.category_id for p in posts if p.category_id}
-        users = {
-            u.id: u
-            for u in (
-                await self.db.execute(select(User).where(User.id.in_(author_ids)))
-            )
-            .scalars()
-            .all()
-        }
+        users = await load_users_by_ids(self.db, (p.author_id for p in posts))
         categories = {}
         if category_ids:
             categories = {

@@ -22,6 +22,7 @@ from app.models.resource import Resource
 from app.models.task import Task, TaskClaim
 from app.repositories.base import dml_rowcount
 from app.repositories.base import paginate
+from app.core.query_helpers import jsonb_contains
 
 
 class ExamRepository:
@@ -42,7 +43,7 @@ class ExamRepository:
         if tag and tag.strip():
             # 2026-08-10 修复：Exam.tech_tags 为 JSON().with_variant(JSONB())（Variant），
             # contains 退化成字符串 LIKE 且实际调用报错；type_coerce(JSONB) 走 @> 包含。
-            conditions.append(type_coerce(Exam.tech_tags, JSONB).contains([tag.strip()]))
+            conditions.append(jsonb_contains(Exam.tech_tags, [tag.strip()]))
         total = int(
             (
                 await self.db.execute(
@@ -239,7 +240,7 @@ class ResourceRepository:
             # 2026-08-10 修复：Resource.tech_tags 为 JSON().with_variant(JSONB())（Variant），
             # contains 退化成字符串 LIKE 且实际调用报错；type_coerce(JSONB) 走 @> 包含。
             conditions.append(
-                type_coerce(Resource.tech_tags, JSONB).contains([tag.strip()])
+                jsonb_contains(Resource.tech_tags, [tag.strip()])
             )
         if submitted_by:
             conditions.append(Resource.submitted_by == submitted_by)

@@ -22,8 +22,8 @@ from app.schemas.profile import (
     ProfileUpdate,
     PublicUserProfileResponse,
 )
-from app.services.auth_service import AuthService
-from app.services.user_service import UserService
+from app.services.auth.auth_service import AuthService
+from app.services.user.user_service import UserService
 
 router = APIRouter()
 

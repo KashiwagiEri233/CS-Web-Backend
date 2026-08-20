@@ -10,10 +10,10 @@ from typing import Optional
 
 from datetime import datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.timezone import local_to_utc, now_local, now_utc
+from app.core.timezone import now_utc, local_day_start_utc
 from app.models.api_usage import ApiCallLog
 from app.models.exam import Exam
 from app.models.focus import FocusSession
@@ -28,19 +28,6 @@ class AuxilioToolRepository:
     def __init__(self, db: AsyncSession):
         self.db: AsyncSession = db
 
-    @staticmethod
-    def _today_start_utc() -> datetime:
-        """配置时区当日的零点（UTC aware），供各统计方法共用。
-
-        存储层时间列均为 ``DateTime(timezone=True)``（UTC），比较必须用 aware UTC；
-        不能用 ``date.today()``（服务器本地日期）拼 naive 零点，否则在
-        ``TIMEZONE`` 与服务器时区不一致时统计口径会偏移。
-        """
-        start = local_to_utc(
-            datetime.combine(now_local().date(), datetime.min.time())
-        )
-        assert start is not None  # 入参恒非 None，local_to_utc 必返回非 None
-        return start
 
     async def upcoming_exams(self, limit: int = 3) -> list[Exam]:
         """最近进行中的考试（已发布且未结束，按截止时间升序）。"""
@@ -75,14 +62,19 @@ class AuxilioToolRepository:
         return list(rows.tuples().all())
 
     async def search_resources(self, keyword: str, limit: int = 5) -> list[Resource]:
-        """按标题模糊搜索已审核的学习资源（按浏览量倒序）。"""
+        """按标题或描述模糊搜索已审核的学习资源（按浏览量倒序）。
+
+        统一实现（重复实现治理波次 A1）：全站搜索 search_service 与学习助手
+        web_search/search_resources 工具均透传本方法，保证同一关键词结果一致。
+        """
         # 转义 LIKE 通配符，避免用户输入中的 % / _ 被当作模式
         escaped = keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        like = f"%{escaped}%"
         rows = await self.db.execute(
             select(Resource)
             .where(
                 Resource.status == "approved",
-                Resource.title.ilike(f"%{escaped}%", escape="\\"),
+                or_(Resource.title.ilike(like, escape="\\"), Resource.description.ilike(like, escape="\\")),
             )
             .order_by(Resource.view_count.desc())
             .limit(limit)
@@ -91,7 +83,7 @@ class AuxilioToolRepository:
 
     async def llm_usage_stats(self, user_id: int) -> dict[str, int]:
         """LLM 调用用量统计（累计 + 今日），单次聚合查询。"""
-        today_start = self._today_start_utc()
+        today_start = local_day_start_utc()
         row = (
             await self.db.execute(
                 select(
@@ -114,7 +106,7 @@ class AuxilioToolRepository:
 
     async def llm_usage_today_tokens(self, user_id: int) -> int:
         """用户今日累计消耗 token（用于每日预算拦截）。"""
-        today_start = self._today_start_utc()
+        today_start = local_day_start_utc()
         total = (
             await self.db.execute(
                 select(func.coalesce(func.sum(LlmUsageLog.total_tokens), 0)).where(
@@ -132,7 +124,7 @@ class AuxilioToolRepository:
         避免普通用户经学习助手工具越权获取全站用量（ER-18）。
         原全站行为在 user_id=None 时完全保留。
         """
-        today_start = self._today_start_utc()
+        today_start = local_day_start_utc()
         since = today_start - timedelta(days=29)
         base = select(func.count())
         if user_id is not None:
@@ -147,7 +139,7 @@ class AuxilioToolRepository:
 
     async def pomodoro_stats(self, user_id: int) -> dict[str, int]:
         """番茄钟专注统计（累计专注次数 + 今日专注分钟）。"""
-        today_start = self._today_start_utc()
+        today_start = local_day_start_utc()
         total_sessions = (
             await self.db.execute(
                 select(func.count()).where(
