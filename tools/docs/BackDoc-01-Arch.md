@@ -624,7 +624,7 @@ Phase 1 新增（全部登记 `.env.example`）：
 
 ### 测试
 
-[待填写]（未检索到 workbench 路由 / contribution_service / focus-sessions 的专属测试文件）
+[待填写] 专属测试缺失（汇入 `docs/项目待办v2.md` W-3）
 
 ### 前后端联动
 - 前端模块：工作台（`FrontDoc-01-Arch.md` Part B §2.18）；页面 `/tools`（工作台视图）
@@ -727,7 +727,7 @@ LLM 配置（全局 / 用户级）详见 Part A §9.3：`LLM_PROVIDER`（默认 
 
 ### 测试
 
-[待填写]（未检索到 ApiUsageMiddleware 的专属测试文件）
+[待填写] ApiUsageMiddleware 专属测试缺失（汇入 W-4）
 
 ### 前后端联动
 - 无独立前端模块（埋点中间件，不暴露路由）；数据由前端工作台 `api-usage-stats` widget（`FrontDoc-01-Arch.md` Part B §2.18，部分就绪）经 `GET /api/workbench/stats/api-usage` 消费
@@ -736,11 +736,7 @@ LLM 配置（全局 / 用户级）详见 Part A §9.3：`LLM_PROVIDER`（默认 
 
 ## 信息缺口声明（Part B）
 
-下列项未能从当前代码直接确认，已以 `[待填写]` 标记，需后续补实：
-
-1. **工作台 / 贡献服务 / 番茄钟 / API 埋点 的专属测试文件**：在 `tools/tests/` 下未检索到对应测试（仅学习助手 `AuxilioService` 有 `test_phase5_tools.py::test_auxilio`）。
-2. **数据备份（导出 / 导入 / 清空）后端端点**：当前 `workbench.py` 无对应路由，判定为前端本地实现；如确有后端接口需补充文档与路由表。
-3. ~~**`LLM_DAILY_BUDGET` 强制逻辑**~~ → **已落实（2026-08-08）**：在 `auxilio_agent.run_chat` 调用模型前按用户累加当日 `llm_usage_logs.total_tokens`，达预算即停止并提示（详见 Part A §9.3）。
+> 未能从代码直接确认的项已汇入 `docs/项目待办v2.md` W-5 跟踪。
 
 ---
 

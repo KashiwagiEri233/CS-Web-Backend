@@ -275,7 +275,7 @@ LLM 相关代码集中在 `app/services/llm_client.py`（客户端）与 `app/se
 
 ## 15. 信息缺口声明
 
-以下为本次对齐代码时发现、但代码 / 配置尚未完全落实或存在偏差的项，需后续补齐或由负责人确认；未落实项以 `[待填写]` 标注。
+以下为对齐代码时发现、尚未完全落实或存在偏差的项，已汇总至 `docs/项目待办v2.md` W-5 跟踪；已闭环项见根 CHANGELOG。
 
 1. ~~**`LLM_DAILY_BUDGET` 未强制**~~ → **已落实（2026-08-08）**：在 `auxilio_agent.run_chat` 调用模型前按用户维度累加当日 `llm_usage_logs.total_tokens`，达 `LLM_DAILY_BUDGET`（单位：千 tokens/日，默认 200 = 20 万 tokens；0 = 不限制）即停止调用并提示。配置注释已同步（`config.py`）。
 2. ~~**`LLM_*` 未同步环境样板**~~ → **已补齐（2026-08-08）**：`.env.example`、`.env.docker.example`、`.env.development` 均已增加 `LLM_*` 可选段（含默认值与 `LLM_PROVIDER=none` 降级说明）。
