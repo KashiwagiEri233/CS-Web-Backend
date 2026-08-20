@@ -153,7 +153,7 @@ raise AuthenticationException(error_code=ErrorCode.Auth.INVALID_CREDENTIALS)
 
 ### 第二步预留：业务模块自治（演进方向，暂不执行）
 
-> ℹ️ 变更记录见根仓 [`CHANGELOG.md`](../CHANGELOG.md)，待办条目见 `docs/项目待办事项-优先级重排.md`。
+> ℹ️ 变更记录见根仓 [`CHANGELOG.md`](../CHANGELOG.md)，待办条目见 `docs/项目待办v2.md`。
 
 ## 数据库迁移（Schema 唯一来源 = Alembic）
 

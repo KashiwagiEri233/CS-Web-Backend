@@ -496,7 +496,7 @@ pnpm dev                            # http://localhost:2333
 
 验证清单：
 
-> ℹ️ 变更记录见根仓 [`CHANGELOG.md`](../../../CHANGELOG.md)，待办条目见 `docs/项目待办事项-优先级重排.md`。
+> ℹ️ 变更记录见根仓 [`CHANGELOG.md`](../../../CHANGELOG.md)，待办条目见 `docs/项目待办v2.md`。
 
 #### 6.3.11 表结构与约束抽查
 
