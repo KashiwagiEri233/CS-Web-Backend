@@ -17,6 +17,7 @@ from app.api.v1 import (
     password_resets,
     profile,
     rbac,
+    search,
     tools,
     users,
     workbench,
@@ -64,6 +65,7 @@ api_router.include_router(workbench.router, tags=["工作台"])
 api_router.include_router(
     tools.feature_visibility.router, tags=["功能模块可见性"]
 )
+api_router.include_router(search.router, prefix="/search", tags=["搜索"])
 
 if settings.DEBUG:
     from app.api.v1 import dev_exceptions

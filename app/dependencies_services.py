@@ -35,6 +35,7 @@ from app.services.notification_service import NotificationService
 from app.services.points_service import PointsService
 from app.services.rbac.rbac_service import RBACService
 from app.services.resource_service import ResourceService
+from app.services.search_service import SearchService
 from app.services.task_service import TaskService
 from app.services.totp_service import TOTPService
 from app.services.user.user_service import UserService
@@ -157,6 +158,10 @@ def get_component_registry_service(
 
 def get_workbench_service(db: AsyncSession = Depends(get_db)) -> WorkbenchService:
     return WorkbenchService(db)
+
+
+def get_search_service(db: AsyncSession = Depends(get_db)) -> SearchService:
+    return SearchService(db)
 
 
 def get_contribution_service(db: AsyncSession = Depends(get_db)) -> ContributionService:
