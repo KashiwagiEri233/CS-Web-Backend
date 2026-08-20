@@ -159,7 +159,7 @@ async def test_send_mail_calls_asyncio_to_thread_with_send_sync():
     ) as to_thread:
         await send_mail("a@b.com", "subj", "body")
 
-    to_thread.assert_awaited_once_with(_send_sync, "a@b.com", "subj", "body")
+    to_thread.assert_awaited_once_with(_send_sync, "a@b.com", "subj", "body", None)
 
 
 async def test_send_verification_code_calls_send_mail_with_subject_and_code():
@@ -172,8 +172,13 @@ async def test_send_verification_code_calls_send_mail_with_subject_and_code():
         await send_verification_code("user@example.com", "123456")
 
     send_mail_mock.assert_awaited_once()
-    args, _ = send_mail_mock.call_args
+    args, kwargs = send_mail_mock.call_args
     assert args[0] == "user@example.com"
     assert args[1] == "【FZTBU】验证码"
     assert "123456" in args[2]
     assert "10" in args[2]
+    html = kwargs["html"]
+    for digit in "123456":
+        assert digit in html
+    assert "${" not in html
+    assert 'Content-Type' not in html

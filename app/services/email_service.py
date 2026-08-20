@@ -1,12 +1,15 @@
 """邮件发送服务：smtplib 线程池发送，未配置 SMTP_HOST 时回退控制台输出。
 
 与前端行为对齐：SMTP_HOST 为空 = 开发模式，验证码输出到控制台（见 verification_service）。
+支持 HTML 邮件：`send_mail(..., html=...)` 时构造 multipart/alternative
+（纯文本回退 + HTML），保证无 HTML 能力的客户端与送达率。
 """
 
 from __future__ import annotations
 
 import asyncio
 import smtplib
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Optional
 
@@ -35,7 +38,23 @@ def _smtp_transport() -> Optional[smtplib.SMTP]:
     return smtp
 
 
-def _send_sync(to: str, subject: str, text: str) -> None:
+def _build_message(
+    to: str, subject: str, text: str, html: Optional[str] = None
+) -> MIMEText:
+    """构造待发送的 MIME 消息（纯文本，或纯文本 + HTML 的 alternative）。"""
+    if html is None:
+        msg = MIMEText(text, "plain", "utf-8")
+    else:
+        msg = MIMEMultipart("alternative")
+        msg.attach(MIMEText(text, "plain", "utf-8"))
+        msg.attach(MIMEText(html, "html", "utf-8"))
+    msg["Subject"] = subject
+    msg["From"] = settings.SMTP_FROM
+    msg["To"] = to
+    return msg
+
+
+def _send_sync(to: str, subject: str, text: str, html: Optional[str] = None) -> None:
     """同步发送（在线程池中执行）。失败抛异常由调用方兜底。"""
     transport = _smtp_transport()
     if transport is None:
@@ -47,10 +66,7 @@ def _send_sync(to: str, subject: str, text: str) -> None:
         logger.info("[Mail] 内容: {}", text)
         return
     try:
-        msg = MIMEText(text, "plain", "utf-8")
-        msg["Subject"] = subject
-        msg["From"] = settings.SMTP_FROM
-        msg["To"] = to
+        msg = _build_message(to, subject, text, html)
         transport.sendmail(settings.SMTP_FROM, [to], msg.as_string())
     finally:
         try:
@@ -59,8 +75,8 @@ def _send_sync(to: str, subject: str, text: str) -> None:
             pass
 
 
-async def send_mail(to: str, subject: str, text: str) -> None:
-    """发送纯文本邮件（异步封装）。SMTP_HOST 为空时仅记日志。
+async def send_mail(to: str, subject: str, text: str, html: Optional[str] = None) -> None:
+    """发送邮件（异步封装）。SMTP_HOST 为空时仅记日志。
 
     QUEUE_ENABLED=True 时经 arq 队列异步发送（含自动重试）；
     否则在线程池中同步发送（失败抛异常由调用方兜底）。
@@ -69,9 +85,9 @@ async def send_mail(to: str, subject: str, text: str) -> None:
         from app.core.queue import enqueue
         from app.core.queue.tasks import send_email_task
 
-        await enqueue(send_email_task, to, subject, text)
+        await enqueue(send_email_task, to, subject, text, html)
         return
-    await asyncio.to_thread(_send_sync, to, subject, text)
+    await asyncio.to_thread(_send_sync, to, subject, text, html)
 
 
 def _queue_enabled() -> bool:
@@ -95,11 +111,20 @@ def _queue_enabled() -> bool:
 
 
 async def send_verification_code(email: str, code: str) -> None:
-    """发送注册/找回密码验证码邮件（与前端文案一致）。"""
+    """发送注册/找回密码验证码邮件（HTML 模板 + 纯文本回退，与前端文案一致）。"""
+    from app.core.timezone import now_utc
+    from app.services.email_templates import render_template
+
     subject = "【FZTBU】验证码"
     text = f"""您的验证码是：{code}
 
 验证码有效期为 {settings.VERIFICATION_CODE_TTL_MINUTES} 分钟，请尽快完成操作。
 
 如非本人操作，请忽略此邮件。"""
-    await send_mail(email, subject, text)
+    html = render_template(
+        "verification_code.html",
+        code=code,
+        ttl_minutes=settings.VERIFICATION_CODE_TTL_MINUTES,
+        year=now_utc().year,
+    )
+    await send_mail(email, subject, text, html=html)
