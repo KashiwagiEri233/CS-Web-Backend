@@ -14,6 +14,13 @@ class RateLimitSettings(BaseSettings):
         extra="ignore",
     )
 
+    # 应用开关 / worker 数：由 config_parts/web.py 的 WebSettings 提供。跨域
+    # model_validator 需在此读取；本字段声明仅为让静态类型（mypy）可见该兄弟字段，
+    # 运行时取值由聚合类 Settings 按 MRO 提供，行为不变。
+    DEBUG: bool = False
+    TESTING: bool = False
+    WORKERS: int = Field(1, ge=1)
+
     # 安全配置（限流）
     RATE_LIMIT_CALLS: int = Field(100, gt=0)
     RATE_LIMIT_PERIOD: int = Field(60, gt=0)

@@ -79,7 +79,7 @@ class ExamRepository:
         return True
 
     async def list_questions(self, exam_id: int) -> list[ExamQuestion]:
-        stmt = paginate(
+        stmt = (
             select(ExamQuestion)
             .where(ExamQuestion.exam_id == exam_id)
             .order_by(ExamQuestion.sort_order.asc(), ExamQuestion.id.asc())
@@ -247,7 +247,7 @@ class ResourceRepository:
                 )
             ).scalar_one()
         )
-        stmt = (
+        stmt = paginate(
             select(Resource).where(*conditions).order_by(Resource.created_at.desc()),
             skip,
             limit,

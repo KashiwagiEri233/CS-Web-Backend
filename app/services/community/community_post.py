@@ -354,7 +354,7 @@ class PostService:
                 .scalars()
                 .all()
             }
-        interaction_ids = {"reaction": set(), "favorite": set()}
+        interaction_ids: dict[str, set[int]] = {"reaction": set(), "favorite": set()}
         if current_user_id:
             interaction_ids = await self.interaction_repo.get_interaction_target_ids(
                 current_user_id, "post", [p.id for p in posts]

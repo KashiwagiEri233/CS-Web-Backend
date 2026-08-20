@@ -100,7 +100,7 @@ class ContributionService:
             < CONTRIBUTION_CACHE_TTL_SECONDS
         )
 
-        if fresh_enough and not force_refresh:
+        if fresh_enough and cache is not None and not force_refresh:
             return self._to_payload(cache, stale=False)
 
         # 需要抓取

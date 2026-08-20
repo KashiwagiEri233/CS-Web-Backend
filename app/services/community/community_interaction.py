@@ -31,6 +31,7 @@ class ReactionService:
 
     async def toggle_like(self, user_id: int, target_type: str, target_id: int) -> dict:
         table = CommunityPost if target_type == "post" else CommunityComment
+        target: CommunityPost | CommunityComment | None
         if target_type == "post":
             target = await self.post_repo.get_by_id(target_id)
         else:

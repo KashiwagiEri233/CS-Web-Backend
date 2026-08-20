@@ -265,7 +265,7 @@ class CommunityCommentRepository:
         return list(rows.scalars().all()), total
 
     async def list_nested(self, parent_comment_id: int) -> list[CommunityComment]:
-        stmt = paginate(
+        stmt = (
             select(CommunityComment)
             .where(
                 CommunityComment.parent_comment_id == parent_comment_id,
@@ -292,7 +292,7 @@ class CommunityCommentRepository:
                 )
             ).scalar_one()
         )
-        stmt = (
+        stmt = paginate(
             select(CommunityComment)
             .where(*conditions)
             .order_by(CommunityComment.created_at.desc()),
@@ -478,7 +478,7 @@ class CommunityInteractionRepository:
     async def list_mentions(
         self, user_id: int, limit: int = 20
     ) -> list[CommunityMention]:
-        stmt = paginate(
+        stmt = (
             select(CommunityMention)
             .where(CommunityMention.mentioned_user_id == user_id)
             .order_by(CommunityMention.created_at.desc())
@@ -521,7 +521,7 @@ class CommunityFollowRepository:
     async def list_following(
         self, user_id: int, *, skip: int, limit: int
     ) -> tuple[list[User], int]:
-        stmt = (
+        stmt = paginate(
             select(User)
             .join(CommunityFollow, CommunityFollow.following_id == User.id)
             .where(CommunityFollow.follower_id == user_id)
@@ -572,7 +572,7 @@ class CommunityFollowRepository:
         """
         if not user_ids:
             return {}
-        following_stmt = paginate(
+        following_stmt = (
             select(CommunityFollow.follower_id, func.count())
             .where(CommunityFollow.follower_id.in_(user_ids))
             .group_by(CommunityFollow.follower_id)
@@ -654,7 +654,7 @@ class CommunityReportRepository:
                 )
             ).scalar_one()
         )
-        stmt = (
+        stmt = paginate(
             select(CommunityReport)
             .where(*conditions)
             .order_by(CommunityReport.created_at.desc()),
