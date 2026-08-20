@@ -1,7 +1,7 @@
 # 运行基础设施（可观测 / 数据 / 会话）（BackDoc-Infra）
 
 > 更新人：3yearsZ
-> 最后更新：2026-08-08（0.9.8 同步：应用数据表 / 运行环境 / Alembic head 校正）
+> 最后更新：2026-08-20（版本锚定 1.0.1 / Alembic head 校正至 `e5f6a7b8c9d0`；此前 0.9.8 同步含应用数据表 / 运行环境）
 > 关联：架构见 [BackDoc-01-Arch.md](BackDoc-01-Arch.md)；安全见 [BackDoc-02-Sec.md](BackDoc-02-Sec.md)；迁移验证见本文 §六
 > 本文件合并 `docs/observability.md` 与 `docs/data_and_tasks.md`，统一阐述应用**运行期的基础设施**：
 > 如何被观察（日志/追踪/指标）、数据如何存取（数据库/事务）、应用如何启停（生命周期）、
@@ -179,7 +179,7 @@ otel-collector 等）。**默认关闭**：`OTEL_ENABLED=False` 时完全 no-op�
 
 ### 应用数据表（工作台 / 学习助手，0.9.8 新增）
 
-0.9.8 新增一批**应用数据表**（非凭证表），用于工作台统计、学习助手对话与番茄钟专注。全部由 Alembic 维护，禁止 `create_all`。当前 Alembic 单一 head 为 `d3e4f5a6b7c8`（线性链、无分支）。
+0.9.x 起始新增一批**应用数据表**（非凭证表），用于工作台统计、学习助手对话与番茄钟专注。全部由 Alembic 维护，禁止 `create_all`。当前 Alembic 单一 head 为 `e5f6a7b8c9d0`（线性链、无分支；链上含 `d4e5f6a7b8c9` / `e5f6a7b8c9d0`）。
 
 | 表 | 用途 | 迁移 revision | 关键字段 |
 |---|---|---|---|
@@ -368,7 +368,7 @@ otel-collector 等）。**默认关闭**：`OTEL_ENABLED=False` 时完全 no-op�
 | Phase 1 集成测试 | `tools/tests/features/auth/test_auth_phase1.py` 全绿（注册/2FA/懒升级/会话/重置流） |
 | pytest | 全绿（除标记 integration 且无 Redis 时跳过的用例） |
 
-> ⚠️ **版本说明**：本节为历史基线（42 张表）验证快照；0.9.8 新增工作台 / LLM 等 7 张应用数据表后，当前 Alembic 单一 head 为 `d3e4f5a6b7c8`（线性链、无分支，见 §二「应用数据表」）。执行验证时请以 `alembic heads` 实际输出为准。表总数：历史基线 42 张 + 0.9.8 新增 7 张应用数据表，精确值 [待填写]（需 `alembic upgrade head` 后 `\dt` 实测）。
+> ⚠️ **版本说明**：本节为历史基线（42 张表）验证快照；工作台 / LLM / Trajectory 等后续新增应用数据表后，当前 Alembic 单一 head 为 `e5f6a7b8c9d0`（线性链、无分支，见 §二「应用数据表」）。执行验证时请以 `alembic heads` 实际输出为准。表总数以 `alembic upgrade head` 后 `\dt` 实测为准（历史基线 42 张 + 后续增量）。
 
 ### 6.2 准备环境
 

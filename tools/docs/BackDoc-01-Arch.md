@@ -1,13 +1,13 @@
 # 后端架构与业务模块（BackDoc-Arch）
 
 > 更新人：3yearsZ
-> 最后更新：2026-08-08（v0.9.8：新增第 9 章「工作台与学习助手子系统」；业务模块契约全量并入本文 **Part B**）
-> 关联：编码规范见 [BackDoc-Conv.md](BackDoc-Conv.md)；扩展约定与项目定位见 `../AGENTS.md`；安全与权限见 [BackDoc-02-Sec.md](BackDoc-02-Sec.md)；基础设施见 [BackDoc-Infra.md](BackDoc-Infra.md)；业务模块契约见本文 **Part B**；入职与工程约定见根级 `docs/Onboarding.md`（附录 B）
+> 最后更新：2026-08-20（版本基线更新至 1.0.1；此前 v0.9.8：新增第 9 章「工作台与学习助手子系统」；业务模块契约全量并入本文 **Part B**）
+> 关联：编码规范见 [BackDoc-03-Conv.md](BackDoc-03-Conv.md)；扩展约定与项目定位见 `../AGENTS.md`；安全与权限见 [BackDoc-02-Sec.md](BackDoc-02-Sec.md)；基础设施见 [BackDoc-Infra.md](BackDoc-Infra.md)；业务模块契约见本文 **Part B**；入职与工程约定见根级 `docs/Onboarding.md`（附录 B）
 
 > **文档定位**：后端系统设计与模块关系权威文档（reference）。Source of truth：分层架构、横切关注点、请求生命周期、目录职责矩阵、关键不变量、扩展指引、**业务模块契约（Part B：认证 / 用户 / RBAC / 审计 / 工作台 / 学习助手 / API 统计中间件）**。前端 BFF 架构与 API 契约见 `CS-Web-Frontend/tools/docs/FrontDoc-01-Arch.md`。
 
 本项目（企业级 FastAPI RBAC 权限管理脚手架）的系统设计与模块关系文档。
-编码规范见 `BackDoc-Conv.md`，扩展约定与项目定位见 `../AGENTS.md`。
+编码规范见 `BackDoc-03-Conv.md`，扩展约定与项目定位见 `../AGENTS.md`。
 
 ---
 
@@ -747,6 +747,6 @@ LLM 配置（全局 / 用户级）详见 Part A §9.3：`LLM_PROVIDER`（默认 
 ## 13. 参考文档
 
 - `../AGENTS.md` — 项目定位、扩展约定、中心注册点、Alembic 迁移管理、不变量、硬性禁止项。
-- `BackDoc-Conv.md` — 编码规范、命名、质量红线、安全/错误处理约定。
+- `BackDoc-03-Conv.md` — 编码规范、命名、质量红线、安全/错误处理约定。
 - `../tools/tests/README.md` — 测试目录组织与运行方式。
 - `README.md` — 文档索引与分类约定；详解见 `BackDoc-02-Sec.md`、`BackDoc-Infra.md` 与本文 Part B。

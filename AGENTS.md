@@ -118,7 +118,7 @@ python run.py --env 3 --prod   # 等价的显式写法
 1. **模型** `app/models/<x>.py` → 在 `app/models/__init__.py` import 并加进 `__all__`。
 2. **schema** `app/schemas/<x>.py`：Pydantic v2（`model_config = ConfigDict(...)`，需从 ORM 转换时加 `from_attributes=True`）。
 3. **repository** `app/repositories/<x>_repo.py`：构造函数收 `db: AsyncSession`，只做数据访问。
-4. **service** `app/services/<x>_service.py`：构造函数收 `db`，写业务逻辑；不依赖 `Request`（这样 worker/脚本也能复用）。业务域 service 可收编进 `app/services/<域>/` 包（已包化：`auth/community/event/user/rbac`，见 `docs/模块命名映射表.md`）。
+4. **service** `app/services/<x>_service.py`：构造函数收 `db`，写业务逻辑；不依赖 `Request`（这样 worker/脚本也能复用）。业务域 service 可收编进 `app/services/<域>/` 包（已包化：`auth/community/event/user/rbac`，见 `docs/RootDoc-ModuleMap.md`）。
 5. **路由** `app/api/v1/<x>.py`：端点用 `Depends(get_db)`，鉴权用 `Depends(require_permission("<res>","<act>"))`。
 6. 在 `app/api/v1/__init__.py` 注册 router。
 7. **建表/迁移**：按下方「数据库迁移」执行。
