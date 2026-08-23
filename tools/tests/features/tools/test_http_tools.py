@@ -21,6 +21,7 @@ from sqlalchemy import text
 from app.core.security import async_get_password_hash
 from app.database import get_session
 from app.main import create_app
+from app.models.conversation import ChatMessage, Conversation
 from app.models.exam import Exam
 from app.models.resource import Resource
 from app.models.task import Task
@@ -256,3 +257,150 @@ async def test_tools_http_user_flow(integration_db_ready):
                 exam_ids=[exam_id],
                 item_ids=[item_id] if item_id else None,
             )
+
+
+async def test_auxilio_conversation_http_lifecycle_and_ownership(integration_db_ready):
+    """会话分支/管理 API：所有权、归档过滤、冲突与级联删除。"""
+    sfx = uuid.uuid4().hex[:8]
+    async with get_session() as db:
+        owner_id = await _make_user(db, f"{sfx}ao")
+        outsider_id = await _make_user(db, f"{sfx}ax")
+        source = Conversation(user_id=owner_id, title="HTTP 会话")
+        db.add(source)
+        await db.flush()
+        message = ChatMessage(conversation_id=source.id, role="user", content="分支点")
+        db.add(message)
+        await db.commit()
+        source_id, message_id = source.id, message.id
+
+    application = create_app()
+    try:
+        transport = httpx.ASGITransport(app=application)
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://testserver"
+        ) as client:
+            owner_headers = await _login(client, f"itest_http_tools_{sfx}ao")
+            outsider_headers = await _login(client, f"itest_http_tools_{sfx}ax")
+
+            forbidden = await client.get(
+                f"/api/v1/auxilio/conversations/{source_id}/messages",
+                headers=outsider_headers,
+            )
+            assert forbidden.status_code == 404
+
+            forked = await client.post(
+                f"/api/v1/auxilio/conversations/{source_id}/fork",
+                headers=owner_headers,
+                json={"from_message_id": message_id, "title": "HTTP 分支"},
+            )
+            assert forked.status_code == 200, forked.text
+            branch_id = forked.json()["conversation"]["id"]
+
+            renamed = await client.patch(
+                f"/api/v1/auxilio/conversations/{branch_id}",
+                headers=owner_headers,
+                json={"title": "重命名后的分支"},
+            )
+            assert renamed.status_code == 200, renamed.text
+
+            archived = await client.post(
+                f"/api/v1/auxilio/conversations/{branch_id}/archive",
+                headers=owner_headers,
+                json={"archived": True},
+            )
+            assert archived.status_code == 200, archived.text
+            active_list = await client.get(
+                "/api/v1/auxilio/conversations", headers=owner_headers
+            )
+            assert all(c["id"] != branch_id for c in active_list.json()["conversations"])
+            full_list = await client.get(
+                "/api/v1/auxilio/conversations",
+                headers=owner_headers,
+                params={"include_archived": True},
+            )
+            assert any(c["id"] == branch_id for c in full_list.json()["conversations"])
+
+            conflict = await client.delete(
+                f"/api/v1/auxilio/conversations/{source_id}", headers=owner_headers
+            )
+            assert conflict.status_code == 409, conflict.text
+            deleted = await client.delete(
+                f"/api/v1/auxilio/conversations/{source_id}",
+                headers=owner_headers,
+                params={"cascade": True},
+            )
+            assert deleted.status_code == 200, deleted.text
+            assert deleted.json()["deletedConversationCount"] == 2
+    finally:
+        async with get_session() as db:
+            await db.execute(
+                text(
+                    "DELETE FROM chat_messages WHERE conversation_id IN "
+                    "(SELECT id FROM conversations WHERE user_id = ANY(:ids))"
+                ),
+                {"ids": [owner_id, outsider_id]},
+            )
+            await db.execute(
+                text("DELETE FROM conversations WHERE user_id = ANY(:ids)"),
+                {"ids": [owner_id, outsider_id]},
+            )
+            await _cleanup(db, [owner_id, outsider_id])
+
+
+async def test_auxilio_learning_goal_http_budget_and_ownership(integration_db_ready):
+    """学习目标 HTTP 链路：预算校验与用户隔离。"""
+    sfx = uuid.uuid4().hex[:8]
+    async with get_session() as db:
+        owner_id = await _make_user(db, f"{sfx}go")
+        outsider_id = await _make_user(db, f"{sfx}gx")
+
+    application = create_app()
+    try:
+        transport = httpx.ASGITransport(app=application)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            owner_headers = await _login(client, f"itest_http_tools_{sfx}go")
+            outsider_headers = await _login(client, f"itest_http_tools_{sfx}gx")
+            created = await client.post(
+                "/api/v1/auxilio/goals",
+                headers=owner_headers,
+                json={
+                    "title": "HTTP 学习目标",
+                    "weekly_budget_minutes": 180,
+                    "preferred_slots": ["周三晚间"],
+                },
+            )
+            assert created.status_code == 201, created.text
+            goal_id = created.json()["goal"]["id"]
+            assert created.json()["goal"]["weeklyBudgetMinutes"] == 180
+
+            invalid = await client.patch(
+                f"/api/v1/auxilio/goals/{goal_id}",
+                headers=owner_headers,
+                json={"weekly_budget_minutes": 10},
+            )
+            assert invalid.status_code == 422, invalid.text
+
+            forbidden = await client.patch(
+                f"/api/v1/auxilio/goals/{goal_id}",
+                headers=outsider_headers,
+                json={"status": "completed"},
+            )
+            assert forbidden.status_code == 404
+
+            paused = await client.patch(
+                f"/api/v1/auxilio/goals/{goal_id}",
+                headers=owner_headers,
+                json={"status": "paused"},
+            )
+            assert paused.status_code == 200 and paused.json()["goal"]["status"] == "paused"
+            deleted = await client.delete(
+                f"/api/v1/auxilio/goals/{goal_id}", headers=owner_headers
+            )
+            assert deleted.status_code == 200
+    finally:
+        async with get_session() as db:
+            await db.execute(
+                text("DELETE FROM learning_goals WHERE user_id = ANY(:ids)"),
+                {"ids": [owner_id, outsider_id]},
+            )
+            await _cleanup(db, [owner_id, outsider_id])
