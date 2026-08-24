@@ -21,7 +21,7 @@ dependencies = [
     "psycopg2-binary==2.9.10",
     "pydantic-settings==2.2.1",
     "pyjwt[crypto]==2.13.0",
-    "python-dotenv==1.2.2",
+    "python-dotenv==1.2.3",
     "python-multipart==0.0.31",
     "redis==5.0.4",
     "sqlalchemy==2.0.51",
