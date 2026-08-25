@@ -18,10 +18,9 @@ from sqlalchemy import delete, select
 from app.core.exceptions import ConflictException
 from app.database import get_session
 from app.models.component_registry import ComponentRegistryItem
-from app.models.conversation import AgentRun, ChatEvent, ChatMessage, Conversation
+from app.models.conversation import ChatEvent, ChatMessage
 from app.models.learning import WrongAnswer
 from app.models.learning_goal import LearningGoal
-from app.models.learning_plan import LearningPlanItem
 from app.models.exam import Exam
 from app.models.resource import Resource
 from app.models.task import Task
@@ -316,7 +315,9 @@ async def test_auxilio(integration_db_ready, admin_user):
 
             analysis = await svc.analyze_learning_profile(u.id)
             assert any(t["tag"] == "web" for t in analysis["weak_tags"])
-            web_profile = next(t for t in analysis["knowledge_points"] if t["tag"] == "web")
+            web_profile = next(
+                t for t in analysis["knowledge_points"] if t["tag"] == "web"
+            )
             assert web_profile["incorrect"] == 1
             assert web_profile["mistake_count"] >= 2
             assert web_profile["confidence_label"] == "low"
@@ -337,7 +338,9 @@ async def test_auxilio(integration_db_ready, admin_user):
             assert goal.exam_id == exam.id
             active_goals = await svc.list_learning_goals(u.id)
             assert any(item.id == goal.id for item in active_goals)
-            await svc.update_learning_goal(u.id, goal.id, status="paused", weekly_budget_minutes=300)
+            await svc.update_learning_goal(
+                u.id, goal.id, status="paused", weekly_budget_minutes=300
+            )
             await db.refresh(goal)
             assert goal.status == "paused" and goal.weekly_budget_minutes == 300
             with pytest.raises(ValueError, match="15 到 10080"):
@@ -371,7 +374,9 @@ async def test_auxilio(integration_db_ready, admin_user):
             completed = await svc.update_learning_plan_item(
                 u.id, first_item.id, status="completed"
             )
-            assert completed.status == "completed" and completed.completed_at is not None
+            assert (
+                completed.status == "completed" and completed.completed_at is not None
+            )
         finally:
             await _cleanup_user(db, u.id)
             await db.execute(delete(Exam).where(Exam.title.like(f"%{sfx}%")))
@@ -475,8 +480,12 @@ async def test_auxilio_runtime_and_conversation_fork(integration_db_ready):
             assert deleted_count == 2
             assert source.deleted_at is not None and branch.deleted_at is not None
         finally:
-            await db.execute(text("DELETE FROM chat_events WHERE user_id=:uid"), {"uid": user.id})
-            await db.execute(text("DELETE FROM agent_runs WHERE user_id=:uid"), {"uid": user.id})
+            await db.execute(
+                text("DELETE FROM chat_events WHERE user_id=:uid"), {"uid": user.id}
+            )
+            await db.execute(
+                text("DELETE FROM agent_runs WHERE user_id=:uid"), {"uid": user.id}
+            )
             await db.execute(
                 text(
                     "DELETE FROM chat_messages WHERE conversation_id IN "
@@ -484,7 +493,9 @@ async def test_auxilio_runtime_and_conversation_fork(integration_db_ready):
                 ),
                 {"uid": user.id},
             )
-            await db.execute(text("DELETE FROM conversations WHERE user_id=:uid"), {"uid": user.id})
+            await db.execute(
+                text("DELETE FROM conversations WHERE user_id=:uid"), {"uid": user.id}
+            )
             await db.commit()
             await _cleanup_user(db, user.id)
 

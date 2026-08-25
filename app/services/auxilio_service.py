@@ -54,7 +54,11 @@ class AuxilioService:
         ).all()
 
         if not rows:
-            return {"knowledge_points": [], "weak_tags": [], "recommended_resources": []}
+            return {
+                "knowledge_points": [],
+                "weak_tags": [],
+                "recommended_resources": [],
+            }
 
         wrong_counts = {
             question_id: mistake_count
@@ -102,9 +106,9 @@ class AuxilioService:
         weak_tags = []
         for tag, stats in tag_stats.items():
             accuracy = stats["correct"] / stats["total"] if stats["total"] else 0
-            smoothed_accuracy = (
-                stats["correct"] + MASTERY_PRIOR_STRENGTH * 0.5
-            ) / (stats["total"] + MASTERY_PRIOR_STRENGTH)
+            smoothed_accuracy = (stats["correct"] + MASTERY_PRIOR_STRENGTH * 0.5) / (
+                stats["total"] + MASTERY_PRIOR_STRENGTH
+            )
             recency_accuracy = (
                 stats["weighted_correct"] / stats["weighted_total"]
                 if stats["weighted_total"]
@@ -112,13 +116,10 @@ class AuxilioService:
             )
             decay_factor = min(
                 1.0,
-                stats["weighted_total"] / stats["total"]
-                if stats["total"]
-                else 0.0,
+                stats["weighted_total"] / stats["total"] if stats["total"] else 0.0,
             )
-            mastery_score = (
-                (smoothed_accuracy * 0.6 + recency_accuracy * 0.4)
-                * (0.6 + 0.4 * decay_factor)
+            mastery_score = (smoothed_accuracy * 0.6 + recency_accuracy * 0.4) * (
+                0.6 + 0.4 * decay_factor
             )
             confidence = min(1.0, stats["weighted_total"] / 5.0)
             # 低样本结果仍可进入薄弱点队列，但通过 confidence 明确标记为待验证。
@@ -134,9 +135,7 @@ class AuxilioService:
                 "confidence_label": (
                     "high"
                     if confidence >= 0.8
-                    else "medium"
-                    if confidence >= 0.4
-                    else "low"
+                    else "medium" if confidence >= 0.4 else "low"
                 ),
                 "recency_accuracy": round(recency_accuracy, 4),
                 "decay_factor": round(decay_factor, 4),
@@ -228,9 +227,7 @@ class AuxilioService:
             row.review_streak = min(row.review_streak + 1, len(GOOD_INTERVAL_DAYS))
             row.status = "mastered" if feedback == "easy" else "reviewing"
             intervals = EASY_INTERVAL_DAYS if feedback == "easy" else GOOD_INTERVAL_DAYS
-            row.review_due_at = now + timedelta(
-                days=intervals[row.review_streak - 1]
-            )
+            row.review_due_at = now + timedelta(days=intervals[row.review_streak - 1])
         await self.db.commit()
         return row
 
@@ -241,7 +238,9 @@ class AuxilioService:
         if not include_completed:
             query = query.where(LearningGoal.status != "completed")
         result = await self.db.execute(
-            query.order_by(LearningGoal.target_date.asc().nullslast(), LearningGoal.id.asc())
+            query.order_by(
+                LearningGoal.target_date.asc().nullslast(), LearningGoal.id.asc()
+            )
         )
         return list(result.scalars().all())
 
@@ -259,7 +258,10 @@ class AuxilioService:
         normalized_title = " ".join(title.split()).strip()
         if not normalized_title:
             raise ValueError("学习目标标题不能为空")
-        if weekly_budget_minutes < 15 or weekly_budget_minutes > MAX_WEEKLY_BUDGET_MINUTES:
+        if (
+            weekly_budget_minutes < 15
+            or weekly_budget_minutes > MAX_WEEKLY_BUDGET_MINUTES
+        ):
             raise ValueError("每周时间预算必须在 15 到 10080 分钟之间")
         if exam_id is not None and await self.db.get(Exam, exam_id) is None:
             raise ValueError("关联考试不存在")
@@ -268,7 +270,9 @@ class AuxilioService:
                 target_date = target_date.replace(tzinfo=timezone.utc)
             if target_date <= now_utc():
                 raise ValueError("目标截止时间必须晚于当前时间")
-        slots = [" ".join(slot.split()) for slot in (preferred_slots or []) if slot.strip()]
+        slots = [
+            " ".join(slot.split()) for slot in (preferred_slots or []) if slot.strip()
+        ]
         if len(slots) > 14:
             raise ValueError("偏好时段最多 14 个")
         goal = LearningGoal(
@@ -285,7 +289,9 @@ class AuxilioService:
         await self.db.commit()
         return goal
 
-    async def update_learning_goal(self, user_id: int, goal_id: int, **changes) -> LearningGoal:
+    async def update_learning_goal(
+        self, user_id: int, goal_id: int, **changes
+    ) -> LearningGoal:
         goal = (
             await self.db.execute(
                 select(LearningGoal).where(
@@ -301,7 +307,10 @@ class AuxilioService:
             if not title:
                 raise ValueError("学习目标标题不能为空")
             goal.title = title[:200]
-        if "weekly_budget_minutes" in changes and changes["weekly_budget_minutes"] is not None:
+        if (
+            "weekly_budget_minutes" in changes
+            and changes["weekly_budget_minutes"] is not None
+        ):
             budget = changes["weekly_budget_minutes"]
             if budget < 15 or budget > MAX_WEEKLY_BUDGET_MINUTES:
                 raise ValueError("每周时间预算必须在 15 到 10080 分钟之间")
@@ -320,9 +329,17 @@ class AuxilioService:
                     raise ValueError("目标截止时间必须晚于当前时间")
             goal.target_date = target_date
         if "description" in changes:
-            goal.description = changes["description"].strip()[:2000] if changes["description"] else None
+            goal.description = (
+                changes["description"].strip()[:2000]
+                if changes["description"]
+                else None
+            )
         if "preferred_slots" in changes and changes["preferred_slots"] is not None:
-            slots = [" ".join(slot.split()) for slot in changes["preferred_slots"] if slot.strip()]
+            slots = [
+                " ".join(slot.split())
+                for slot in changes["preferred_slots"]
+                if slot.strip()
+            ]
             if len(slots) > 14:
                 raise ValueError("偏好时段最多 14 个")
             goal.preferred_slots = slots
@@ -363,7 +380,9 @@ class AuxilioService:
         )
         return list(result.scalars().all())
 
-    async def generate_learning_plan(self, user_id: int, plan_date: date) -> list[LearningPlanItem]:
+    async def generate_learning_plan(
+        self, user_id: int, plan_date: date
+    ) -> list[LearningPlanItem]:
         """按用户预算生成幂等的日计划；已有计划项不被自动覆盖。"""
         existing = await self.list_learning_plan(user_id, plan_date)
         if existing:
@@ -373,12 +392,16 @@ class AuxilioService:
             return []
         # 不用最小值抬高预算：每周 15 分钟的目标不能被错误地扩成每天 15 分钟。
         daily_budget = sum(goal.weekly_budget_minutes for goal in goals) // 7
-        focus_start = datetime.combine(plan_date, datetime.min.time(), tzinfo=timezone.utc)
+        focus_start = datetime.combine(
+            plan_date, datetime.min.time(), tzinfo=timezone.utc
+        )
         focus_end = focus_start + timedelta(days=1)
         focused = int(
             (
                 await self.db.execute(
-                    select(func.coalesce(func.sum(FocusSession.duration_seconds), 0)).where(
+                    select(
+                        func.coalesce(func.sum(FocusSession.duration_seconds), 0)
+                    ).where(
                         FocusSession.user_id == user_id,
                         FocusSession.phase == "focus",
                         FocusSession.created_at >= focus_start,
@@ -412,13 +435,22 @@ class AuxilioService:
         for row in due_rows:
             items.append(
                 {
-                    "goal_id": row.exam_id and next((g.id for g in goals if g.exam_id == row.exam_id), primary_goal.id),
+                    "goal_id": row.exam_id
+                    and next(
+                        (g.id for g in goals if g.exam_id == row.exam_id),
+                        primary_goal.id,
+                    ),
                     "source_type": "mistake",
                     "source_key": str(row.id),
-                    "title": f"复习错题：{(row.question_snapshot or {}).get('title') or '未命名题目'}",
+                    "title": (
+                        f"复习错题：{(row.question_snapshot or {}).get('title') or '未命名题目'}"
+                    ),
                     "rationale": f"到期错题，已错 {row.mistake_count} 次；优先复习可减少遗忘。",
                     "estimated_minutes": 15,
-                    "metadata_json": {"mistakeId": row.id, "tags": row.knowledge_tags or []},
+                    "metadata_json": {
+                        "mistakeId": row.id,
+                        "tags": row.knowledge_tags or [],
+                    },
                 }
             )
         profile = await self.analyze_learning_profile(user_id)
@@ -429,9 +461,15 @@ class AuxilioService:
                     "source_type": "knowledge",
                     "source_key": str(point["tag"]),
                     "title": f"巩固知识点：{point['tag']}",
-                    "rationale": f"掌握度 {point['mastery_score']:.0%}，置信度 {point['confidence_label']}；建议短时练习。",
+                    "rationale": (
+                        f"掌握度 {point['mastery_score']:.0%}，置信度 "
+                        f"{point['confidence_label']}；建议短时练习。"
+                    ),
                     "estimated_minutes": 25,
-                    "metadata_json": {"tag": point["tag"], "masteryScore": point["mastery_score"]},
+                    "metadata_json": {
+                        "tag": point["tag"],
+                        "masteryScore": point["mastery_score"],
+                    },
                 }
             )
         for resource in (profile.get("recommended_resources") or [])[:4]:
@@ -443,7 +481,10 @@ class AuxilioService:
                     "title": f"学习资源：{resource['title']}",
                     "rationale": "资源标签与当前薄弱知识点匹配。",
                     "estimated_minutes": 30,
-                    "metadata_json": {"resourceId": resource["id"], "url": resource.get("url")},
+                    "metadata_json": {
+                        "resourceId": resource["id"],
+                        "url": resource.get("url"),
+                    },
                 }
             )
         consumed = 0
@@ -573,7 +614,9 @@ class AuxilioService:
         except Exception as exc:  # noqa: BLE001 - 运行态记录是 best-effort
             await self.db.rollback()
             logger.warning(
-                "Agent run finalization failed", run_id=run.id, error_type=type(exc).__name__
+                "Agent run finalization failed",
+                run_id=run.id,
+                error_type=type(exc).__name__,
             )
 
     async def fork_conversation(
@@ -596,9 +639,13 @@ class AuxilioService:
         if from_message_id is not None:
             query = query.where(ChatMessage.id <= from_message_id)
         messages = list(
-            (await self.db.execute(query.order_by(ChatMessage.id.asc()))).scalars().all()
+            (await self.db.execute(query.order_by(ChatMessage.id.asc())))
+            .scalars()
+            .all()
         )
-        if from_message_id is not None and not any(m.id == from_message_id for m in messages):
+        if from_message_id is not None and not any(
+            m.id == from_message_id for m in messages
+        ):
             raise ValueError("分支消息不属于源会话")
         root_id = source.root_conversation_id or source.id
         branch = Conversation(
@@ -623,7 +670,9 @@ class AuxilioService:
         await self.db.commit()
         return branch, len(messages)
 
-    async def rename_conversation(self, conversation: Conversation, title: str) -> Conversation:
+    async def rename_conversation(
+        self, conversation: Conversation, title: str
+    ) -> Conversation:
         """更新会话标题；标题为空或仅空白时拒绝。"""
         normalized = " ".join(title.split()).strip()
         if not normalized:

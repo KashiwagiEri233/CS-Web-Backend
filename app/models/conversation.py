@@ -32,17 +32,30 @@ class Conversation(Base):
         Integer, ForeignKey("users.id"), nullable=False, index=True
     )
     parent_conversation_id: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True, index=True
+        Integer,
+        ForeignKey("conversations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     root_conversation_id: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True, index=True
+        Integer,
+        ForeignKey("conversations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     forked_from_message_id: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey("chat_messages.id", ondelete="SET NULL"), nullable=True, index=True
+        Integer,
+        ForeignKey("chat_messages.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     title: Mapped[str] = mapped_column(String(200), nullable=False, default="新会话")
-    archived_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
-    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
+    archived_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True, index=True
+    )
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=now_utc, onupdate=now_utc
@@ -58,13 +71,22 @@ class AgentRun(Base):
     __tablename__ = "agent_runs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    conversation_id: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True, index=True
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=False, index=True
     )
-    trigger_type: Mapped[str] = mapped_column(String(20), nullable=False, default="chat")
+    conversation_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("conversations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    trigger_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="chat"
+    )
     preset_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending", index=True)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="pending", index=True
+    )
     input_message_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("chat_messages.id", ondelete="SET NULL"), nullable=True
     )
@@ -83,7 +105,10 @@ class AgentRun(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
 
     def __repr__(self) -> str:
-        return f"<AgentRun(id={self.id}, status='{self.status}', trigger='{self.trigger_type}')>"
+        return (
+            f"<AgentRun(id={self.id}, status='{self.status}', "
+            f"trigger='{self.trigger_type}')>"
+        )
 
 
 class ChatMessage(Base):
@@ -121,7 +146,10 @@ class ChatEvent(Base):
         Integer, ForeignKey("conversations.id"), nullable=False, index=True
     )
     run_id: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey("agent_runs.id", ondelete="SET NULL"), nullable=True, index=True
+        Integer,
+        ForeignKey("agent_runs.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     user_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("users.id"), nullable=False, index=True
@@ -134,9 +162,7 @@ class ChatEvent(Base):
     payload: Mapped[Optional[dict]] = mapped_column(JSONDict, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
 
-    __table_args__ = (
-        UniqueConstraint("run_id", "seq", name="uq_chat_events_run_seq"),
-    )
+    __table_args__ = (UniqueConstraint("run_id", "seq", name="uq_chat_events_run_seq"),)
 
     def __repr__(self) -> str:
         return (
