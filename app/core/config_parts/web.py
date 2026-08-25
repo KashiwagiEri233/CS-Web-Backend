@@ -1,7 +1,7 @@
 """应用 / 站点 / 网络配置（ER-55：DEBUG、CORS、可信代理、时区、管理员）。"""
 
 import os
-from datetime import timezone, tzinfo
+from datetime import timezone, tzinfo as _TZInfo
 from ipaddress import ip_network
 from typing import Optional
 
@@ -17,11 +17,15 @@ class WebSettings(BaseSettings):
         extra="ignore",
     )
 
-    _tzinfo: tzinfo = PrivateAttr(default=timezone.utc)
+    _tzinfo: _TZInfo = PrivateAttr(default=timezone.utc)
     _trusted_proxy_networks: tuple = PrivateAttr(default=())
 
     # ---- 应用配置 ----
     DEBUG: bool = False
+    # 运行环境标识：development / production（test 场景由 TESTING=True 表示）。
+    # 区别于 DEBUG：DEBUG 控制调试行为（docs、异常测试路由等），APP_ENV 表达部署环境。
+    # 用于「仅开发环境允许」的安全开关判定（如 ADMIN_2FA_REQUIRED 豁免）。
+    APP_ENV: str = "production"
     # 测试进程使用 NullPool，避免 pytest 每测试事件循环与 asyncpg 池连接交叉复用。
     TESTING: bool = False
     # uvicorn worker 数量（run.py 写入环境变量）。用于启动时校验多 worker + 无 Redis 的限流降级风险。
@@ -40,6 +44,9 @@ class WebSettings(BaseSettings):
     # 一键开关鉴权：False 时所有接口视为超级用户放行（跳过 token 校验与权限检查）。
     # 仅限本地开发！只允许在 DEBUG=True 下关闭，生产（DEBUG=False）若置 False 会拒绝启动。
     AUTH_ENABLED: bool = True
+    # 管理员强制 2FA（P0 安全策略）：True 时管理员未启用 TOTP 无法访问管理后台。
+    # 仅限本地开发！只允许在 DEBUG=True 下关闭，生产（DEBUG=False）若置 False 会拒绝启动。
+    ADMIN_2FA_REQUIRED: bool = True
 
     # ---- 站点 / 业务配置（前后端分离迁移 Phase 1） ----
     # 站点公网地址（BFF 域名），用于构造 OAuth 回调等默认 URL
@@ -123,6 +130,18 @@ class WebSettings(BaseSettings):
             raise ValueError(
                 "AUTH_ENABLED=False 仅允许在 DEBUG=True 下使用；生产环境禁止关闭鉴权"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _guard_admin_2fa_disabled(self):
+        # 生产安全锁：仅开发环境（APP_ENV=development）或测试进程允许关闭管理员强制 2FA；
+        # 其他环境（production）若置 False 会拒绝启动，杜绝误配导致强制 2FA 被绕过。
+        if not self.ADMIN_2FA_REQUIRED and not self.TESTING:
+            if self.APP_ENV != "development":
+                raise ValueError(
+                    "ADMIN_2FA_REQUIRED=False 仅允许在 APP_ENV=development 下使用；"
+                    "生产环境禁止关闭管理员强制 2FA"
+                )
         return self
 
     @model_validator(mode="after")

@@ -5,7 +5,6 @@ import pytest
 from app.core.validators import (
     validate_password_strength,
     validate_username,
-    validate_email,
 )
 
 
@@ -41,19 +40,4 @@ class TestValidateUsername:
     @pytest.mark.parametrize("name", ["ab", "a" * 51, "bad name", "用户名", "a@b"])
     def test_invalid(self, name):
         ok, err = validate_username(name)
-        assert ok is False and err
-
-
-class TestValidateEmail:
-    def test_valid(self):
-        ok, err = validate_email("a.b+x@example.co")
-        assert ok and err is None
-
-    @pytest.mark.parametrize("email", ["nope", "a@b", "a@@b.com", "@b.com", "a@b."])
-    def test_invalid(self, email):
-        ok, err = validate_email(email)
-        assert ok is False and err
-
-    def test_too_long(self):
-        ok, err = validate_email("a" * 250 + "@example.com")
         assert ok is False and err

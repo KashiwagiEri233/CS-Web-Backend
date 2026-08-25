@@ -72,8 +72,9 @@ class AuthService:
         self.password_history_repo = PasswordHistoryRepository(db)
         self.totp_service = TOTPService(db)
         # 审计服务构造函数注入（service 间调用只允许走注入依赖）。
-        # 默认无 db 的 AuditService：record() 走独立会话，互不污染。
-        self.audit = audit if audit is not None else AuditService()
+        # 默认注入共享请求会话：record() 仍走独立会话互不污染；
+        # record_atomic（如 create_user_with_audit 的管理员建号审计）需共享会话才能同事务提交，否则 db=None 会抛错。
+        self.audit = audit if audit is not None else AuditService(self.db)
 
     # ------------------------------------------------------------------ 认证
 
@@ -153,6 +154,7 @@ class AuthService:
             settings.AUTH_ACCOUNT_RATE_LIMIT_PERIOD,
         )
         if not allowed:
+            # 非关键审计，允许 best-effort（限流由独立 limiter 记录）
             await self.audit.record(
                 action="auth.login_rate_limited",
                 resource_type="auth",
@@ -170,6 +172,7 @@ class AuthService:
             await self._record_login_history(
                 user_id=None, success=False, attempted_email=normalized, **client_meta
             )
+            # 非关键审计，允许 best-effort（失败溯源已由 _record_login_history 主事务落库）
             await self.audit.record(
                 action="auth.login_failed",
                 resource_type="auth",
@@ -272,6 +275,7 @@ class AuthService:
             ) from exc
 
         await self._record_login_history(user_id=user.id, success=True, **client_meta)
+        # 非关键审计，允许 best-effort（账号创建已在主事务落库）
         await self.audit.record(
             action="auth.register",
             resource_type="auth",
@@ -328,6 +332,7 @@ class AuthService:
                 }
             )
             await self.db.commit()
+            # 非关键审计，允许 best-effort（账号创建已在主事务落库）
             await self.audit.record(
                 action="auth.oauth_register",
                 resource_type="auth",
@@ -431,6 +436,7 @@ class AuthService:
             settings.AUTH_ACCOUNT_RATE_LIMIT_PERIOD,
         )
         if not allowed:
+            # 非关键审计，允许 best-effort（限流由独立 limiter 记录）
             await self.audit.record(
                 action="auth.login_rate_limited",
                 resource_type="auth",
@@ -446,6 +452,7 @@ class AuthService:
         user = await self.authenticate(username, password)
 
         if not user:
+            # 非关键审计，允许 best-effort（失败溯源已由 _record_login_history 主事务落库）
             await self.audit.record(
                 action="auth.login_failed",
                 resource_type="auth",
@@ -455,6 +462,7 @@ class AuthService:
             raise InvalidCredentialsException()
 
         if not user.is_active:
+            # 非关键审计，允许 best-effort（失败溯源已由 _record_login_history 主事务落库）
             await self.audit.record(
                 action="auth.login_failed",
                 resource_type="auth",
@@ -464,6 +472,7 @@ class AuthService:
             raise UserNotActiveException(user_id=user.id)
 
         pair = await self.issue_token_pair(user, client_meta)
+        # 非关键审计，允许 best-effort（登录成功已由 _record_login_history 主事务落库）
         await self.audit.record(
             action="auth.login",
             resource_type="auth",

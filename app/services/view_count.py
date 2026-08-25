@@ -135,7 +135,11 @@ async def startup_view_count_flush() -> None:
     """启动后台落库；间隔为 0 则禁用。"""
     global _flush_task
     interval = int(
-        getattr(settings, "VIEW_COUNT_FLUSH_INTERVAL_SECONDS", VIEW_COUNT_FLUSH_INTERVAL_SECONDS)
+        getattr(
+            settings,
+            "VIEW_COUNT_FLUSH_INTERVAL_SECONDS",
+            VIEW_COUNT_FLUSH_INTERVAL_SECONDS,
+        )
         or VIEW_COUNT_FLUSH_INTERVAL_SECONDS
     )
     if interval <= 0:

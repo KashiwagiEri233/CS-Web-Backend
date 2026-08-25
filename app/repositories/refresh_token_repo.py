@@ -10,10 +10,6 @@ from app.core.constants import TOKEN_PURGE_BATCH_SIZE
 from app.repositories.base import dml_rowcount
 
 
-def _now() -> datetime:
-    return now_utc()
-
-
 class RefreshTokenRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -55,7 +51,7 @@ class RefreshTokenRepository:
         await self.db.execute(
             update(RefreshToken)
             .where(RefreshToken.id == token_id)
-            .values(revoked_at=_now())
+            .values(revoked_at=now_utc())
         )
 
     async def family_has_active(self, family_id: str) -> bool:
@@ -64,7 +60,7 @@ class RefreshTokenRepository:
         用于轮换宽限判定：仅当 family 仍有活跃后继 token 时，已撤销 token 的
         再次出现才按并发重试放行；整体撤销（revoke_all）后无活跃 token，按复用处置。
         """
-        now = _now()
+        now = now_utc()
         stmt = select(func.count(RefreshToken.id)).where(
             RefreshToken.family_id == family_id,
             RefreshToken.revoked_at.is_(None),
@@ -81,7 +77,7 @@ class RefreshTokenRepository:
                 RefreshToken.family_id == family_id,
                 RefreshToken.revoked_at.is_(None),
             )
-            .values(revoked_at=_now())
+            .values(revoked_at=now_utc())
         )
         return dml_rowcount(result)
 
@@ -93,13 +89,13 @@ class RefreshTokenRepository:
                 RefreshToken.user_id == user_id,
                 RefreshToken.revoked_at.is_(None),
             )
-            .values(revoked_at=_now())
+            .values(revoked_at=now_utc())
         )
         return dml_rowcount(result)
 
     async def list_active_for_user(self, user_id: int) -> list[RefreshToken]:
         """列出该用户未撤销且未过期的 refresh token（设备列表，新→旧）。"""
-        now = _now()
+        now = now_utc()
         stmt = (
             select(RefreshToken)
             .where(
@@ -121,7 +117,7 @@ class RefreshTokenRepository:
                 RefreshToken.user_id == user_id,
                 RefreshToken.revoked_at.is_(None),
             )
-            .values(revoked_at=_now())
+            .values(revoked_at=now_utc())
         )
         return dml_rowcount(result) > 0
 
@@ -130,7 +126,7 @@ class RefreshTokenRepository:
 
         已撤销但尚未自然过期的记录必须保留，用于 rotation 复用检测。
         """
-        now = _now()
+        now = now_utc()
         ids = (
             select(RefreshToken.id)
             .where(RefreshToken.expires_at < now)

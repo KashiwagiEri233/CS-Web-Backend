@@ -116,6 +116,11 @@ class SecuritySettings(BaseSettings):
             raise ValueError(f"ALGORITHM 仅支持 {sorted(allowed)}（HMAC 对称签名）")
         return v
 
+    # Redis 连接串：由 config_parts/rate_limit.py 的 RateLimitSettings 提供。跨域
+    # model_validator 需在此读取；本字段声明仅为让静态类型（mypy）可见该兄弟字段，
+    # 运行时取值由聚合类 Settings 按 MRO 提供，行为不变。
+    REDIS_URL: Optional[str] = None
+
     @model_validator(mode="after")
     def _guard_distributed_security_state(self):
         """分布式撤销状态的 fail-closed 配置校验。

@@ -16,28 +16,35 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.services.announcement_service import AnnouncementService
 from app.services.audit_service import AuditService
-from app.services.auth_service import AuthService
+from app.services.auth.auth_service import AuthService
 from app.services.feature_visibility_service import FeatureVisibilityService
 from app.services.auxilio_service import AuxilioService
-from app.services.community_category import CategoryService
-from app.services.community_comment import CommentService
-from app.services.community_feed import FeedService
-from app.services.community_interaction import FavoriteService, ReactionService
-from app.services.community_post import PostService
-from app.services.community_report import ReportService
-from app.services.community_series import SeriesService
+from app.services.community.community_category import CategoryService
+from app.services.community.community_comment import CommentService
+from app.services.community.community_feed import FeedService
+from app.services.community.community_interaction import (
+    FavoriteService,
+    ReactionService,
+)
+from app.services.community.community_post import PostService
+from app.services.community.community_report import ReportService
+from app.services.community.community_series import SeriesService
 from app.services.component_registry_service import ComponentRegistryService
-from app.services.event_service import EventService
+from app.services.event.event_service import EventService
 from app.services.exam_service import ExamService
 from app.services.exception_service import ExceptionService
 from app.services.join_service import JoinService
 from app.services.notification_service import NotificationService
 from app.services.points_service import PointsService
-from app.services.rbac_service import RBACService
+from app.services.rbac.rbac_service import RBACService
 from app.services.resource_service import ResourceService
+from app.services.search_service import SearchService
 from app.services.task_service import TaskService
-from app.services.user_service import UserService
+from app.services.totp_service import TOTPService
+from app.services.user.user_service import UserService
 from app.services.verification_service import VerificationService
+from app.services.workbench_service import WorkbenchService
+from app.services.contribution_service import ContributionService
 
 
 def get_user_service(db: AsyncSession = Depends(get_db)) -> UserService:
@@ -118,6 +125,10 @@ def get_auth_service(db: AsyncSession = Depends(get_db)) -> AuthService:
     return AuthService(db, audit=AuditService(db))
 
 
+def get_totp_service(db: AsyncSession = Depends(get_db)) -> TOTPService:
+    return TOTPService(db)
+
+
 def get_verification_service(db: AsyncSession = Depends(get_db)) -> VerificationService:
     return VerificationService(db)
 
@@ -146,3 +157,15 @@ def get_component_registry_service(
 ) -> ComponentRegistryService:
     # 注入可见性服务，构成 slug↔key 映射与「迁移 done 自动开放可见性」闭环。
     return ComponentRegistryService(db, visibility=visibility)
+
+
+def get_workbench_service(db: AsyncSession = Depends(get_db)) -> WorkbenchService:
+    return WorkbenchService(db)
+
+
+def get_search_service(db: AsyncSession = Depends(get_db)) -> SearchService:
+    return SearchService(db)
+
+
+def get_contribution_service(db: AsyncSession = Depends(get_db)) -> ContributionService:
+    return ContributionService(db)

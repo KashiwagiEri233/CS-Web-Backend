@@ -12,7 +12,6 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, Path, Request
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
     AuthorizationException,
@@ -21,9 +20,12 @@ from app.core.exceptions import (
     ValidationException,
 )
 from app.core.request_context import get_client_meta
-from app.database import get_db
 from app.dependencies import get_current_active_user
-from app.dependencies_services import get_audit_service, get_feature_visibility_service
+from app.dependencies_services import (
+    get_audit_service,
+    get_feature_visibility_service,
+    get_totp_service,
+)
 from app.models.user import User
 from app.schemas.feature_visibility import (
     FeatureVisibilityConfig,
@@ -71,10 +73,10 @@ async def update_feature_visibility(
     body: UpdateVisibilityRequest,
     request: Request,
     module_key: str = Path(..., min_length=1, max_length=50),
-    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
     svc: FeatureVisibilityService = Depends(get_feature_visibility_service),
     audit: AuditService = Depends(get_audit_service),
+    totp: TOTPService = Depends(get_totp_service),
 ) -> Any:
     """更新单模块可见性。
 
@@ -85,12 +87,9 @@ async def update_feature_visibility(
     _require_root(current_user)
 
     if module_key not in KNOWN_MODULE_KEYS:
-        raise NotFoundException(
-            resource_type="feature_module", resource_id=module_key
-        )
+        raise NotFoundException(resource_type="feature_module", resource_id=module_key)
 
     # 强制 2FA：未启用直接拒绝，不允许「未启用直接放行」绕过。
-    totp = TOTPService(db)
     if not await totp.is_enabled(current_user.id):
         raise ValidationException(
             message="请先启用两步验证后再管理功能模块可见性",

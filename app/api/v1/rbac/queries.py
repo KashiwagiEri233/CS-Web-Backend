@@ -17,7 +17,7 @@ from app.schemas.rbac import (
     UserPermissionResult,
     UserPermissionsResponse,
 )
-from app.services.rbac_service import RBACService
+from app.services.rbac.rbac_service import RBACService
 
 router = APIRouter()
 

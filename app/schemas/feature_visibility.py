@@ -12,8 +12,11 @@ from pydantic.alias_generators import to_camel
 from app.schemas.base import TZModel
 
 
-def _camel(**overrides: object) -> ConfigDict:
-    return ConfigDict(alias_generator=to_camel, populate_by_name=True, **overrides)
+def _camel(*, from_attributes: bool = False) -> ConfigDict:
+    config: ConfigDict = {"alias_generator": to_camel, "populate_by_name": True}
+    if from_attributes:
+        config["from_attributes"] = True
+    return config
 
 
 class VisibilityRule(BaseModel):

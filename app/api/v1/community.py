@@ -8,11 +8,9 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
 from fastapi.responses import FileResponse
-from sqlalchemy import func, select, text, type_coerce
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.exceptions import NotFoundException, ValidationException
 from app.core.request_context import get_client_meta
 from app.database import get_db
@@ -31,14 +29,19 @@ from app.models.community import CommunityPost
 from app.models.user import User
 from app.schemas.community import post_to_dict
 from app.schemas.pagination import PaginatedResponse, PaginationParams
-from app.services.community_category import CategoryService
-from app.services.community_comment import CommentService
-from app.services.community_feed import FeedService
-from app.services.community_interaction import FavoriteService, ReactionService
-from app.services.community_post import PostService
-from app.services.community_report import ReportService
-from app.services.community_series import SeriesService
+from app.services.community.community_category import CategoryService
+from app.services.community.community_comment import CommentService
+from app.services.community.community_feed import FeedService
+from app.services.community.community_interaction import (
+    FavoriteService,
+    ReactionService,
+)
+from app.services.community.community_post import PostService
+from app.services.community.community_report import ReportService
+from app.services.community.community_series import SeriesService
 from app.utils.image_validate import is_valid_image_mime
+from app.core.query_helpers import fts_condition
+from app.core.query_helpers import jsonb_contains
 
 router = APIRouter()
 
@@ -137,13 +140,10 @@ async def list_members(
         # ER-23 回归修复：tech_tags 列类型为 JSON().with_variant(JSONB)，
         # ColumnElement.contains 会退化成字符串 LIKE（运行时报错）；用 type_coerce
         # 显式按 JSONB 比较，走 @> 包含（2026-08-10，与 community_repo.py 同源修复）。
-        conds.append(type_coerce(User.tech_tags, JSONB).contains([tag]))
+        conds.append(jsonb_contains(User.tech_tags, [tag]))
     if search:
         # 全文检索：search_vector @@ websearch_to_tsquery（GIN 索引加速）
-        ts_query = func.websearch_to_tsquery(
-            text(f"'{settings.FTS_CONFIG}'"), search.strip()
-        )
-        conds.append(User.search_vector.op("@@")(ts_query))
+        conds.append(fts_condition(User, search))
 
     # 活跃用户需关联发帖数；普通排序可直接查用户
     base = select(User).where(*conds)
@@ -226,7 +226,7 @@ async def get_post(
 ) -> Any:
     post = await service.get_post(post_id, current_user.id if current_user else None)
     client_ip = get_client_meta(request).get("ip_address")
-    from app.services.community_utils import hash_ip_for_view
+    from app.services.community.community_utils import hash_ip_for_view
 
     await service.increment_view(
         post_id,
@@ -247,7 +247,7 @@ async def get_post_by_slug(
         slug, current_user.id if current_user else None
     )
     client_ip = get_client_meta(request).get("ip_address")
-    from app.services.community_utils import hash_ip_for_view
+    from app.services.community.community_utils import hash_ip_for_view
 
     await service.increment_view(
         post.id,
@@ -464,18 +464,22 @@ async def toggle_follow(
 @router.get("/follows")
 async def list_follows(
     type: str = "following",
-    page: int = 1,
-    page_size: int = Query(20, alias="pageSize"),
+    pagination: PaginationParams = Depends(),
     service: FeedService = Depends(get_feed_service),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
-    skip = (max(1, page) - 1) * page_size
     if type == "followers":
         return await service.list_followers(
-            current_user.id, current_user_id=current_user.id, skip=skip, limit=page_size
+            current_user.id,
+            current_user_id=current_user.id,
+            skip=pagination.skip,
+            limit=pagination.limit,
         )
     return await service.list_following(
-        current_user.id, current_user_id=current_user.id, skip=skip, limit=page_size
+        current_user.id,
+        current_user_id=current_user.id,
+        skip=pagination.skip,
+        limit=pagination.limit,
     )
 
 
@@ -655,11 +659,7 @@ async def _is_admin(db: AsyncSession, user: User) -> bool:
     if user.is_superuser:
         return True
     roles = (
-        (
-            await db.execute(
-                select(Role.name).join(Role.users).where(User.id == user.id)
-            )
-        )
+        (await db.execute(select(Role.name).join(Role.users).where(User.id == user.id)))
         .scalars()
         .all()
     )
@@ -677,10 +677,14 @@ async def list_tags(
     from app.models.community import CommunityPost
 
     result = (
-        await db.execute(
-            select(CommunityPost.tags).where(CommunityPost.status == "published")
+        (
+            await db.execute(
+                select(CommunityPost.tags).where(CommunityPost.status == "published")
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     collected: list[str] = []
     seen: set[str] = set()

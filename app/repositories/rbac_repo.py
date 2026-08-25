@@ -7,6 +7,8 @@ from sqlalchemy.orm import selectinload
 from app.models.user import User, user_roles
 from app.models.role import Role, role_permissions
 from app.models.permission import Permission
+from app.repositories.base import paginate
+from app.repositories.user_repo import UserRepository
 
 
 class RBACRepository:
@@ -50,16 +52,13 @@ class RBACRepository:
     async def get_user_with_roles(self, user_id: int) -> Optional[User]:
         """获取未软删用户及其角色（并嵌套预加载角色的权限）。
 
+        重复实现治理波次 C2（B12）：收敛为 UserRepository 带深度参数的同一实现。
         嵌套到 roles.permissions 是必要的：权限聚合（get_user_permissions /
         check_permission）会遍历 role.permissions，否则异步下触发懒加载 -> MissingGreenlet。
         """
-        stmt = (
-            select(User)
-            .options(selectinload(User.roles).selectinload(Role.permissions))
-            .where(User.id == user_id, User.deleted_at.is_(None))
+        return await UserRepository(self.db).get_user_with_roles(
+            user_id, with_permissions=True
         )
-        result = await self.db.execute(stmt)
-        return result.scalar_one_or_none()
 
     async def get_role_by_id(self, role_id: int) -> Optional[Role]:
         """通过ID获取角色"""
@@ -111,7 +110,7 @@ class RBACRepository:
         """获取角色列表（含各自权限），可分页。limit=None 表示不分页。"""
         stmt = select(Role).options(selectinload(Role.permissions))
         if limit is not None:
-            stmt = stmt.offset(skip).limit(limit)
+            stmt = paginate(stmt, skip, limit)
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
 
@@ -126,7 +125,7 @@ class RBACRepository:
         """获取权限列表，可分页。limit=None 表示不分页。"""
         stmt = select(Permission)
         if limit is not None:
-            stmt = stmt.offset(skip).limit(limit)
+            stmt = paginate(stmt, skip, limit)
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
 

@@ -12,7 +12,7 @@ from app.dependencies_services import get_audit_service, get_rbac_service
 from app.middleware.rbac import require_permission
 from app.models.user import User
 from app.services.audit_service import AuditService
-from app.services.rbac_service import RBACService
+from app.services.rbac.rbac_service import RBACService
 
 router = APIRouter()
 

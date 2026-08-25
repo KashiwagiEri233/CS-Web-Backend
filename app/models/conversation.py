@@ -11,6 +11,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -30,7 +31,31 @@ class Conversation(Base):
     user_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("users.id"), nullable=False, index=True
     )
+    parent_conversation_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("conversations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    root_conversation_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("conversations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    forked_from_message_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("chat_messages.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     title: Mapped[str] = mapped_column(String(200), nullable=False, default="新会话")
+    archived_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True, index=True
+    )
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=now_utc, onupdate=now_utc
@@ -38,6 +63,52 @@ class Conversation(Base):
 
     def __repr__(self) -> str:
         return f"<Conversation(id={self.id}, title='{self.title}')>"
+
+
+class AgentRun(Base):
+    """一次 Agent 执行：对话请求与后台自动任务共用的生命周期记录。"""
+
+    __tablename__ = "agent_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=False, index=True
+    )
+    conversation_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("conversations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    trigger_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="chat"
+    )
+    preset_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="pending", index=True
+    )
+    input_message_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("chat_messages.id", ondelete="SET NULL"), nullable=True
+    )
+    output_message_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("chat_messages.id", ondelete="SET NULL"), nullable=True
+    )
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    prompt_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    completion_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    latency_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    error_code: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[Optional[dict]] = mapped_column(JSONDict, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+
+    def __repr__(self) -> str:
+        return (
+            f"<AgentRun(id={self.id}, status='{self.status}', "
+            f"trigger='{self.trigger_type}')>"
+        )
 
 
 class ChatMessage(Base):
@@ -52,8 +123,49 @@ class ChatMessage(Base):
     role: Mapped[str] = mapped_column(String(20), nullable=False)  # user | assistant
     content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     # 该条 assistant 消息触发的工具调用记录 [{name, arguments}]
-    tool_calls: Mapped[Optional[list]] = mapped_column(JSONDict, nullable=True, default=list)
+    tool_calls: Mapped[Optional[list]] = mapped_column(
+        JSONDict, nullable=True, default=list
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
 
     def __repr__(self) -> str:
         return f"<ChatMessage({self.role}, conv={self.conversation_id})>"
+
+
+class ChatEvent(Base):
+    """会话全事件流（Trajectory 日志，append-only，融合点 2）。
+
+    记录对话过程中模型看到/产出的一切：delta / tool_call / tool_result / usage /
+    done / error。`chat_messages` 保留为对外快照，本表用于回放与调试。
+    """
+
+    __tablename__ = "chat_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    conversation_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("conversations.id"), nullable=False, index=True
+    )
+    run_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("agent_runs.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=False, index=True
+    )
+    #: 会话内事件序号（从 1 起，单次对话单生成者，进程内自增）
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: delta / tool_call / tool_result / usage / done / error
+    event_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    #: 事件体（文本 / 工具名与参数 / 用量 / 标题 / 错误信息）
+    payload: Mapped[Optional[dict]] = mapped_column(JSONDict, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+
+    __table_args__ = (UniqueConstraint("run_id", "seq", name="uq_chat_events_run_seq"),)
+
+    def __repr__(self) -> str:
+        return (
+            f"<ChatEvent(conv={self.conversation_id}, seq={self.seq}, "
+            f"{self.event_type})>"
+        )

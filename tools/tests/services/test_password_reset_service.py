@@ -41,6 +41,9 @@ def _make_service(
     svc.repo = AsyncMock()
     svc.user_repo = AsyncMock()
     svc.audit = AsyncMock()
+    # service 重构后 approve/reject 不再提前 commit，改由 audit.record_atomic
+    # 同事务原子提交审计（见 service 内注释）；需显式设为 AsyncMock 方可 await+断言。
+    svc.audit.record_atomic = AsyncMock()
     return svc
 
 
@@ -187,7 +190,8 @@ async def test_approve_request_resets_password_and_revokes_tokens(monkeypatch):
     svc.repo.resolve.assert_awaited_once_with(
         request=req, status="approved", admin_id=99, admin_note="ok"
     )
-    svc.db.commit.assert_awaited_once()
+    # service 重构：不再提前 commit，改由 audit.record_atomic 原子提交审计
+    svc.audit.record_atomic.assert_awaited_once()
 
 
 async def test_approve_request_records_audit_on_success(monkeypatch):
@@ -206,7 +210,7 @@ async def test_approve_request_records_audit_on_success(monkeypatch):
         client_meta={"ip_address": "1.2.3.4", "user_agent": "ua"},
     )
 
-    svc.audit.record.assert_awaited_once_with(
+    svc.audit.record_atomic.assert_awaited_once_with(
         action="password_reset.approve",
         resource_type="password_reset_request",
         resource_id="10",
@@ -234,8 +238,8 @@ async def test_reject_request_updates_status_and_records_audit(monkeypatch):
     svc.repo.resolve.assert_awaited_once_with(
         request=req, status="rejected", admin_id=99, admin_note="nope"
     )
-    svc.db.commit.assert_awaited_once()
-    svc.audit.record.assert_awaited_once_with(
+    svc.audit.record_atomic.assert_awaited_once()
+    svc.audit.record_atomic.assert_awaited_once_with(
         action="password_reset.reject",
         resource_type="password_reset_request",
         resource_id="10",

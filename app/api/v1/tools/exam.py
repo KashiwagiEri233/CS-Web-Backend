@@ -6,7 +6,6 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends
 
-from app.core.exceptions import ValidationException
 from app.dependencies import get_current_active_user
 from app.dependencies_services import get_exam_service
 from app.middleware.rbac import require_permission

@@ -24,7 +24,7 @@ from app.core.security import (
 from app.core.security_blacklist import get_blacklist
 from app.database import get_session
 from app.models.user import User
-from app.services.auth_service import AuthService
+from app.services.auth.auth_service import AuthService
 
 
 async def _create_test_user(db, username: str) -> int:
