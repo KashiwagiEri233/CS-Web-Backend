@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.audit_log import AuditLog
 from app.repositories.base import dml_rowcount
+from app.repositories.base import paginate
 
 
 class AuditLogRepository:
@@ -60,7 +61,7 @@ class AuditLogRepository:
             query = query.where(where)
 
         total = int((await self.db.execute(count_stmt)).scalar_one())
-        result = await self.db.execute(query.offset(skip).limit(limit))
+        result = await self.db.execute(paginate(query, skip, limit))
         return list(result.scalars().all()), total
 
     async def get_by_id(self, log_id: int) -> Optional[AuditLog]:

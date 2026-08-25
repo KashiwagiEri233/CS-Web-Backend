@@ -52,7 +52,7 @@ class VerificationService:
         normalized = email.lower()
         await self.repo.invalidate_for_email(normalized)
 
-        code = f"{secrets.randbelow(VERIFICATION_CODE_MAX - VERIFICATION_CODE_MIN + 1) + VERIFICATION_CODE_MIN}"  # VERIFICATION_CODE_MIN..MAX（6 位）
+        code = f"{secrets.randbelow(VERIFICATION_CODE_MAX - VERIFICATION_CODE_MIN + 1) + VERIFICATION_CODE_MIN}"  # VERIFICATION_CODE_MIN..MAX（6 位） # noqa: E501
         code_hash = _hash_code(code)
         expires_at = now_utc() + timedelta(
             minutes=settings.VERIFICATION_CODE_TTL_MINUTES

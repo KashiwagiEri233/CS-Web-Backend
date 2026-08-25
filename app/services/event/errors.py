@@ -10,3 +10,4 @@ class EventErrorCode:
     ALREADY_REGISTERED = "ALREADY_REGISTERED"
     ALREADY_CANCELLED = "ALREADY_CANCELLED"
     FULL = "FULL"  # 活动名额已满
+    EVENT_ENDED = "EVENT_ENDED"  # 活动已过期/结束，不可报名

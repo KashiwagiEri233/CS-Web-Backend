@@ -5,6 +5,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.user import User
 from app.repositories.base import BaseRepository
+from app.repositories.base import paginate
 
 
 class UserRepository(BaseRepository[User]):
@@ -15,12 +16,8 @@ class UserRepository(BaseRepository[User]):
 
     async def list_active(self, skip: int = 0, limit: int = 100) -> list[User]:
         """分页获取未软删用户。"""
-        stmt = (
-            select(User)
-            .where(User.deleted_at.is_(None))
-            .order_by(User.id)
-            .offset(skip)
-            .limit(limit)
+        stmt = paginate(
+            select(User).where(User.deleted_at.is_(None)).order_by(User.id), skip, limit
         )
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
@@ -57,11 +54,22 @@ class UserRepository(BaseRepository[User]):
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def get_user_with_roles(self, user_id: int) -> Optional[User]:
-        """获取未删除用户及其角色。"""
+    async def get_user_with_roles(
+        self, user_id: int, *, with_permissions: bool = False
+    ) -> Optional[User]:
+        """获取未删除用户及其角色（可选嵌套预加载角色的权限）。
+
+        重复实现治理波次 C2（B12）：rbac_repo 原独立实现（嵌套 roles.permissions）
+        收敛为本方法 with_permissions=True，避免同语义查询跨 repo 重复。
+        """
+        options = selectinload(User.roles)
+        if with_permissions:
+            from app.models.role import Role  # 局部导入避免循环依赖
+
+            options = options.selectinload(Role.permissions)
         stmt = (
             select(User)
-            .options(selectinload(User.roles))
+            .options(options)
             .where(User.id == user_id, User.deleted_at.is_(None))
         )
         result = await self.db.execute(stmt)

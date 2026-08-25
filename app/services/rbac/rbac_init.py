@@ -18,7 +18,7 @@ from app.models.role import Role
 from app.models.user import User
 from app.repositories.rbac_repo import RBACRepository
 from app.repositories.user_repo import UserRepository
-from app.services.rbac_seed_data import (
+from app.services.rbac.rbac_seed_data import (
     ADMIN_ROLE_NAME,
     DEFAULT_PERMISSIONS,
     build_default_roles,

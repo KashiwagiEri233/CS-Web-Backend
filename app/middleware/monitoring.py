@@ -117,7 +117,10 @@ class SecurityHeadersMiddleware:
         # HSTS 无条件下发：应用通常跑在 TLS 终结代理之后，scope["scheme"] 仍是 http
         # （proxy_headers 被刻意关闭），按 scheme 判断反而会在真实生产环境漏发。
         # 浏览器在纯 HTTP 下会忽略该头，无副作用。
-        (b"strict-transport-security", f"max-age={SECONDS_PER_YEAR}; includeSubDomains".encode()),
+        (
+            b"strict-transport-security",
+            f"max-age={SECONDS_PER_YEAR}; includeSubDomains".encode(),
+        ),
         # 纯 JSON API 不需要 CSP，但要避免 URL（可能含资源 id）随跳转泄漏到第三方
         (b"referrer-policy", b"no-referrer"),
     ]

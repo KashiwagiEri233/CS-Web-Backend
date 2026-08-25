@@ -545,7 +545,7 @@ wheels = [
 
 [[package]]
 name = "cs-web-backend"
-version = "0.9.9"
+version = "1.0.1"
 source = { virtual = "." }
 dependencies = [
     { name = "alembic" },

@@ -1,7 +1,7 @@
 """RBAC 用户/角色/权限关联编排。
 
 作为 ``RBACService`` 的职责 mixin，仅承载关联变更；公共入口仍是
-``app.services.rbac_service.RBACService``。
+``app.services.rbac.rbac_service.RBACService``。
 """
 
 from typing import Optional
@@ -12,7 +12,7 @@ from app.core.exceptions import PermissionDeniedException
 from app.models.role import Role
 from app.models.user import User
 from app.repositories.rbac_repo import RBACRepository
-from app.services.rbac_seed_data import ADMIN_ROLE_NAME
+from app.services.rbac.rbac_seed_data import ADMIN_ROLE_NAME
 
 
 class RBACAssignmentMixin:

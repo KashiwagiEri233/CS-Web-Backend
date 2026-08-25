@@ -141,7 +141,9 @@ class RedisCacheBackend:
 
         用于计数落库时把计数器原子清零：取到的旧值即本次需落库的增量。
         """
-        raw = await self._client.getset(key, json.dumps(value, ensure_ascii=False, default=str))
+        raw = await self._client.getset(
+            key, json.dumps(value, ensure_ascii=False, default=str)
+        )
         if raw is None:
             return None
         try:
