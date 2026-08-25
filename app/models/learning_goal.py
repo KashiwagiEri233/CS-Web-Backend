@@ -29,9 +29,19 @@ class LearningGoal(Base):
     )
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    target_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
-    weekly_budget_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=300)
-    preferred_slots: Mapped[Optional[list]] = mapped_column(JSONDict, nullable=True, default=list)
-    status: Mapped[str] = mapped_column(String(20), nullable=False, default="active", index=True)
+    target_date: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True, index=True
+    )
+    weekly_budget_minutes: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=300
+    )
+    preferred_slots: Mapped[Optional[list]] = mapped_column(
+        JSONDict, nullable=True, default=list
+    )
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="active", index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, onupdate=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=now_utc, onupdate=now_utc
+    )

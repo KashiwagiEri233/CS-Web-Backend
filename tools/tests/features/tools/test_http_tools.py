@@ -312,7 +312,9 @@ async def test_auxilio_conversation_http_lifecycle_and_ownership(integration_db_
             active_list = await client.get(
                 "/api/v1/auxilio/conversations", headers=owner_headers
             )
-            assert all(c["id"] != branch_id for c in active_list.json()["conversations"])
+            assert all(
+                c["id"] != branch_id for c in active_list.json()["conversations"]
+            )
             full_list = await client.get(
                 "/api/v1/auxilio/conversations",
                 headers=owner_headers,
@@ -357,7 +359,9 @@ async def test_auxilio_learning_goal_http_budget_and_ownership(integration_db_re
     application = create_app()
     try:
         transport = httpx.ASGITransport(app=application)
-        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://testserver"
+        ) as client:
             owner_headers = await _login(client, f"itest_http_tools_{sfx}go")
             outsider_headers = await _login(client, f"itest_http_tools_{sfx}gx")
             created = await client.post(
@@ -392,7 +396,10 @@ async def test_auxilio_learning_goal_http_budget_and_ownership(integration_db_re
                 headers=owner_headers,
                 json={"status": "paused"},
             )
-            assert paused.status_code == 200 and paused.json()["goal"]["status"] == "paused"
+            assert (
+                paused.status_code == 200
+                and paused.json()["goal"]["status"] == "paused"
+            )
             deleted = await client.delete(
                 f"/api/v1/auxilio/goals/{goal_id}", headers=owner_headers
             )

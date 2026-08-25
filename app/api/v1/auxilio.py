@@ -25,13 +25,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timezone import now_utc
 from app.core.loguru_logger import get_logger
-from app.core.exceptions import ConflictException, NotFoundException, ValidationException
+from app.core.exceptions import (
+    ConflictException,
+    NotFoundException,
+    ValidationException,
+)
 from app.database import get_db
 from app.dependencies import get_current_active_user
 from app.dependencies_services import get_auxilio_service
 from app.models.conversation import AgentRun, ChatEvent, ChatMessage, Conversation
 from app.models.learning import WrongAnswer
-from app.models.learning_plan import LearningPlanItem
 from app.models.llm_usage import LlmUsageLog
 from app.models.user import User
 from app.services import auxilio_agent
@@ -75,7 +78,9 @@ async def _own_conversation(
         )
     ).scalar_one_or_none()
     if conv is None:
-        raise NotFoundException(resource_type="学习助手会话", resource_id=conversation_id)
+        raise NotFoundException(
+            resource_type="学习助手会话", resource_id=conversation_id
+        )
     return conv
 
 
@@ -100,7 +105,9 @@ async def chat(
         input_message = (
             await db.execute(
                 select(ChatMessage)
-                .where(ChatMessage.conversation_id == conv.id, ChatMessage.role == "user")
+                .where(
+                    ChatMessage.conversation_id == conv.id, ChatMessage.role == "user"
+                )
                 .order_by(ChatMessage.id.desc())
                 .limit(1)
             )
@@ -133,7 +140,9 @@ async def chat(
             trajectory_on = True
         started = now_utc()
         try:
-            yield sse({"type": "conversation", "conversationId": conv.id, "runId": run.id})
+            yield sse(
+                {"type": "conversation", "conversationId": conv.id, "runId": run.id}
+            )
             async for ev in auxilio_agent.run_chat(
                 db, user, history, preset_id=req.preset_id
             ):
@@ -349,7 +358,9 @@ class LearningGoalUpdateRequest(BaseModel):
 
 
 class LearningPlanUpdateRequest(BaseModel):
-    status: Optional[str] = Field(default=None, pattern="^(planned|completed|deferred|skipped)$")
+    status: Optional[str] = Field(
+        default=None, pattern="^(planned|completed|deferred|skipped)$"
+    )
     locked: Optional[bool] = None
     defer_to: Optional[date] = None
 
@@ -415,7 +426,11 @@ async def archive_conversation(
     return {
         "conversation": {
             "id": conversation.id,
-            "archivedAt": conversation.archived_at.isoformat() if conversation.archived_at else None,
+            "archivedAt": (
+                conversation.archived_at.isoformat()
+                if conversation.archived_at
+                else None
+            ),
         }
     }
 
@@ -451,7 +466,11 @@ async def list_mistakes(
         conditions.append(WrongAnswer.status == status)
     if due_only:
         conditions.append(WrongAnswer.review_due_at <= now_utc())
-    query = select(WrongAnswer).where(*conditions).order_by(WrongAnswer.review_due_at.asc(), WrongAnswer.id.asc())
+    query = (
+        select(WrongAnswer)
+        .where(*conditions)
+        .order_by(WrongAnswer.review_due_at.asc(), WrongAnswer.id.asc())
+    )
     rows = list((await db.execute(query.limit(min(limit, 100)))).scalars().all())
     if tag:
         rows = [row for row in rows if tag in (row.knowledge_tags or [])]
@@ -469,9 +488,15 @@ async def list_mistakes(
                 "mistakeCount": row.mistake_count,
                 "reviewStreak": row.review_streak,
                 "status": row.status,
-                "reviewDueAt": row.review_due_at.isoformat() if row.review_due_at else None,
-                "lastWrongAt": row.last_wrong_at.isoformat() if row.last_wrong_at else None,
-                "lastReviewedAt": row.last_reviewed_at.isoformat() if row.last_reviewed_at else None,
+                "reviewDueAt": (
+                    row.review_due_at.isoformat() if row.review_due_at else None
+                ),
+                "lastWrongAt": (
+                    row.last_wrong_at.isoformat() if row.last_wrong_at else None
+                ),
+                "lastReviewedAt": (
+                    row.last_reviewed_at.isoformat() if row.last_reviewed_at else None
+                ),
             }
             for row in rows
         ]
@@ -487,7 +512,9 @@ async def update_mistake(
 ):
     row = (
         await db.execute(
-            select(WrongAnswer).where(WrongAnswer.id == mistake_id, WrongAnswer.user_id == user.id)
+            select(WrongAnswer).where(
+                WrongAnswer.id == mistake_id, WrongAnswer.user_id == user.id
+            )
         )
     ).scalar_one_or_none()
     if row is None:
@@ -499,7 +526,9 @@ async def update_mistake(
     if req.status == "mastered":
         row.review_due_at = now_utc()
     await db.commit()
-    return {"mistake": {"id": row.id, "status": row.status, "errorReason": row.error_reason}}
+    return {
+        "mistake": {"id": row.id, "status": row.status, "errorReason": row.error_reason}
+    }
 
 
 @router.post("/mistakes/{mistake_id}/review")
@@ -527,7 +556,9 @@ async def review_mistake(
             "status": row.status,
             "reviewStreak": row.review_streak,
             "reviewDueAt": row.review_due_at.isoformat() if row.review_due_at else None,
-            "lastReviewedAt": row.last_reviewed_at.isoformat() if row.last_reviewed_at else None,
+            "lastReviewedAt": (
+                row.last_reviewed_at.isoformat() if row.last_reviewed_at else None
+            ),
         }
     }
 
@@ -539,7 +570,9 @@ async def list_learning_goals(
     user: User = Depends(get_current_active_user),
     service: AuxilioService = Depends(get_auxilio_service),
 ):
-    goals = await service.list_learning_goals(user.id, include_completed=include_completed)
+    goals = await service.list_learning_goals(
+        user.id, include_completed=include_completed
+    )
     return {"goals": [_learning_goal_out(goal) for goal in goals]}
 
 
@@ -630,7 +663,9 @@ async def update_learning_plan(
             defer_to=req.defer_to,
         )
     except LookupError as exc:
-        raise NotFoundException(resource_type="学习计划项", resource_id=item_id) from exc
+        raise NotFoundException(
+            resource_type="学习计划项", resource_id=item_id
+        ) from exc
     except ValueError as exc:
         raise ValidationException(message=str(exc)) from exc
     return {"item": _learning_plan_item_out(item)}
@@ -733,7 +768,9 @@ async def list_runs(
                 "errorCode": run.error_code,
                 "errorMessage": run.error_message,
                 "startedAt": run.started_at.isoformat() if run.started_at else None,
-                "completedAt": run.completed_at.isoformat() if run.completed_at else None,
+                "completedAt": (
+                    run.completed_at.isoformat() if run.completed_at else None
+                ),
             }
             for run in rows
         ]
