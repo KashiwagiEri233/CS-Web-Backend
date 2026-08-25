@@ -23,15 +23,18 @@ from app.core.exceptions import (
 )
 from app.core.timezone import now_utc
 from app.models.community import CommunityCategory, CommunityPost
-from app.models.user import User
 from app.repositories.community_repo import (
     CommunityCategoryRepository,
     CommunityFollowRepository,
     CommunityInteractionRepository,
     CommunityPostRepository,
 )
-from app.services.community_notifications import notify_mentions
-from app.services.community_utils import generate_slug, to_author_summary
+from app.services.community.community_notifications import notify_mentions
+from app.services.community.community_utils import (
+    load_users_by_ids,
+    generate_slug,
+    to_author_summary,
+)
 from app.services.view_count import record_view
 
 
@@ -335,16 +338,8 @@ class PostService:
     ) -> None:
         if not posts:
             return
-        author_ids = {p.author_id for p in posts}
         category_ids = {p.category_id for p in posts if p.category_id}
-        users = {
-            u.id: u
-            for u in (
-                await self.db.execute(select(User).where(User.id.in_(author_ids)))
-            )
-            .scalars()
-            .all()
-        }
+        users = await load_users_by_ids(self.db, (p.author_id for p in posts))
         categories = {}
         if category_ids:
             categories = {
@@ -359,7 +354,7 @@ class PostService:
                 .scalars()
                 .all()
             }
-        interaction_ids = {"reaction": set(), "favorite": set()}
+        interaction_ids: dict[str, set[int]] = {"reaction": set(), "favorite": set()}
         if current_user_id:
             interaction_ids = await self.interaction_repo.get_interaction_target_ids(
                 current_user_id, "post", [p.id for p in posts]

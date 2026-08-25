@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import (
     DateTime as _DateTime,
@@ -35,9 +34,7 @@ class LlmUsageLog(Base):
     total_tokens: Mapped[int] = mapped_column(Integer, default=0)
     latency_ms: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="ok")
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=now_utc, index=True
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, index=True)
 
     def __repr__(self) -> str:
         return f"<LlmUsageLog(user={self.user_id}, {self.total_tokens}t, {self.model})>"

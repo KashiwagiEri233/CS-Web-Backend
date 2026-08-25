@@ -21,7 +21,8 @@ class JoinService:
     def __init__(self, db: AsyncSession, audit: Optional[AuditService] = None):
         self.db = db
         self.repo = JoinApplicationRepository(db)
-        self.audit = audit if audit is not None else AuditService()
+        # 默认注入共享请求会话，使 record_atomic 可同事务提交审计（否则 db=None 会抛错）
+        self.audit = audit if audit is not None else AuditService(self.db)
 
     async def submit(
         self, data: JoinApplicationInput, user_id: Optional[int] = None
@@ -67,9 +68,8 @@ class JoinService:
             reviewed_by=admin_id,
             review_note=review_note,
         )
-        await self.db.commit()
-
-        await self.audit.record(
+        # 移除提前 commit：改由 record_atomic 同事务原子提交，审计写失败则整体回滚（通知在其后，独立 best-effort）
+        await self.audit.record_atomic(
             action=f"join.{'approve' if status == 'approved' else 'reject'}",
             resource_type="join_application",
             resource_id=str(app.id),

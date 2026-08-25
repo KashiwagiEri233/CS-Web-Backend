@@ -1,12 +1,15 @@
-"""依赖清单一致性：pyproject.toml 与 requirements.txt 必须描述同一套运行时依赖。
+"""依赖清单一致性：pyproject.toml 与 uv.lock 必须描述同一套运行时依赖。
 
-背景：项目同时维护两份运行时依赖清单——``pyproject.toml`` 的 ``[project].dependencies``
-和 ``requirements.txt``（后者是 pip-compile 生成 requirements.lock 的输入）。两份清单
-靠人工同步，加一个包只改一边不会有任何报错，直到运行时才 ImportError 或者装出不同版本。
-这个测试把「静默漂移」变成「CI 直接失败」。
+背景：依赖管理已收敛为 uv 单源（2026-08-17，C-7/A'）——``pyproject.toml`` 的
+``[project].dependencies`` 是唯一事实源，``uv.lock`` 由 ``uv lock`` 生成；CI / Docker
+消费的 ``requirements*.lock`` 是 ``uv export --hashed`` 的派生物。本测试把「锁文件与
+声明漂移」变成「CI 直接失败」：
 
-新增/升级依赖时请同时改两个文件，并重新生成 lock：
-    pip-compile --generate-hashes --strip-extras -o requirements.lock requirements.txt
+1. pyproject 声明的每个直接依赖都必须出现在 uv.lock 包集中（uv.lock 缺失 / 过期即失败）；
+2. 每个直接依赖都必须带版本约束，否则 lock 重新生成时可能悄悄跳大版本。
+
+新增 / 升级依赖时：改 ``pyproject.toml`` → ``uv lock`` → ``uv export --hashed``
+重新生成 ``requirements.lock`` / ``requirements-dev.lock``。
 """
 
 from __future__ import annotations
@@ -48,30 +51,20 @@ def _pyproject_dependencies() -> set[tuple[str, frozenset[str], str]]:
     return {_parse_requirement(item) for item in data["project"]["dependencies"]}
 
 
-def _requirements_txt_dependencies() -> set[tuple[str, frozenset[str], str]]:
-    parsed = set()
-    for line in (
-        (_PROJECT_ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines()
-    ):
-        line = line.split("#", 1)[0].strip()
-        # 跳过空行与 pip 选项行（-r / -c / --hash 等）
-        if not line or line.startswith("-"):
-            continue
-        parsed.add(_parse_requirement(line))
-    return parsed
+def _uv_lock_package_names() -> set[str]:
+    """uv.lock（TOML）中所有 [[package]] 的规范化名集合（含直接与传递依赖）。"""
+    data = tomllib.loads((_PROJECT_ROOT / "uv.lock").read_text(encoding="utf-8"))
+    return {_canonical_name(pkg["name"]) for pkg in data.get("package", [])}
 
 
-def test_pyproject_and_requirements_txt_agree():
-    from_pyproject = _pyproject_dependencies()
-    from_requirements = _requirements_txt_dependencies()
-
-    only_in_pyproject = from_pyproject - from_requirements
-    only_in_requirements = from_requirements - from_pyproject
-
-    assert not only_in_pyproject and not only_in_requirements, (
-        "pyproject.toml 与 requirements.txt 的运行时依赖不一致（两处都要改）：\n"
-        f"  仅在 pyproject.toml: {sorted(only_in_pyproject)}\n"
-        f"  仅在 requirements.txt: {sorted(only_in_requirements)}"
+def test_pyproject_deps_are_locked_in_uv_lock():
+    """pyproject 声明的每个直接依赖都必须已进入 uv.lock（锁缺失 / 过期即失败）。"""
+    from_pyproject = {name for name, _extras, _spec in _pyproject_dependencies()}
+    locked = _uv_lock_package_names()
+    missing = sorted(from_pyproject - locked)
+    assert not missing, (
+        "以下 pyproject.toml 直接依赖未出现在 uv.lock 中（须 `uv lock` 重新生成）：\n"
+        f"  {missing}"
     )
 
 

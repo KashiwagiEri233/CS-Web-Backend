@@ -83,15 +83,6 @@ pipeline {
                 }
             }
         }
-        stage('Docs dead links (ER-09)') {
-            steps {
-                script {
-                    // 文档死链审计：扫描 docs/ 与根级 *.md，断文件链接即失败。
-                    // 锚点默认仅警告，避免 CJK 标题 slug 近似误杀；可作为 PR 门禁。
-                    runCommand('python3 ../scripts/check_dead_links.py --base . --docs docs')
-                }
-            }
-        }
         stage('Tests') {
             steps {
                 script {

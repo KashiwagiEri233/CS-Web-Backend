@@ -1,6 +1,6 @@
 [project]
 name = "cs-web-backend"
-version = "0.9.9"
+version = "1.0.1"
 requires-python = ">=3.13"
 dependencies = [
     "alembic==1.13.1",
@@ -30,11 +30,25 @@ dependencies = [
     "prometheus-client>=0.20,<0.22",
 ]
 
-# 测试依赖（G2：固化 pytest 全家桶，便于本地 `pip install -e ".[test]"` 复现全绿）
-# 注意：CI 统一以 requirements-dev.lock 为准（pytest==9.1.1 / pytest-asyncio==1.4.0 /
-# pytest-cov==7.1.0），此处版本范围与 lock 保持一致，避免本地与 CI 漂移。
+# 测试与开发工具链（C-7/A'：2026-08-17 收敛为 uv 单源）。
+# - test：pytest 全家桶，便于本地 `pip install -e ".[test]"` 复现全绿
+# - dev：CI/Jenkins 完整工具链（= test + 静态检查 + 供应链审计），
+#   requirements-dev.lock 由 `uv export --extra dev --hashed` 生成；
+#   pip-tools 已被 uv export 取代，不再声明。
 [project.optional-dependencies]
 test = [
+    "pytest>=9.0,<10.0",
+    "pytest-cov>=5.0,<8.0",
+    "pytest-asyncio>=1.0,<2.0",
+]
+dev = [
+    "httpx2>=2.5,<3.0",
+    "black>=26.0,<27.0",
+    "flake8>=7.0,<8.0",
+    "mypy>=2.0,<3.0",
+    "pip-audit>=2.7,<3.0",
+    "cyclonedx-bom>=4.0,<8.0",
+    "pip-licenses>=4.0,<6.0",
     "pytest>=9.0,<10.0",
     "pytest-cov>=5.0,<8.0",
     "pytest-asyncio>=1.0,<2.0",

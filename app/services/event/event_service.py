@@ -1,4 +1,4 @@
-﻿"""活动服务：CRUD / 报名（限额+唯一约束）/ 签到核销 / 归档 / 设置 / 统计。
+"""活动服务：CRUD / 报名（限额+唯一约束）/ 签到核销 / 归档 / 设置 / 统计。
 
 业务事件（event.created / event.registered / event.cancelled）经 event_bus 发布，
 通知订阅者见 app/services/notification_events.py。
@@ -205,6 +205,14 @@ class EventService:
                 message="活动不存在", resource_type="event", resource_id=str(event_id)
             )
 
+        await self.auto_archive()
+        await self.db.refresh(event)
+        if event.status == "ended":
+            raise ConflictException(
+                message="活动已结束，不可报名",
+                error_code=ErrorCode.Event.EVENT_ENDED,
+            )
+
         existing = await self.reg_repo.get(user_id, event_id)
         if existing is not None and existing.status == "registered":
             raise ConflictException(
@@ -373,7 +381,7 @@ class EventService:
             if reg.id in existing_codes:
                 skipped += 1
                 continue
-            code = f"{secrets.randbelow(VERIFICATION_CODE_MAX - VERIFICATION_CODE_MIN + 1) + VERIFICATION_CODE_MIN}"
+            code = f"{secrets.randbelow(VERIFICATION_CODE_MAX - VERIFICATION_CODE_MIN + 1) + VERIFICATION_CODE_MIN}"  # noqa: E501
             await self.checkin_repo.create(
                 event_id=event_id,
                 registration_id=reg.id,
@@ -435,6 +443,7 @@ class EventService:
             if hasattr(target, "id")
             else (str(target) if target is not None else None)
         )
+        # 非关键审计，允许 best-effort（管理员活动 CRUD 与用户签到共用此 helper，迁原子会连用户签到一起回滚）
         await self.audit.record(
             action=action,
             resource_type="event",

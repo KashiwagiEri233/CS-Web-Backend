@@ -55,11 +55,9 @@ DEFAULT_MODULES: dict[str, VisibilityRule] = {
     "wb-quick-notes": VisibilityRule(guest=True, member=True, admin=True),
     "wb-pomodoro": VisibilityRule(guest=True, member=True, admin=True),
     "wb-exam-countdown": VisibilityRule(guest=True, member=True, admin=True),
-    "wb-assistant-chat": VisibilityRule(guest=True, member=True, admin=True),
     # ===== 工具子功能（/tools 卡片）=====
     "tools-exam": VisibilityRule(guest=True, member=True, admin=True),
     "tools-resource": VisibilityRule(guest=True, member=True, admin=True),
-    "tools-auxilio": VisibilityRule(guest=True, member=True, admin=True),
     "tools-task": VisibilityRule(guest=True, member=True, admin=True),
     "tools-dev-center": VisibilityRule(guest=True, member=True, admin=True),
     "tools-admin-panel": VisibilityRule(guest=False, member=False, admin=True),
@@ -126,7 +124,9 @@ class FeatureVisibilityService:
         """读取单模块规则；未知模块返回 None，已知但未配置返回默认值。"""
         if module_key not in DEFAULT_MODULES:
             return None
-        stmt = select(Setting).where(Setting.module == MODULE, Setting.key == module_key)
+        stmt = select(Setting).where(
+            Setting.module == MODULE, Setting.key == module_key
+        )
         row = (await self.db.execute(stmt)).scalar_one_or_none()
         if row is None:
             return DEFAULT_MODULES[module_key]
@@ -139,7 +139,9 @@ class FeatureVisibilityService:
         old = await self.get_rule(module_key)
         # 调用方已校验 module_key 合法，此处 old 不会为 None。
         value = _rule_to_json(rule)
-        stmt = select(Setting).where(Setting.module == MODULE, Setting.key == module_key)
+        stmt = select(Setting).where(
+            Setting.module == MODULE, Setting.key == module_key
+        )
         row = (await self.db.execute(stmt)).scalar_one_or_none()
         if row is None:
             self.db.add(Setting(module=MODULE, key=module_key, value=value))

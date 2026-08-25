@@ -10,7 +10,10 @@
       --xml build/coverage.xml --src app
 
 退出码：0 通过（或无新增行）；1 覆盖率不足 / 运行错误。
-仅标准库（xml.etree / subprocess / argparse），与 scripts/check_version_sync.py 同风格。
+仅标准库（xml.etree / subprocess / argparse），与根仓脚本 scripts/check/check_version_sync.py 同风格。
+
+与前端 `tools/scripts/check/diff-coverage.mjs` 为同一门禁（ER-45）的两端实现（本仓 app/**、前端 src/**），
+CLI 参数 `--base/--threshold/--src` 保持一致；调整阈值/报告格式时需两端同步。
 """
 
 from __future__ import annotations
@@ -25,24 +28,28 @@ from pathlib import Path
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="PR 级 diff 覆盖率门禁（ER-45）")
-    p.add_argument("--base", default="origin/main", help="diff 基线 ref（默认 origin/main）")
+    p.add_argument(
+        "--base", default="origin/main", help="diff 基线 ref（默认 origin/main）"
+    )
     p.add_argument("--threshold", type=float, default=80.0, help="新增行覆盖率阈值 %%")
     p.add_argument("--xml", default="build/coverage.xml", help="coverage.xml 路径")
     p.add_argument("--src", default="app", help="被测源码目录（相对仓库根）")
     return p.parse_args(argv)
 
 
-def parse_coverage_xml(xml_path: str, src: str) -> dict[str, set[int]]:
-    """coverage.xml → {仓库相对路径: 已覆盖行号集合}。
+def parse_coverage_xml(xml_path: str, src: str) -> dict[str, tuple[set[int], set[int]]]:
+    """coverage.xml → {仓库相对路径: (可测行号集合, 已覆盖行号集合)}。
 
     coverage.py 的 xml 报告 filename 相对 ``source`` 根（本仓为 app/），
     git diff 路径是 ``app/...`` 仓库相对形式——此处统一归一到后者。
     """
     if not Path(xml_path).exists():
-        raise SystemExit(f"coverage.xml 未找到：{xml_path}（请先跑 pytest --cov 生成覆盖率）")
+        raise SystemExit(
+            f"coverage.xml 未找到：{xml_path}（请先跑 pytest --cov 生成覆盖率）"
+        )
     root = ET.parse(xml_path).getroot()
     cwd = str(Path.cwd())
-    cov: dict[str, set[int]] = {}
+    cov: dict[str, tuple[set[int], set[int]]] = {}
     for cls in root.iter("class"):
         filename = cls.get("filename") or ""
         if not filename:
@@ -54,12 +61,13 @@ def parse_coverage_xml(xml_path: str, src: str) -> dict[str, set[int]]:
         # 相对 source 根（core/constants.py）→ 仓库相对（app/core/constants.py）
         if not filename.startswith(src + "/"):
             filename = f"{src}/{filename}"
+        measured = {int(line.get("number")) for line in cls.iter("line")}
         covered = {
             int(line.get("number"))
             for line in cls.iter("line")
             if int(line.get("hits") or 0) > 0
         }
-        cov[filename] = covered
+        cov[filename] = (measured, covered)
     return cov
 
 
@@ -71,7 +79,15 @@ def get_added_lines(base: str, src: str) -> dict[str, list[int]]:
     added: dict[str, list[int]] = {}
     try:
         diff = subprocess.run(
-            ["git", "diff", "--unified=0", "--no-color", f"{base}...HEAD", "--", f"{src}/**"],
+            [
+                "git",
+                "diff",
+                "--unified=0",
+                "--no-color",
+                f"{base}...HEAD",
+                "--",
+                f"{src}/**",
+            ],
             check=True,
             capture_output=True,
             text=True,
@@ -91,6 +107,9 @@ def get_added_lines(base: str, src: str) -> dict[str, list[int]]:
                 continue
             if p.startswith("b/"):
                 p = p[2:]
+            if not p.endswith(".py"):
+                cur_lines = None
+                continue
             cur_lines = []
             added[p] = cur_lines
         elif line.startswith("@@"):
@@ -119,12 +138,20 @@ def main(argv: list[str] | None = None) -> None:
     covered = 0
     report: list[tuple[str, int, int, float]] = []
     for file, lines in sorted(added.items()):
-        cov_set = cov.get(file)
-        hit = len([l for l in lines if cov_set is not None and l in cov_set])
-        total += len(lines)
+        cov_data = cov.get(file)
+        if cov_data is None:
+            check_lines = lines
+            covered_set: set[int] = set()
+        else:
+            measured, covered_set = cov_data
+            check_lines = [ln for ln in lines if ln in measured]
+        if not check_lines:
+            continue
+        hit = len([ln for ln in check_lines if ln in covered_set])
+        total += len(check_lines)
         covered += hit
-        pct = (hit / len(lines)) * 100 if lines else 100.0
-        report.append((file, len(lines), hit, pct))
+        pct = (hit / len(check_lines)) * 100
+        report.append((file, len(check_lines), hit, pct))
 
     pct_total = (covered / total) * 100 if total else 100.0
     print(

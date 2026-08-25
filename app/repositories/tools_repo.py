@@ -1,13 +1,12 @@
-﻿"""工具集仓储：考试 / 资源 / 任务 / 积分 / 组件注册表。"""
+"""工具集仓储：考试 / 资源 / 任务 / 积分 / 组件注册表。"""
 
 from __future__ import annotations
 
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import func, select, type_coerce, update
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects import postgresql
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timezone import now_utc
@@ -21,6 +20,8 @@ from app.models.points import PointsTransaction
 from app.models.resource import Resource
 from app.models.task import Task, TaskClaim
 from app.repositories.base import dml_rowcount
+from app.repositories.base import paginate
+from app.core.query_helpers import jsonb_contains
 
 
 class ExamRepository:
@@ -41,7 +42,7 @@ class ExamRepository:
         if tag and tag.strip():
             # 2026-08-10 修复：Exam.tech_tags 为 JSON().with_variant(JSONB())（Variant），
             # contains 退化成字符串 LIKE 且实际调用报错；type_coerce(JSONB) 走 @> 包含。
-            conditions.append(type_coerce(Exam.tech_tags, JSONB).contains([tag.strip()]))
+            conditions.append(jsonb_contains(Exam.tech_tags, [tag.strip()]))
         total = int(
             (
                 await self.db.execute(
@@ -49,12 +50,10 @@ class ExamRepository:
                 )
             ).scalar_one()
         )
-        stmt = (
-            select(Exam)
-            .where(*conditions)
-            .order_by(Exam.created_at.desc())
-            .offset(skip)
-            .limit(limit)
+        stmt = paginate(
+            select(Exam).where(*conditions).order_by(Exam.created_at.desc()),
+            skip,
+            limit,
         )
         rows = await self.db.execute(stmt)
         return list(rows.scalars().all()), total
@@ -238,9 +237,7 @@ class ResourceRepository:
         if tag and tag.strip():
             # 2026-08-10 修复：Resource.tech_tags 为 JSON().with_variant(JSONB())（Variant），
             # contains 退化成字符串 LIKE 且实际调用报错；type_coerce(JSONB) 走 @> 包含。
-            conditions.append(
-                type_coerce(Resource.tech_tags, JSONB).contains([tag.strip()])
-            )
+            conditions.append(jsonb_contains(Resource.tech_tags, [tag.strip()]))
         if submitted_by:
             conditions.append(Resource.submitted_by == submitted_by)
         total = int(
@@ -250,12 +247,10 @@ class ResourceRepository:
                 )
             ).scalar_one()
         )
-        stmt = (
-            select(Resource)
-            .where(*conditions)
-            .order_by(Resource.created_at.desc())
-            .offset(skip)
-            .limit(limit)
+        stmt = paginate(
+            select(Resource).where(*conditions).order_by(Resource.created_at.desc()),
+            skip,
+            limit,
         )
         rows = await self.db.execute(stmt)
         return list(rows.scalars().all()), total
@@ -312,12 +307,10 @@ class TaskRepository:
                 )
             ).scalar_one()
         )
-        stmt = (
-            select(Task)
-            .where(*conditions)
-            .order_by(Task.created_at.desc())
-            .offset(skip)
-            .limit(limit)
+        stmt = paginate(
+            select(Task).where(*conditions).order_by(Task.created_at.desc()),
+            skip,
+            limit,
         )
         rows = await self.db.execute(stmt)
         return list(rows.scalars().all()), total

@@ -32,8 +32,7 @@ def upgrade() -> None:
     # 不可用（如本地开发 PG 未装 zhparser 扩展）则全程回退 pg_catalog.simple。
     # 关键：回退路径绝不引用未创建的 `chinese` 名称，避免
     # `text search configuration name "chinese" must be schema-qualified` 错误。
-    op.execute(
-        """
+    op.execute("""
         DO $$
         DECLARE
             v_use_chinese boolean := false;
@@ -76,21 +75,18 @@ def upgrade() -> None:
                  tsvector_update_trigger(search_vector, %L, display_name, username)',
                 v_cfg
             );
-
-            -- 重建 search_vector 数据
             EXECUTE format(
                 'UPDATE community_posts SET search_vector =
-                    to_tsvector(%L, coalesce(title, '''') || '' '' || coalesce(content_markdown, ''''))',
+to_tsvector(%L, coalesce(title, '''') || '' '' || coalesce(content_markdown, ''''))',
                 v_cfg
             );
             EXECUTE format(
                 'UPDATE users SET search_vector =
-                    to_tsvector(%L, coalesce(display_name, '''') || '' '' || coalesce(username, ''''))',
+to_tsvector(%L, coalesce(display_name, '''') || '' '' || coalesce(username, ''''))',
                 v_cfg
             );
         END $$;
-        """
-    )
+        """)
 
 
 def downgrade() -> None:
@@ -104,13 +100,13 @@ def downgrade() -> None:
         "CREATE TRIGGER tsvector_update_community_posts "
         "BEFORE INSERT OR UPDATE ON community_posts "
         "FOR EACH ROW EXECUTE FUNCTION "
-        "tsvector_update_trigger(search_vector, 'pg_catalog.simple', title, content_markdown)"
+        "tsvector_update_trigger(search_vector, 'pg_catalog.simple', title, content_markdown)"  # noqa: E501
     )
     op.execute(
         "CREATE TRIGGER tsvector_update_users "
         "BEFORE INSERT OR UPDATE ON users "
         "FOR EACH ROW EXECUTE FUNCTION "
-        "tsvector_update_trigger(search_vector, 'pg_catalog.simple', display_name, username)"
+        "tsvector_update_trigger(search_vector, 'pg_catalog.simple', display_name, username)"  # noqa: E501
     )
 
     op.execute(

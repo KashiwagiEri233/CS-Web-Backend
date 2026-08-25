@@ -18,7 +18,7 @@ from app.core.exceptions import (
     NotFoundException,
 )
 from app.repositories.community_repo import CommunitySeriesRepository
-from app.services.community_utils import generate_slug
+from app.services.community.community_utils import generate_slug
 
 
 class SeriesService:

@@ -75,7 +75,7 @@ async def _get_pool():
     except ImportError:
         logger.error(
             "队列: QUEUE_ENABLED 但未安装 arq，回退 eager。"
-            "启用请执行 pip install -r requirements-queue.txt"
+            "启用请配置 QUEUE_ENABLED=True 与 REDIS_URL（arq 已在主依赖）"
         )
         _pool = None
     except Exception as exc:  # noqa: BLE001 - 创建失败不应阻断业务，降级 eager

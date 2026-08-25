@@ -14,7 +14,7 @@ from sqlalchemy import text
 
 from app.database import get_session
 from app.models.user import User
-from app.services.rbac_service import RBACService
+from app.services.rbac.rbac_service import RBACService
 from app.repositories.rbac_repo import RBACRepository
 
 pytestmark = pytest.mark.integration

@@ -7,9 +7,16 @@
 .env
 .env.local
 .env.*.local
+.env.development
 
 # 日志
 *.log
+
+# 开发日志目录（含非 .log 文件时整体排除）
+.devlogs/
+
+# 本地 dev 后台进程 PID 文件（make dev-up 生成，dev-down 清理）
+.dev.pid
 
 # IDE / 编辑器 / 工具数据
 .vscode/
@@ -19,6 +26,8 @@
 *.swo
 *~
 .codebuddy/
+.trae-cn/
+.workbuddy/
 
 # OS
 .DS_Store
@@ -30,6 +39,8 @@ Desktop.ini
 # 运行时数据 / 备份（由 compose 卷挂载到根级 data/ backups/）
 data/
 backups/
+# 运行时上传文件（用户上传附件，由业务目录存放，不入库）
+uploads/
 
 # Redis 快照（运行时数据；可能含会话态，不入库）
 dump.rdb

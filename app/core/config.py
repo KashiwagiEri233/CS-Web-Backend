@@ -14,7 +14,7 @@
 
 import os
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import SettingsConfigDict
 
 from app.core.config_parts.business import BusinessSettings
 from app.core.config_parts.database import DatabaseSettings

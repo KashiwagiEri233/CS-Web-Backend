@@ -5,9 +5,9 @@
 
 用法::
 
-    python scripts/init_database.py              # 默认 .env（会要求确认）
-    python scripts/init_database.py --env 2      # 测试环境 .env.test
-    python scripts/init_database.py --env 1 -y   # 开发环境，跳过确认
+    python tools/scripts/db/init_database.py              # 默认 .env（会要求确认）
+    python tools/scripts/db/init_database.py --env 2      # 测试环境 .env.test
+    python tools/scripts/db/init_database.py --env 1 -y   # 开发环境，跳过确认
 """
 
 import argparse
