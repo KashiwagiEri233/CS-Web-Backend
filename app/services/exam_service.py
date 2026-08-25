@@ -222,8 +222,7 @@ class ExamService:
             return
         options = await self.repo.list_options(question.id)
         option_snapshot = [
-            {"label": option.label, "content": option.content}
-            for option in options
+            {"label": option.label, "content": option.content} for option in options
         ]
         correct_labels = [option.label for option in options if option.is_correct]
         snapshot = {

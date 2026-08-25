@@ -6,7 +6,6 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-
 revision: str = "e2f3a4b5c6d7"
 down_revision: Union[str, Sequence[str], None] = "c0d1e2f3a4b5"
 branch_labels: Union[str, Sequence[str], None] = None
@@ -22,9 +21,15 @@ def upgrade() -> None:
         sa.Column("title", sa.String(length=200), nullable=False),
         sa.Column("description", sa.Text(), nullable=True),
         sa.Column("target_date", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("weekly_budget_minutes", sa.Integer(), nullable=False, server_default="300"),
-        sa.Column("preferred_slots", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-        sa.Column("status", sa.String(length=20), nullable=False, server_default="active"),
+        sa.Column(
+            "weekly_budget_minutes", sa.Integer(), nullable=False, server_default="300"
+        ),
+        sa.Column(
+            "preferred_slots", postgresql.JSONB(astext_type=sa.Text()), nullable=True
+        ),
+        sa.Column(
+            "status", sa.String(length=20), nullable=False, server_default="active"
+        ),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
