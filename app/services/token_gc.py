@@ -47,4 +47,6 @@ async def startup_refresh_token_gc() -> None:
         if n:
             logger.info("refresh token GC 启动清理完成", deleted=n)
     except Exception as e:  # noqa: BLE001 - 启动兜底可降级
-        logger.warning(f"refresh token GC 启动清理失败（已忽略）: {type(e).__name__}: {e}")
+        logger.warning(
+            f"refresh token GC 启动清理失败（已忽略）: {type(e).__name__}: {e}"
+        )

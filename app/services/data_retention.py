@@ -37,16 +37,12 @@ async def _purge_once() -> dict[str, int]:
             return result
 
         # 登录历史保留期清理
-        login_cutoff = now_utc() - timedelta(
-            days=settings.LOGIN_HISTORY_RETENTION_DAYS
-        )
+        login_cutoff = now_utc() - timedelta(days=settings.LOGIN_HISTORY_RETENTION_DAYS)
         login_repo = LoginHistoryRepository(db)
         result["login_history"] = await login_repo.purge_before(login_cutoff)
 
         # 审计日志保留期清理
-        audit_cutoff = now_utc() - timedelta(
-            days=settings.AUDIT_LOG_RETENTION_DAYS
-        )
+        audit_cutoff = now_utc() - timedelta(days=settings.AUDIT_LOG_RETENTION_DAYS)
         audit_repo = AuditLogRepository(db)
         result["audit_log"] = await audit_repo.delete_before(audit_cutoff)
 

@@ -32,5 +32,11 @@ def test_health_security_does_not_leak_auth_posture():
     assert "totp_encryption_key_set" not in body
 
     # 保留的运维探针字段仍正常暴露
-    for probe_key in ("status", "rate_limiter", "token_blacklist", "migration", "multi_instance"):
+    for probe_key in (
+        "status",
+        "rate_limiter",
+        "token_blacklist",
+        "migration",
+        "multi_instance",
+    ):
         assert probe_key in body

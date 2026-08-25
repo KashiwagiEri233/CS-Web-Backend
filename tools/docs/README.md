@@ -6,7 +6,7 @@
 docs/
 ├── README.md              # 本文件：文档索引 + 约定 + 模板
 ├── BackDoc-01-Arch.md     # 系统架构总览（Part A 分层/中间件链/生命周期/不变量 + Part B 业务模块契约）
-├── BackDoc-Conv.md         # 编码规范、命名、质量红线
+├── BackDoc-03-Conv.md         # 编码规范、命名、质量红线
 ├── BackDoc-02-Sec.md            # 安全与防护：鉴权/异常处理/请求限流
 └── BackDoc-Infra.md      # 运行基础设施：可观测性/数据库/生命周期/队列/缓存
 ```
@@ -18,7 +18,7 @@ docs/
 | `BackDoc-01-Arch.md` | 系统级架构：分层、中间件链、请求生命周期、关键不变量（**Part A**）+ 业务模块契约：认证 / 用户 / RBAC / 审计 / 工作台 / 学习助手 / API 统计中间件（**Part B**） |
 | `BackDoc-02-Sec.md` | 鉴权（JWT/密码/黑名单）、异常体系、请求限流 |
 | `BackDoc-Infra.md` | 日志 + 追踪/指标（可观测）、数据库/事务、启动关闭任务、队列、缓存 |
-| `BackDoc-Conv.md` | 编码规范、命名、质量红线、安全/错误处理约定 |
+| `BackDoc-03-Conv.md` | 编码规范、命名、质量红线、安全/错误处理约定 |
 
 > 拿不准放哪时问一句"换一个完全不同的项目，这块还用得上吗？"——用得上 → 系统级（`BackDoc-02-Sec.md`/`BackDoc-Infra.md`）；
 > 与具体业务实体（用户/角色…）绑定 → `BackDoc-01-Arch.md` **Part B**（业务模块契约）。
@@ -65,7 +65,7 @@ schema 见 `app/schemas/<x>.py`。
 | 文档 | 说明 |
 |---|---|
 | [BackDoc-01-Arch.md](BackDoc-01-Arch.md) | 系统架构总览（Part A 分层/目录结构/扩展配方 + Part B 业务模块契约） |
-| [BackDoc-Conv.md](BackDoc-Conv.md) | 编码规范、命名、质量红线、安全/错误处理约定 |
+| [BackDoc-03-Conv.md](BackDoc-03-Conv.md) | 编码规范、命名、质量红线、安全/错误处理约定 |
 
 ### 系统能力
 | 文档 | 覆盖代码 |

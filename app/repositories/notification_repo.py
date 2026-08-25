@@ -90,7 +90,8 @@ class NotificationRepository:
             select(Notification)
             .where(*conditions)
             .order_by(Notification.created_at.desc()),
-            skip, limit
+            skip,
+            limit,
         )
         result = await self.db.execute(stmt)
         return list(result.scalars().all()), total

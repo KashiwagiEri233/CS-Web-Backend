@@ -17,6 +17,7 @@
     python tools/scripts/check/scan_security.py [--root app]
 退出码：0 通过，1 发现风险，2 用法/IO 错误。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -32,7 +33,7 @@ ORIGIN_GUARD_HINTS = (
     "ALLOWED_ORIGINS",
     "allowed_origins",
     "origin_guard",
-    "request.headers.get(\"origin\"",
+    'request.headers.get("origin"',
     "request.headers.get('origin'",
 )
 
@@ -133,7 +134,7 @@ def scan_hardcoded_secrets(files: list[Path]) -> list[str]:
             # 排除右侧为 env 读取（已在上面正则之外，这里再兜一层）
             if "os.environ" in line or "getenv" in line:
                 continue
-            findings.append(f"{f}:{i}: 疑似硬编码密钥 -> {var} = \"{literal}\"")
+            findings.append(f'{f}:{i}: 疑似硬编码密钥 -> {var} = "{literal}"')
     return findings
 
 

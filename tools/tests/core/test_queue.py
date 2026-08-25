@@ -1,10 +1,13 @@
 """异步任务队列（可选模块）测试。只验证 eager 降级与注册校验，不依赖真实 Redis / arq broker。"""
 
+from unittest.mock import patch
+
 import pytest
 
 import app.core.queue.client as qc
 from app.core.config import settings
 from app.core.queue import enqueue
+from app.core.queue.tasks import send_email_task
 
 
 async def test_enqueue_eager_runs_inline_when_disabled(monkeypatch):
@@ -56,3 +59,17 @@ async def test_enqueue_rejects_unregistered_task():
 
     with pytest.raises(ValueError, match="未在.*TASKS 注册"):
         await enqueue(ghost_task)
+
+
+async def test_send_email_task_calls_send_sync_and_returns_result():
+    with patch("app.services.email_service._send_sync") as send_sync:
+        result = await send_email_task(
+            {"eager": True, "job_try": 2},
+            "a@b.com",
+            "subj",
+            "body",
+            "<p>hello</p>",
+        )
+
+    send_sync.assert_called_once_with("a@b.com", "subj", "body", "<p>hello</p>")
+    assert result == {"to": "a@b.com", "subject": "subj", "delivered": True}

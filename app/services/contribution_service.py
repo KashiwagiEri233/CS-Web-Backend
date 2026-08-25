@@ -16,13 +16,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.constants import CONTRIBUTION_CACHE_TTL_SECONDS
-from app.core.timezone import now_utc
+from app.core.timezone import now_utc, iso_or_none
 from app.models.contribution import ContributionCache
 
 _GITHUB_CONTRIBUTIONS_URL = "https://github.com/users/{username}/contributions"
 _UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
 
-# <td ... data-date="2026-08-01" data-level="3" ...>...</td>，块内含 tooltip "11 contributions"
+# <td ... data-date="2026-08-01" data-level="3" ...>...</td>，块内含 tooltip "11 contributions"  # noqa: E501
 _TD_RE = re.compile(
     r'<td[^>]*data-date="(\d{4}-\d{2}-\d{2})"[^>]*data-level="\d"[^>]*>(.*?)</td>',
     re.S,
@@ -76,7 +76,10 @@ class ContributionService:
         year: int | None = None,
         force_refresh: bool = False,
     ) -> dict:
-        """获取 GitHub 贡献热力图。返回 {platform, username, year, data, total, streak, fetched_at, stale}。"""
+        """获取 GitHub 贡献热力图。
+
+        返回 {platform, username, year, data, total, streak, fetched_at, stale}。
+        """
         now = now_utc()
         target_year = year or now.year
         username = username.strip().lstrip("@")
@@ -91,12 +94,13 @@ class ContributionService:
             )
         ).scalar_one_or_none()
 
-        stale = False
-        fresh_enough = cache is not None and (
-            now - cache.fetched_at
-        ).total_seconds() < CONTRIBUTION_CACHE_TTL_SECONDS
+        fresh_enough = (
+            cache is not None
+            and (now - cache.fetched_at).total_seconds()
+            < CONTRIBUTION_CACHE_TTL_SECONDS
+        )
 
-        if fresh_enough and not force_refresh:
+        if fresh_enough and cache is not None and not force_refresh:
             return self._to_payload(cache, stale=False)
 
         # 需要抓取
@@ -153,7 +157,9 @@ class ContributionService:
                 "unreachable": True,
             }
 
-    async def _fetch_github(self, username: str, year: int) -> tuple[dict[str, int], int]:
+    async def _fetch_github(
+        self, username: str, year: int
+    ) -> tuple[dict[str, int], int]:
         url = _GITHUB_CONTRIBUTIONS_URL.format(username=username)
         async with httpx.AsyncClient(timeout=8, follow_redirects=True) as client:
             resp = await client.get(
@@ -164,12 +170,13 @@ class ContributionService:
 
         daily = _parse_contributions(resp.text)
         if not daily:
-            raise RuntimeError("no contribution data parsed (username invalid or page structure changed)")
+            raise RuntimeError(
+                "no contribution data parsed "
+                "(username invalid or page structure changed)"
+            )
 
         # 本年数据（页面本身是全年滚动窗口，按目标年份过滤）
-        year_daily = {
-            d: c for d, c in daily.items() if d.startswith(f"{year}-")
-        }
+        year_daily = {d: c for d, c in daily.items() if d.startswith(f"{year}-")}
         total = sum(year_daily.values())
         return year_daily, total
 
@@ -182,6 +189,6 @@ class ContributionService:
             "data": cache.data or [],
             "total": cache.total,
             "streak": cache.streak,
-            "fetched_at": cache.fetched_at.isoformat() if cache.fetched_at else None,
+            "fetched_at": iso_or_none(cache.fetched_at),
             "stale": stale,
         }

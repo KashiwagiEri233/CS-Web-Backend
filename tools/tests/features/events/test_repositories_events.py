@@ -51,16 +51,16 @@ async def _make_user(db, sfx: str) -> int:
     return user.id
 
 
-async def _cleanup(db, uids: list[int], event_ids: list[int], setting_keys=None) -> None:
+async def _cleanup(
+    db, uids: list[int], event_ids: list[int], setting_keys=None
+) -> None:
     """按依赖顺序清场：checkins → registrations → events → settings → users。"""
     if event_ids:
         await db.execute(
             delete(EventCheckin).where(EventCheckin.event_id.in_(event_ids))
         )
         await db.execute(
-            delete(EventRegistration).where(
-                EventRegistration.event_id.in_(event_ids)
-            )
+            delete(EventRegistration).where(EventRegistration.event_id.in_(event_ids))
         )
         await db.execute(delete(Event).where(Event.id.in_(event_ids)))
     if setting_keys:
@@ -116,7 +116,9 @@ async def test_event_crud_pagination_status_archive_batch(integration_db_ready):
             assert (await repo.get_by_id(e1.id)).title == f"evt-up-{sfx}"
 
             # status 过滤 + 分页
-            up_list, up_total = await repo.list_events(status="upcoming", skip=0, limit=10)
+            up_list, up_total = await repo.list_events(
+                status="upcoming", skip=0, limit=10
+            )
             assert up_total == 1 and up_list[0].id == e1.id
 
             # search 命中全部 3 条
@@ -185,14 +187,10 @@ async def test_event_tag_filter_jsonb_containment(integration_db_ready):
             await db.commit()
 
             # 参数化 JSONB 包含：python 命中 3 条（i=0,2,4），golang 命中 2 条
-            py_events, py_total = await repo.list_events(
-                tag="python", skip=0, limit=10
-            )
+            py_events, py_total = await repo.list_events(tag="python", skip=0, limit=10)
             assert py_total == 3
             assert all("python" in (e.tags or []) for e in py_events)
-            go_events, go_total = await repo.list_events(
-                tag="golang", skip=0, limit=10
-            )
+            go_events, go_total = await repo.list_events(tag="golang", skip=0, limit=10)
             assert go_total == 2
 
             # 注入型 tag 不应报错也不应匹配（参数化，绝不拼入 SQL）
@@ -238,7 +236,7 @@ async def test_registration_create_count_stats_status(integration_db_ready):
                     "form_data": {"qq": "1"},
                 }
             )
-            r2 = await reg_repo.create(
+            await reg_repo.create(
                 {
                     "user_id": u2,
                     "event_id": event.id,

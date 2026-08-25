@@ -14,6 +14,7 @@ from app.core.exceptions import (
 )
 from app.core.timezone import now_utc
 from app.models.exam import Exam, ExamQuestion
+from app.models.learning import WrongAnswer
 from app.models.user import User
 from app.repositories.tools_repo import ExamRepository
 from app.schemas.tools import ExamInput, QuestionInput
@@ -188,6 +189,13 @@ class ExamService:
         attempt = await self.repo.upsert_attempt(
             user_id, exam_id, question_id, answer, is_correct, score
         )
+        await self._sync_wrong_answer(
+            user_id=user_id,
+            exam=exam,
+            question=question,
+            answer=answer,
+            is_correct=is_correct,
+        )
         await self.db.commit()
         return {
             "id": attempt.id,
@@ -199,6 +207,68 @@ class ExamService:
             "score": attempt.score,
             "submitted_at": attempt.submitted_at,
         }
+
+    async def _sync_wrong_answer(
+        self,
+        *,
+        user_id: int,
+        exam: Exam,
+        question: ExamQuestion,
+        answer: str,
+        is_correct: Optional[bool],
+    ) -> None:
+        """答错时写入/更新错题快照；答对不自动删除，避免丢失复习历史。"""
+        if is_correct is not False:
+            return
+        options = await self.repo.list_options(question.id)
+        option_snapshot = [
+            {"label": option.label, "content": option.content} for option in options
+        ]
+        correct_labels = [option.label for option in options if option.is_correct]
+        snapshot = {
+            "title": question.title,
+            "contentMarkdown": question.content_markdown,
+            "type": question.type,
+            "score": question.score,
+            "options": option_snapshot,
+        }
+        existing = (
+            await self.db.execute(
+                select(WrongAnswer).where(
+                    WrongAnswer.user_id == user_id,
+                    WrongAnswer.question_id == question.id,
+                )
+            )
+        ).scalar_one_or_none()
+        now = now_utc()
+        if existing is None:
+            self.db.add(
+                WrongAnswer(
+                    user_id=user_id,
+                    exam_id=exam.id,
+                    question_id=question.id,
+                    question_snapshot=snapshot,
+                    knowledge_tags=exam.tech_tags or [],
+                    latest_answer=answer,
+                    correct_answer=", ".join(correct_labels) or None,
+                    error_reason="答案与标准答案不一致",
+                    mistake_count=1,
+                    status="new",
+                    review_due_at=now,
+                    last_wrong_at=now,
+                )
+            )
+            return
+        existing.exam_id = exam.id
+        existing.question_snapshot = snapshot
+        existing.knowledge_tags = exam.tech_tags or []
+        existing.latest_answer = answer
+        existing.correct_answer = ", ".join(correct_labels) or None
+        existing.error_reason = existing.error_reason or "答案与标准答案不一致"
+        existing.mistake_count += 1
+        existing.status = "new"
+        existing.review_due_at = now
+        existing.last_wrong_at = now
 
     async def user_attempts(self, user_id: int, exam_id: int) -> list[dict]:
         attempts = await self.repo.list_user_attempts(user_id, exam_id)

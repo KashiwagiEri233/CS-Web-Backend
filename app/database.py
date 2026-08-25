@@ -171,7 +171,6 @@ async def run_alembic_upgrade() -> None:
     复用本函数，避免 alembic 路径/配置在两处重复。
     """
     import asyncio
-    from pathlib import Path
 
     from alembic import command
     from alembic.config import Config
@@ -196,8 +195,6 @@ async def _verify_alembic_version() -> None:
     并发自动 upgrade 的竞态，又把“忘了跑迁移”从一堆 relation does not exist
     变成一句清晰提示。真正的迁移由独立步骤执行：alembic upgrade head。
     """
-    from pathlib import Path
-
     from alembic.config import Config
     from alembic.runtime.migration import MigrationContext
     from alembic.script import ScriptDirectory

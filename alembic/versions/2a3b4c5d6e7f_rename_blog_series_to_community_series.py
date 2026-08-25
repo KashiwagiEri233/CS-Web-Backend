@@ -29,16 +29,8 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     # 仅当旧表存在时改名，避免重复执行报错
-    op.execute(
-        sa.text(
-            "ALTER TABLE IF EXISTS blog_series RENAME TO community_series"
-        )
-    )
+    op.execute(sa.text("ALTER TABLE IF EXISTS blog_series RENAME TO community_series"))
 
 
 def downgrade() -> None:
-    op.execute(
-        sa.text(
-            "ALTER TABLE IF EXISTS community_series RENAME TO blog_series"
-        )
-    )
+    op.execute(sa.text("ALTER TABLE IF EXISTS community_series RENAME TO blog_series"))

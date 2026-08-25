@@ -7,11 +7,9 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Optional, Sequence
 
-from sqlalchemy import func, select, text, type_coerce
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.constants import VIEW_DEDUP_WINDOW_HOURS
 from app.core.timezone import now_utc
 from app.models.community_series import CommunitySeries
@@ -28,6 +26,8 @@ from app.models.community import (
 )
 from app.models.user import User
 from app.repositories.base import paginate
+from app.core.query_helpers import fts_condition
+from app.core.query_helpers import jsonb_contains
 
 
 class CommunityCategoryRepository:
@@ -114,9 +114,7 @@ class CommunityPostRepository:
             # 注意：tags 列类型为 JSON().with_variant(JSONB)，ColumnElement.contains
             # 会退化成字符串 LIKE（运行时报 invalid input syntax for type json）；
             # 用 type_coerce 显式按 JSONB 比较，走 @> 包含（2026-08-10 回归修复）。
-            conditions.append(
-                type_coerce(CommunityPost.tags, JSONB).contains([tag.strip()])
-            )
+            conditions.append(jsonb_contains(CommunityPost.tags, [tag.strip()]))
         if series_id:
             conditions.append(CommunityPost.series_id == series_id)
         if author_id:
@@ -125,10 +123,7 @@ class CommunityPostRepository:
             conditions.append(CommunityPost.author_id.in_(following_ids))
         if search and search.strip():
             # 全文检索：search_vector @@ websearch_to_tsquery（GIN 索引加速，AND 语义）
-            ts_query = func.websearch_to_tsquery(
-                text(f"'{settings.FTS_CONFIG}'"), search.strip()
-            )
-            conditions.append(CommunityPost.search_vector.op("@@")(ts_query))
+            conditions.append(fts_condition(CommunityPost, search))
 
         total = int(
             (
@@ -156,10 +151,7 @@ class CommunityPostRepository:
             ),
         }.get(sort, ())
         stmt = paginate(
-            select(CommunityPost)
-            .where(*conditions)
-            .order_by(*order),
-            skip, limit
+            select(CommunityPost).where(*conditions).order_by(*order), skip, limit
         )
         rows = await self.db.execute(stmt)
         return list(rows.scalars().all()), total
@@ -266,13 +258,14 @@ class CommunityCommentRepository:
             select(CommunityComment)
             .where(*conditions)
             .order_by(CommunityComment.created_at.asc()),
-            skip, limit
+            skip,
+            limit,
         )
         rows = await self.db.execute(stmt)
         return list(rows.scalars().all()), total
 
     async def list_nested(self, parent_comment_id: int) -> list[CommunityComment]:
-        stmt = paginate(
+        stmt = (
             select(CommunityComment)
             .where(
                 CommunityComment.parent_comment_id == parent_comment_id,
@@ -299,11 +292,12 @@ class CommunityCommentRepository:
                 )
             ).scalar_one()
         )
-        stmt = (
+        stmt = paginate(
             select(CommunityComment)
             .where(*conditions)
             .order_by(CommunityComment.created_at.desc()),
-            skip, limit
+            skip,
+            limit,
         )
         rows = await self.db.execute(stmt)
         return list(rows.scalars().all()), total
@@ -431,7 +425,8 @@ class CommunityInteractionRepository:
                 CommunityPost.status == "published",
             )
             .order_by(CommunityFavorite.created_at.desc()),
-            skip, limit
+            skip,
+            limit,
         )
         rows = await self.db.execute(stmt)
         total = int(
@@ -483,7 +478,7 @@ class CommunityInteractionRepository:
     async def list_mentions(
         self, user_id: int, limit: int = 20
     ) -> list[CommunityMention]:
-        stmt = paginate(
+        stmt = (
             select(CommunityMention)
             .where(CommunityMention.mentioned_user_id == user_id)
             .order_by(CommunityMention.created_at.desc())
@@ -526,12 +521,13 @@ class CommunityFollowRepository:
     async def list_following(
         self, user_id: int, *, skip: int, limit: int
     ) -> tuple[list[User], int]:
-        stmt = (
+        stmt = paginate(
             select(User)
             .join(CommunityFollow, CommunityFollow.following_id == User.id)
             .where(CommunityFollow.follower_id == user_id)
             .order_by(CommunityFollow.created_at.desc()),
-            skip, limit
+            skip,
+            limit,
         )
         rows = await self.db.execute(stmt)
         total = int(
@@ -553,7 +549,8 @@ class CommunityFollowRepository:
             .join(CommunityFollow, CommunityFollow.follower_id == User.id)
             .where(CommunityFollow.following_id == user_id)
             .order_by(CommunityFollow.created_at.desc()),
-            skip, limit
+            skip,
+            limit,
         )
         rows = await self.db.execute(stmt)
         total = int(
@@ -567,9 +564,7 @@ class CommunityFollowRepository:
         )
         return list(rows.scalars().all()), total
 
-    async def bulk_counts(
-        self, user_ids: list[int]
-    ) -> dict[int, tuple[int, int]]:
+    async def bulk_counts(self, user_ids: list[int]) -> dict[int, tuple[int, int]]:
         """批量取回一组用户的 (following, followers) 计数，消除逐用户 N+1。
 
         返回 {user_id: (following_count, follower_count)}；未出现在聚合结果中的
@@ -577,7 +572,7 @@ class CommunityFollowRepository:
         """
         if not user_ids:
             return {}
-        following_stmt = paginate(
+        following_stmt = (
             select(CommunityFollow.follower_id, func.count())
             .where(CommunityFollow.follower_id.in_(user_ids))
             .group_by(CommunityFollow.follower_id)
@@ -607,13 +602,17 @@ class CommunityFollowRepository:
         if not target_ids:
             return set()
         rows = (
-            await self.db.execute(
-                select(CommunityFollow.following_id).where(
-                    CommunityFollow.follower_id == follower_id,
-                    CommunityFollow.following_id.in_(target_ids),
+            (
+                await self.db.execute(
+                    select(CommunityFollow.following_id).where(
+                        CommunityFollow.follower_id == follower_id,
+                        CommunityFollow.following_id.in_(target_ids),
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return set(rows)
 
     async def counts(self, user_id: int) -> tuple[int, int]:
@@ -655,12 +654,13 @@ class CommunityReportRepository:
                 )
             ).scalar_one()
         )
-        stmt = (
+        stmt = paginate(
             select(CommunityReport)
             .where(*conditions)
             .order_by(CommunityReport.created_at.desc()),
-    skip, limit
-)
+            skip,
+            limit,
+        )
         rows = await self.db.execute(stmt)
         return list(rows.scalars().all()), total
 

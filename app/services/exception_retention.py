@@ -19,7 +19,7 @@ _RETENTION_LOCK_KEY = 873924004
 
 async def _purge_once() -> int:
     """在 PostgreSQL advisory lock 下执行一轮集群级清理。"""
-    # 注意：get_session 必须保持方法内惰性导入（lifecycle → *_gc → repo → models → database → lifecycle 环）
+    # 注意：get_session 必须保持方法内惰性导入（lifecycle → *_gc → repo → models → database → lifecycle 环）  # noqa: E501
     from app.database import get_session
 
     async with get_session() as db:

@@ -30,7 +30,7 @@ from app.core.timezone import now_utc
 from app.database import get_session
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
-from app.services.auth_service import AuthService
+from app.services.auth.auth_service import AuthService
 
 pytestmark = pytest.mark.integration
 
@@ -39,6 +39,7 @@ _BLACKLIST_KEY_PREFIX = "jwt:blacklist:"
 
 
 # ---------------------------------------------------------------- 限流并发（Redis）
+
 
 async def test_rate_limit_redis_concurrent_no_oversell(integration_redis_client):
     """Redis 滑动窗口限流并发不超卖：30 并发恰 5 放行（Lua 原子性证明）。"""
@@ -73,6 +74,7 @@ async def test_rate_limiter_redis_path_concurrent_no_oversell(integration_redis_
 
 
 # ---------------------------------------------------------------- 黑名单并发（Redis）
+
 
 async def test_blacklist_concurrent_add_same_jti_hits(integration_redis_client):
     """并发拉黑同一 jti（幂等）：结束后必命中，不抛异常。"""
@@ -125,7 +127,9 @@ class _FailingBlacklistRedis:
         return await self.client.delete(key)
 
 
-async def test_blacklist_concurrent_degraded_window_still_blocks(integration_redis_client):
+async def test_blacklist_concurrent_degraded_window_still_blocks(
+    integration_redis_client,
+):
     """降级窗口内并发 add/contains：内存兜底仍全部命中；Redis 恢复后双写仍命中。"""
     jtis = [f"itest-{uuid.uuid4().hex}" for _ in range(10)]
     toggle = _FailingBlacklistRedis(integration_redis_client)
@@ -197,9 +201,7 @@ async def _cleanup_user_tokens(db, user_ids: list[int]) -> None:
                 )
         except Exception:
             pass
-    await db.execute(
-        text("DELETE FROM users WHERE id = ANY(:ids)"), {"ids": user_ids}
-    )
+    await db.execute(text("DELETE FROM users WHERE id = ANY(:ids)"), {"ids": user_ids})
     await db.commit()
 
 
@@ -226,12 +228,18 @@ async def test_refresh_token_concurrent_rotation_single_family(integration_db_re
 
         async with get_session() as db:
             rows = (
-                (await db.execute(select(RefreshToken).where(RefreshToken.family_id == family)))
+                (
+                    await db.execute(
+                        select(RefreshToken).where(RefreshToken.family_id == family)
+                    )
+                )
                 .scalars()
                 .all()
             )
             assert len(rows) == 11  # 原 1 + 新 10
-            original = next(r for r in rows if r.token_hash == hash_refresh_token(plain))
+            original = next(
+                r for r in rows if r.token_hash == hash_refresh_token(plain)
+            )
             assert original.revoked_at is not None  # 原 token 必撤销
             new_rows = [r for r in rows if r.token_hash != hash_refresh_token(plain)]
             assert all(r.revoked_at is None for r in new_rows)  # 新 token 全活跃
@@ -270,11 +278,17 @@ async def test_refresh_token_concurrent_revoke_race(integration_db_ready):
 
         async with get_session() as db:
             rows = (
-                (await db.execute(select(RefreshToken).where(RefreshToken.family_id == family)))
+                (
+                    await db.execute(
+                        select(RefreshToken).where(RefreshToken.family_id == family)
+                    )
+                )
                 .scalars()
                 .all()
             )
-            original = next(r for r in rows if r.token_hash == hash_refresh_token(plain))
+            original = next(
+                r for r in rows if r.token_hash == hash_refresh_token(plain)
+            )
             assert original.revoked_at is not None  # 无论谁胜出，原 token 必撤销
             new_rows = [r for r in rows if r.token_hash != hash_refresh_token(plain)]
             if refresh_ok:

@@ -19,17 +19,12 @@ from app.schemas.event import (
     EventOut,
     EventRegistrationOut,
     EventSettingsIn,
+    event_to_out,
 )
 from app.schemas.pagination import compute_total_pages
-from app.services.event_service import EventService
+from app.services.event.event_service import EventService
 
 router = APIRouter(dependencies=[Depends(require_admin_2fa())])
-
-
-def _to_event_out(event) -> dict:
-    data = EventOut.model_validate(event).model_dump()
-    data["registered_count"] = getattr(event, "registered_count", None)
-    return data
 
 
 def _to_registration_out(reg) -> dict:
@@ -62,13 +57,14 @@ async def list_all_events(
         setattr(
             event, "registered_count", await service.reg_repo.count_registered(event.id)
         )
-    items = [_to_event_out(e) for e in events]
+    items = [event_to_out(e) for e in events]
     total = len(items)
+    page_size = max(total, 1)  # 管理端全量列表不分页
     return {
         "items": items,
         "total": total,
         "page": 1,
-        "page_size": total,
+        "page_size": page_size,
         "total_pages": compute_total_pages(total, page_size),
     }
 
@@ -84,7 +80,7 @@ async def create_event(
     event = await service.create_event(
         current_user.id, body, client_meta=get_client_meta(request)
     )
-    return _to_event_out(event)
+    return event_to_out(event)
 
 
 @router.get("/stats")
@@ -148,7 +144,7 @@ async def get_event_detail(
     current_user: User = Depends(require_permission("event", "read")),
 ) -> Any:
     """活动详情（管理视图）。"""
-    return _to_event_out(await service.get_event(event_id))
+    return event_to_out(await service.get_event(event_id))
 
 
 @router.put("/{event_id}", response_model=EventOut)
@@ -163,7 +159,7 @@ async def update_event(
     event = await service.update_event(
         current_user.id, event_id, body, client_meta=get_client_meta(request)
     )
-    return _to_event_out(event)
+    return event_to_out(event)
 
 
 @router.delete("/{event_id}")

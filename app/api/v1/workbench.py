@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.constants import WORKBENCH_MAX_DURATION_SECONDS
-from app.core.timezone import local_to_utc, now_local
+from app.core.timezone import now_local, local_day_start_utc
 from app.dependencies import get_current_active_user
 from app.dependencies import get_db
 from app.dependencies_services import get_contribution_service, get_workbench_service
@@ -51,18 +51,13 @@ def _local_today() -> date:
     return now_local().date()
 
 
-def _local_day_start_utc(d: date) -> datetime:
-    """配置时区某日的零点，转换为 UTC aware（存储层比较口径）。"""
-    start = local_to_utc(datetime.combine(d, datetime.min.time()))
-    assert start is not None  # 入参恒非 None
-    return start
-
-
 @router.get("/contributions/github")
 async def get_github_contributions(
     user: User = Depends(get_current_active_user),
     service: ContributionService = Depends(get_contribution_service),
-    username: Optional[str] = Query(default=None, description="GitHub 用户名；缺省用绑定资料"),
+    username: Optional[str] = Query(
+        default=None, description="GitHub 用户名；缺省用绑定资料"
+    ),
     year: int = Query(default=0, ge=2015, le=2100),
     refresh: bool = Query(default=False, description="强制刷新"),
 ):
@@ -82,7 +77,11 @@ async def get_github_contributions(
     )
     if payload.get("unreachable"):
         # 抓取不可达（无缓存兜底）：返回 ok=False 的友好错误，前端据此展示「无法连接 GitHub」+ 重试
-        return {"ok": False, "error": "github_unreachable", "message": "无法连接 GitHub，请稍后重试"}
+        return {
+            "ok": False,
+            "error": "github_unreachable",
+            "message": "无法连接 GitHub，请稍后重试",
+        }
     return {"ok": True, **payload}
 
 
@@ -95,13 +94,15 @@ async def get_api_usage_stats(
 ):
     """API 调用统计：今日计数 + 近 N 天趋势 + endpoint 分布。"""
     today = _local_today()
-    since = _local_day_start_utc(today - timedelta(days=days - 1))
+    since = local_day_start_utc(today - timedelta(days=days - 1))
 
     # 近 N 天按日聚合（按配置时区取日，与 today/since 口径一致）
     daily_rows = (
         await db.execute(
             select(
-                func.date(func.timezone(settings.TIMEZONE, ApiCallLog.created_at)).label("d"),
+                func.date(
+                    func.timezone(settings.TIMEZONE, ApiCallLog.created_at)
+                ).label("d"),
                 func.count().label("c"),
             )
             .where(ApiCallLog.created_at >= since)
@@ -122,7 +123,7 @@ async def get_api_usage_stats(
     ).all()
 
     # 今日统计
-    today_start = _local_day_start_utc(today)
+    today_start = local_day_start_utc(today)
     today_total = (
         await db.execute(
             select(func.count()).where(ApiCallLog.created_at >= today_start)
@@ -190,7 +191,7 @@ async def get_pomodoro_stats(
 ):
     """番茄钟专注统计：总轮数 / 总时长 / 今日 / 近 N 天分布（喂给学习助手 Skill）。"""
     today = _local_today()
-    since = _local_day_start_utc(today - timedelta(days=days - 1))
+    since = local_day_start_utc(today - timedelta(days=days - 1))
 
     total_sessions = (
         await db.execute(
@@ -202,16 +203,20 @@ async def get_pomodoro_stats(
     ).scalar_one()
     total_minutes = (
         await db.execute(
-            select(func.coalesce(func.sum(FocusSession.duration_seconds), 0) / 60.0).where(
+            select(
+                func.coalesce(func.sum(FocusSession.duration_seconds), 0) / 60.0
+            ).where(
                 FocusSession.user_id == user.id,
                 FocusSession.phase == "focus",
             )
         )
     ).scalar_one()
-    today_start = _local_day_start_utc(today)
+    today_start = local_day_start_utc(today)
     today_minutes = (
         await db.execute(
-            select(func.coalesce(func.sum(FocusSession.duration_seconds), 0) / 60.0).where(
+            select(
+                func.coalesce(func.sum(FocusSession.duration_seconds), 0) / 60.0
+            ).where(
                 FocusSession.user_id == user.id,
                 FocusSession.phase == "focus",
                 FocusSession.created_at >= today_start,
@@ -223,8 +228,12 @@ async def get_pomodoro_stats(
     daily_rows = (
         await db.execute(
             select(
-                func.date(func.timezone(settings.TIMEZONE, FocusSession.created_at)).label("d"),
-                (func.coalesce(func.sum(FocusSession.duration_seconds), 0) / 60.0).label("m"),
+                func.date(
+                    func.timezone(settings.TIMEZONE, FocusSession.created_at)
+                ).label("d"),
+                (
+                    func.coalesce(func.sum(FocusSession.duration_seconds), 0) / 60.0
+                ).label("m"),
             )
             .where(
                 FocusSession.user_id == user.id,
@@ -263,13 +272,11 @@ async def get_llm_usage_stats(
 ):
     """学习助手 LLM 用量：调用次数 / token 消耗 / 近 N 天趋势 / 模型分布。"""
     today = _local_today()
-    since = _local_day_start_utc(today - timedelta(days=days - 1))
+    since = local_day_start_utc(today - timedelta(days=days - 1))
 
     # 总计
     total_calls = (
-        await db.execute(
-            select(func.count()).where(LlmUsageLog.user_id == user.id)
-        )
+        await db.execute(select(func.count()).where(LlmUsageLog.user_id == user.id))
     ).scalar_one()
     total_tokens = (
         await db.execute(
@@ -280,7 +287,7 @@ async def get_llm_usage_stats(
     ).scalar_one()
 
     # 今日
-    today_start = _local_day_start_utc(today)
+    today_start = local_day_start_utc(today)
     today_calls = (
         await db.execute(
             select(func.count()).where(
@@ -310,7 +317,9 @@ async def get_llm_usage_stats(
     daily_rows = (
         await db.execute(
             select(
-                func.date(func.timezone(settings.TIMEZONE, LlmUsageLog.created_at)).label("d"),
+                func.date(
+                    func.timezone(settings.TIMEZONE, LlmUsageLog.created_at)
+                ).label("d"),
                 func.coalesce(func.sum(LlmUsageLog.total_tokens), 0).label("tk"),
                 func.count().label("c"),
             )
@@ -367,7 +376,10 @@ class LlmConfigIn(BaseModel):
     provider: str = Field(default="openai", pattern="^(openai|anthropic)$")
     api_key: Optional[str] = Field(default=None, max_length=300)
     base_url: Optional[str] = Field(default=None, max_length=300)
-    model: str = Field(default="gpt-4o-mini", max_length=120)
+    model: str = Field(default=settings.LLM_MODEL, max_length=120)
+    #: 用户级功能开关（前端设置面板）
+    web_search_enabled: bool = True
+    trajectory_enabled: bool = True
 
 
 @router.get("/llm-config")
@@ -382,13 +394,20 @@ async def get_llm_config(
         await db.execute(select(LlmConfig).where(LlmConfig.user_id == user.id))
     ).scalar_one_or_none()
     if cfg is None:
-        return {"ok": True, "configured": False}
+        return {
+            "ok": True,
+            "configured": False,
+            "webSearchEnabled": True,
+            "trajectoryEnabled": True,
+        }
     return {
         "ok": True,
         "configured": bool(cfg.api_key_encrypted),
         "provider": cfg.provider,
         "baseUrl": cfg.base_url,
         "model": cfg.model,
+        "webSearchEnabled": cfg.web_search_enabled,
+        "trajectoryEnabled": cfg.trajectory_enabled,
         # 掩码回显（前 4 后 4），便于前端感知已配置
         "apiKeyMasked": _mask_secret(cfg.api_key_encrypted),
     }
@@ -421,4 +440,6 @@ async def update_llm_config(
         payload.model,
         payload.base_url,
         payload.api_key,
+        payload.web_search_enabled,
+        payload.trajectory_enabled,
     )

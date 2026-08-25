@@ -21,13 +21,16 @@ from app.database import get_session
 from app.models.community import CommunityCategory, CommunityPost
 from app.models.user import User
 from app.services import view_count
-from app.services.community_category import CategoryService
-from app.services.community_comment import CommentService
-from app.services.community_feed import FeedService
-from app.services.community_interaction import FavoriteService, ReactionService
-from app.services.community_post import PostService
-from app.services.community_report import ReportService
-from app.services.community_series import SeriesService
+from app.services.community.community_category import CategoryService
+from app.services.community.community_comment import CommentService
+from app.services.community.community_feed import FeedService
+from app.services.community.community_interaction import (
+    FavoriteService,
+    ReactionService,
+)
+from app.services.community.community_post import PostService
+from app.services.community.community_report import ReportService
+from app.services.community.community_series import SeriesService
 
 
 def _sfx() -> str:
@@ -93,7 +96,9 @@ async def test_category_and_posts_flow(integration_db_ready, admin_user):
         u = await _make_user(db, f"cp_{sfx}@t.com")
         try:
             # 分类
-            cat = await svc.create_category(admin_user, f"cat-{sfx}", "测试版块", sort_order=1)
+            cat = await svc.create_category(
+                admin_user, f"cat-{sfx}", "测试版块", sort_order=1
+            )
             assert cat.post_count == 0
             with pytest.raises(ConflictException):
                 await svc.create_category(admin_user, f"cat-{sfx}", "重复")
@@ -284,7 +289,9 @@ async def test_follows_and_reports(integration_db_ready, admin_user):
                 content_markdown="bad",
                 category_id=cat.id,
             )
-            report = await report_svc.submit_report(u3.id, "post", post.id, "违规", "测试")
+            report = await report_svc.submit_report(
+                u3.id, "post", post.id, "违规", "测试"
+            )
             assert report.status == "pending"
             reports, total = await report_svc.list_reports(status="pending")
             assert total >= 1
@@ -334,7 +341,9 @@ async def test_series_and_moderation(integration_db_ready, admin_user):
                 "topic",
                 title=f"审核-{sfx}",
                 content_markdown="x",
-                category_id=(await cat_svc.create_category(admin_user, f"mc-{sfx}", "版块")).id,
+                category_id=(
+                    await cat_svc.create_category(admin_user, f"mc-{sfx}", "版块")
+                ).id,
             )
             await post_svc.hide_post(admin_user, topic.id, "违规")
             assert (await post_svc.get_post(topic.id)).status == "hidden"

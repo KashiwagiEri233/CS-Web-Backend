@@ -48,9 +48,11 @@ class WorkerSettings:
 
     functions = TASKS
     cron_jobs = [
-        cron(token_gc_cron, minute=0),                       # 每小时整点：过期 refresh token 清理
-        cron(data_retention_cron, hour=3, minute=0),         # 每日 03:00：登录历史 / 审计日志保留期
-        cron(exception_retention_cron, hour=3, minute=30),   # 每日 03:30：异常日志保留期
+        cron(token_gc_cron, minute=0),  # 每小时整点：过期 refresh token 清理
+        cron(
+            data_retention_cron, hour=3, minute=0
+        ),  # 每日 03:00：登录历史 / 审计日志保留期
+        cron(exception_retention_cron, hour=3, minute=30),  # 每日 03:30：异常日志保留期
     ]
     redis_settings = RedisSettings.from_dsn(_BROKER_URL)
     on_startup = on_startup

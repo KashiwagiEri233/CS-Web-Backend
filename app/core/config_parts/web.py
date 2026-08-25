@@ -1,7 +1,7 @@
 """应用 / 站点 / 网络配置（ER-55：DEBUG、CORS、可信代理、时区、管理员）。"""
 
 import os
-from datetime import timezone, tzinfo
+from datetime import timezone, tzinfo as _TZInfo
 from ipaddress import ip_network
 from typing import Optional
 
@@ -17,7 +17,7 @@ class WebSettings(BaseSettings):
         extra="ignore",
     )
 
-    _tzinfo: tzinfo = PrivateAttr(default=timezone.utc)
+    _tzinfo: _TZInfo = PrivateAttr(default=timezone.utc)
     _trusted_proxy_networks: tuple = PrivateAttr(default=())
 
     # ---- 应用配置 ----
