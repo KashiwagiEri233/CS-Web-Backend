@@ -5,7 +5,15 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import Date, DateTime as _DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Date,
+    DateTime as _DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.timezone import now_utc
@@ -19,7 +27,10 @@ class LearningPlanItem(Base):
     __tablename__ = "learning_plan_items"
     __table_args__ = (
         UniqueConstraint(
-            "user_id", "plan_date", "source_type", "source_key",
+            "user_id",
+            "plan_date",
+            "source_type",
+            "source_key",
             name="ux_learning_plan_items_user_date_source",
         ),
     )
@@ -29,7 +40,10 @@ class LearningPlanItem(Base):
         Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     goal_id: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey("learning_goals.id", ondelete="SET NULL"), nullable=True, index=True
+        Integer,
+        ForeignKey("learning_goals.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     plan_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     source_type: Mapped[str] = mapped_column(String(30), nullable=False)
@@ -37,9 +51,13 @@ class LearningPlanItem(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     rationale: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     estimated_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=25)
-    status: Mapped[str] = mapped_column(String(20), nullable=False, default="planned", index=True)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="planned", index=True
+    )
     locked: Mapped[bool] = mapped_column(default=False, nullable=False)
     metadata_json: Mapped[Optional[dict]] = mapped_column(JSONDict, nullable=True)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, onupdate=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=now_utc, onupdate=now_utc
+    )
