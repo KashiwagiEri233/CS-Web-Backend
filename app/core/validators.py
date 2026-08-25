@@ -47,19 +47,3 @@ def validate_username(username: str) -> tuple[bool, Optional[str]]:
         return False, "用户名只能包含字母、数字、下划线和连字符"
 
     return True, None
-
-
-def validate_email(email: str) -> tuple[bool, Optional[str]]:
-    """
-    验证邮箱格式
-    返回 (is_valid, error_message)
-    """
-    # 基本邮箱格式验证
-    email_regex = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
-    if not re.match(email_regex, email):
-        return False, "邮箱格式不正确"
-
-    if len(email) > MAX_EMAIL_LENGTH:
-        return False, f"邮箱长度不能超过{MAX_EMAIL_LENGTH}个字符"
-
-    return True, None

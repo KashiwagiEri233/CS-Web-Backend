@@ -16,8 +16,8 @@ from sqlalchemy import text
 from app.core.config import settings
 from app.database import get_session
 from app.models.user import User
-from app.services.community_category import CategoryService
-from app.services.community_post import PostService
+from app.services.community.community_category import CategoryService
+from app.services.community.community_post import PostService
 
 from ._helpers import _cleanup_users, _make_user, _sfx
 
@@ -101,7 +101,9 @@ async def svc_member_list(db, search):
     from sqlalchemy import func, select
     from sqlalchemy.sql import text as _text
 
-    ts_query = func.websearch_to_tsquery(_text(f"'{settings.FTS_CONFIG}'"), search.strip())
+    ts_query = func.websearch_to_tsquery(
+        _text(f"'{settings.FTS_CONFIG}'"), search.strip()
+    )
     stmt = select(User).where(
         User.deleted_at.is_(None),
         User.search_vector.op("@@")(ts_query),
@@ -133,15 +135,16 @@ async def test_search_uses_gin_index(integration_db_ready, admin_user):
         plan = await db.execute(
             text(
                 "EXPLAIN SELECT id FROM community_posts "
-                "WHERE search_vector @@ websearch_to_tsquery('simple', 'GIN 索引')".replace(
+                "WHERE search_vector @@ "
+                "websearch_to_tsquery('simple', 'GIN 索引')".replace(
                     "'simple'", f"'{settings.FTS_CONFIG}'"
                 )
             )
         )
         plan_text = "\n".join(str(r) for r in plan)
-        assert "Index Scan" in plan_text and "gin" in plan_text.lower(), (
-            f"期望走 GIN Index Scan，实际：{plan_text}"
-        )
+        assert (
+            "Index Scan" in plan_text and "gin" in plan_text.lower()
+        ), f"期望走 GIN Index Scan，实际：{plan_text}"
 
         await db.delete(post)
         await db.delete(cat)

@@ -47,7 +47,7 @@ _CORE_REGISTRANT_MODULES: tuple[str, ...] = (
 # 业务域注册点（service）：仅在 run_startup/run_shutdown 时加载，
 # 保持 core.lifecycle 不在 import 期依赖 service 层。
 _SERVICE_REGISTRANT_MODULES: tuple[str, ...] = (
-    "app.services.rbac_init",
+    "app.services.rbac.rbac_init",
     "app.services.exception_retention",
     "app.services.token_gc",
     "app.services.data_retention",

@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.loguru_logger import get_logger
-from app.core.timezone import utc_to_local
+from app.core.timezone import utc_to_local, iso_or_none
 from app.models.audit_log import AuditLog
 from app.repositories.audit_log_repo import AuditLogRepository
 
@@ -184,7 +184,7 @@ class AuditService:
             "detail": row.detail,
             "ip_address": row.ip_address,
             "user_agent": row.user_agent,
-            "created_at": local_created.isoformat() if local_created else None,
+            "created_at": iso_or_none(local_created),
         }
 
     def _require_repo(self) -> AuditLogRepository:

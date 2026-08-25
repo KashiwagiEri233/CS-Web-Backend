@@ -35,7 +35,7 @@ from app.database import get_session
 from app.main import create_app
 from app.models.user import User
 from app.repositories.rbac_repo import RBACRepository
-from app.services.rbac_service import RBACService
+from app.services.rbac.rbac_service import RBACService
 from app.services.totp_service import TOTPService
 
 pytestmark = pytest.mark.integration
@@ -98,7 +98,10 @@ async def _enable_2fa(db, user_id: int) -> None:
 
 
 async def _cleanup(
-    db, user_ids: list[int], role_ids: list[int] | None = None, perm_ids: list[int] | None = None
+    db,
+    user_ids: list[int],
+    role_ids: list[int] | None = None,
+    perm_ids: list[int] | None = None,
 ) -> None:
     """按 FK 依赖序清场：先鉴权/审计/角色挂靠行，再角色-权限关联与角色/权限主表，最后用户。"""
     for table in (
@@ -130,7 +133,9 @@ async def _cleanup(
         except Exception:
             pass
     if role_ids:
-        await db.execute(text("DELETE FROM roles WHERE id = ANY(:ids)"), {"ids": role_ids})
+        await db.execute(
+            text("DELETE FROM roles WHERE id = ANY(:ids)"), {"ids": role_ids}
+        )
     if perm_ids:
         await db.execute(
             text("DELETE FROM permissions WHERE id = ANY(:ids)"), {"ids": perm_ids}

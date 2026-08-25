@@ -35,7 +35,8 @@ class PasswordResetService:
         self.db = db
         self.repo = PasswordResetRequestRepository(db)
         self.user_repo = UserRepository(db)
-        self.audit = audit if audit is not None else AuditService()
+        # 默认注入共享请求会话，使 record_atomic 可同事务提交审计（否则 db=None 会抛错）
+        self.audit = audit if audit is not None else AuditService(self.db)
 
     async def create_request(self, email: str) -> dict:
         """创建申请；已有 pending 申请时直接返回已有 id。"""
@@ -93,9 +94,8 @@ class PasswordResetService:
             admin_id=admin_id,
             admin_note=note,
         )
-        await self.db.commit()
-
-        await self.audit.record(
+        # 移除提前 commit：改由 record_atomic 同事务原子提交，审计写失败则整体回滚，杜绝审计丢失
+        await self.audit.record_atomic(
             action="password_reset.approve",
             resource_type="password_reset_request",
             resource_id=str(req.id),
@@ -122,9 +122,8 @@ class PasswordResetService:
             admin_id=admin_id,
             admin_note=note,
         )
-        await self.db.commit()
-
-        await self.audit.record(
+        # 移除提前 commit：改由 record_atomic 同事务原子提交，审计写失败则整体回滚
+        await self.audit.record_atomic(
             action="password_reset.reject",
             resource_type="password_reset_request",
             resource_id=str(req.id),

@@ -138,9 +138,7 @@ async def _on_community_post_favorited(
         )
 
 
-async def _on_community_user_followed(
-    follower_id: int, target_user_id: int
-) -> None:
+async def _on_community_user_followed(follower_id: int, target_user_id: int) -> None:
     async with get_session() as db:
         from app.models.user import User
 

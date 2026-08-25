@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import asyncio
 from datetime import timedelta
-from typing import Optional
 
 from sqlalchemy import text
 
 from app.core.config import settings
-from app.core.lifecycle import register_shutdown, register_startup
+from app.core.lifecycle import register_startup
 from app.core.loguru_logger import get_logger
 from app.core.timezone import now_utc
 from app.services.exception_service import ExceptionService
@@ -17,13 +15,11 @@ from app.services.exception_service import ExceptionService
 logger = get_logger("exception_retention")
 
 _RETENTION_LOCK_KEY = 873924004
-_cleanup_task: Optional[asyncio.Task] = None
-_stop = asyncio.Event()
 
 
 async def _purge_once() -> int:
     """在 PostgreSQL advisory lock 下执行一轮集群级清理。"""
-    # 注意：get_session 必须保持方法内惰性导入（lifecycle → *_gc → repo → models → database → lifecycle 环）
+    # 注意：get_session 必须保持方法内惰性导入（lifecycle → *_gc → repo → models → database → lifecycle 环）  # noqa: E501
     from app.database import get_session
 
     async with get_session() as db:
@@ -37,45 +33,25 @@ async def _purge_once() -> int:
         return await ExceptionService(db).purge_before(cutoff)
 
 
-async def _cleanup_loop(interval: int) -> None:
-    """启动时立即清理，之后按配置间隔重复。"""
-    while not _stop.is_set():
-        try:
-            deleted = await _purge_once()
-            if deleted:
-                logger.info("异常日志保留期清理完成", deleted=deleted)
-        except Exception as exc:  # noqa: BLE001 - 后台维护任务可降级
-            logger.warning(
-                "异常日志保留期清理失败",
-                error_type=type(exc).__name__,
-                error=str(exc),
-            )
-        try:
-            await asyncio.wait_for(_stop.wait(), timeout=interval)
-        except asyncio.TimeoutError:
-            continue
-
-
 @register_startup("exception_log_retention", priority=45, critical=False)
 async def startup_exception_log_retention() -> None:
-    """启动异常日志保留期清理；间隔为 0 时禁用。"""
-    global _cleanup_task
+    """启动兜底清理一次；跨实例幂等由 ``_purge_once`` 内 advisory lock 保证。
+
+    常驻循环已移除（避免每实例每 worker 各起空转循环）；周期调度已由
+    ``app.core.queue.worker.WorkerSettings.cron_jobs``（arq cron 单点）承担
+    （AR-S2 方案B 已落地）。此处仅做启动兜底（cold-start 兜底）。
+    """
     interval = settings.EXCEPTION_LOG_CLEANUP_INTERVAL_SECONDS
     if interval <= 0:
-        logger.info("异常日志保留期清理已禁用")
+        logger.info("异常日志保留期清理已禁用（间隔<=0）")
         return
-    _stop.clear()
-    _cleanup_task = asyncio.create_task(_cleanup_loop(interval))
-
-
-@register_shutdown("exception_log_retention", priority=25)
-async def shutdown_exception_log_retention() -> None:
-    """停止异常日志保留期后台任务。"""
-    global _cleanup_task
-    _stop.set()
-    if _cleanup_task is not None:
-        try:
-            await asyncio.wait_for(_cleanup_task, timeout=5)
-        except Exception:  # noqa: BLE001
-            _cleanup_task.cancel()
-        _cleanup_task = None
+    try:
+        deleted = await _purge_once()
+        if deleted:
+            logger.info("异常日志保留期启动清理完成", deleted=deleted)
+    except Exception as exc:  # noqa: BLE001 - 启动兜底可降级
+        logger.warning(
+            "异常日志保留期启动清理失败",
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )

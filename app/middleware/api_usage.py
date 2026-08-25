@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any, Awaitable, Callable, MutableMapping, Optional
+from typing import Any, Awaitable, Callable, MutableMapping
 
 from app.core.loguru_logger import get_logger
 
@@ -60,7 +60,12 @@ class ApiUsageMiddleware:
             endpoint = self._endpoint_of(path)
             # 异步写库：与响应并行，失败不影响响应
             asyncio.create_task(
-                self._log(endpoint=endpoint, method=method, status=status, latency_ms=latency_ms)
+                self._log(
+                    endpoint=endpoint,
+                    method=method,
+                    status=status,
+                    latency_ms=latency_ms,
+                )
             )
 
     @staticmethod
@@ -69,13 +74,13 @@ class ApiUsageMiddleware:
         if path.startswith("/api/v1/"):
             parts = path.split("/")
             # 简单启发式：数字段视为 id
-            normalized = [
-                "{id}" if p.isdigit() else p for p in parts
-            ]
+            normalized = ["{id}" if p.isdigit() else p for p in parts]
             return "/".join(normalized)
         return path
 
-    async def _log(self, endpoint: str, method: str, status: int, latency_ms: int) -> None:
+    async def _log(
+        self, endpoint: str, method: str, status: int, latency_ms: int
+    ) -> None:
         try:
             from app.database import AsyncSessionLocal
             from app.models.api_usage import ApiCallLog
@@ -92,4 +97,6 @@ class ApiUsageMiddleware:
                 )
                 await session.commit()
         except Exception:  # noqa: BLE001 - 埋点失败绝不抛出
-            self.logger.debug("api usage log write failed", endpoint=endpoint, status=status)
+            self.logger.debug(
+                "api usage log write failed", endpoint=endpoint, status=status
+            )

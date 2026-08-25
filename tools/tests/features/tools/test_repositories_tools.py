@@ -4,7 +4,8 @@
 - ResourceRepository：CRUD / status·resource_type·submitted_by 过滤 / 分页 / increment_view；
 - TaskRepository：CRUD / status·category 过滤 / 认领（create/get/count_active/list_claims_*）；
 - PointsRepository：流水 / last_balance / list_transactions / leaderboard；
-- ComponentRegistryRepository：item / variant（replace_variants·toggle_variant）/ guide（upsert）。
+- ComponentRegistryRepository：item / variant（replace_variants·toggle_variant）/ guide
+  （upsert）。
 
 注意：
 - Resource.tech_tags 过滤（tools_repo.py:235）与 Exam.tech_tags（tools_repo.py:40）仍是
@@ -61,7 +62,8 @@ async def _make_user(db, sfx: str) -> int:
 async def _cleanup(
     db, uids=None, resource_ids=None, task_ids=None, item_ids=None, exam_ids=None
 ) -> None:
-    """按依赖顺序清场：resources / exams / claims→tasks / variants→guides→items / points→users。"""
+    """按依赖顺序清场：resources / exams / claims→tasks /
+    variants→guides→items / points→users。"""
     if resource_ids:
         await db.execute(delete(Resource).where(Resource.id.in_(resource_ids)))
     if exam_ids:
@@ -254,7 +256,12 @@ async def test_task_crud_and_claims(integration_db_ready):
 
             # 认领
             claim = await repo.create_claim(
-                {"task_id": t1_id, "user_id": u1, "status": "claimed", "claim_note": "n"}
+                {
+                    "task_id": t1_id,
+                    "user_id": u1,
+                    "status": "claimed",
+                    "claim_note": "n",
+                }
             )
             await db.commit()
             claim_id = claim.id
@@ -264,7 +271,12 @@ async def test_task_crud_and_claims(integration_db_ready):
 
             # 第二个用户提交 -> active claims=2，pending 列表含该条
             c2 = await repo.create_claim(
-                {"task_id": t1_id, "user_id": u2, "status": "submitted", "claim_note": "done"}
+                {
+                    "task_id": t1_id,
+                    "user_id": u2,
+                    "status": "submitted",
+                    "claim_note": "done",
+                }
             )
             await db.commit()
             c2_id = c2.id
@@ -302,16 +314,28 @@ async def test_points_transactions_balance_leaderboard(integration_db_ready):
             assert await repo.last_balance(u1) == 0
 
             tx1 = await repo.create_transaction(
-                user_id=u1, amount=50, reason="task", source_type="task",
-                source_id=1, balance_after=50,
+                user_id=u1,
+                amount=50,
+                reason="task",
+                source_type="task",
+                source_id=1,
+                balance_after=50,
             )
             tx2 = await repo.create_transaction(
-                user_id=u1, amount=-10, reason="spend", source_type="shop",
-                source_id=None, balance_after=40,
+                user_id=u1,
+                amount=-10,
+                reason="spend",
+                source_type="shop",
+                source_id=None,
+                balance_after=40,
             )
             tx3 = await repo.create_transaction(
-                user_id=u2, amount=100, reason="bonus", source_type="system",
-                source_id=None, balance_after=100,
+                user_id=u2,
+                amount=100,
+                reason="bonus",
+                source_type="system",
+                source_id=None,
+                balance_after=100,
             )
             await db.commit()
             assert tx1.id and tx2.id and tx3.id
@@ -367,8 +391,18 @@ async def test_component_registry_items_variants_guide(integration_db_ready):
             await repo.replace_variants(
                 item_id,
                 [
-                    {"size": "md", "color": "primary", "state": "default", "is_enabled": True},
-                    {"size": "lg", "color": "primary", "state": "default", "is_enabled": True},
+                    {
+                        "size": "md",
+                        "color": "primary",
+                        "state": "default",
+                        "is_enabled": True,
+                    },
+                    {
+                        "size": "lg",
+                        "color": "primary",
+                        "state": "default",
+                        "is_enabled": True,
+                    },
                 ],
             )
             await db.commit()
@@ -378,7 +412,14 @@ async def test_component_registry_items_variants_guide(integration_db_ready):
             # 同 (size,color,state) 再放一条走 upsert 路径，不新增
             await repo.replace_variants(
                 item_id,
-                [{"size": "md", "color": "primary", "state": "default", "is_enabled": False}],
+                [
+                    {
+                        "size": "md",
+                        "color": "primary",
+                        "state": "default",
+                        "is_enabled": False,
+                    }
+                ],
             )
             await db.commit()
             variants2 = await repo.list_variants(item_id)
@@ -389,9 +430,7 @@ async def test_component_registry_items_variants_guide(integration_db_ready):
             # toggle_variant
             assert await repo.toggle_variant(md_variant.id, True) is True
             await db.commit()
-            assert (
-                await repo.get_variant(item_id, md_variant.id)
-            ).is_enabled is True
+            assert (await repo.get_variant(item_id, md_variant.id)).is_enabled is True
             assert await repo.toggle_variant(999999, True) is False
 
             # guide：upsert 首次 + 覆盖

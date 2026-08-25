@@ -13,7 +13,7 @@ from app.core.loguru_logger import set_logging_context
 from app.core.security import verify_token
 from app.database import get_db
 from app.models.user import User
-from app.services.auth_service import AuthService
+from app.services.auth.auth_service import AuthService
 
 # OAuth2密码流。auto_error=False：缺 token 时返回 None 而非自动 401，
 # 以便 AUTH_ENABLED=False 时整条链路可被旁路。

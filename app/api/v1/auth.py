@@ -30,7 +30,7 @@ from app.schemas.auth import (
     TwoFactorStatusResponse,
     TwoFactorVerifyRequest,
 )
-from app.services.auth_service import AuthService
+from app.services.auth.auth_service import AuthService
 from app.services.oauth_service import oauth_service
 from app.services.password_reset_service import PasswordResetService
 from app.services.verification_service import VerificationService

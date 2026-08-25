@@ -1,17 +1,18 @@
-﻿"""活动仓储：events / event_registrations / event_checkins / settings。"""
+"""活动仓储：events / event_registrations / event_checkins / settings。"""
 
 from __future__ import annotations
 
 from typing import Optional, Sequence
 
-from sqlalchemy import Integer, func, or_, select, type_coerce, update
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import Integer, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timezone import now_utc
 from app.models.event import Event, EventCheckin, EventRegistration
 from app.models.setting import Setting
 from app.repositories.base import dml_rowcount
+from app.repositories.base import paginate
+from app.core.query_helpers import jsonb_contains
 
 
 class EventRepository:
@@ -38,9 +39,7 @@ class EventRepository:
             # （Variant），ColumnElement.contains 会退化成通用字符串 LIKE（编译为
             # `col LIKE '%' || $n::JSONB || '%'`），实际调用抛 invalid input syntax
             # for type json。type_coerce(..., JSONB).contains([tag]) 走 JSONB `@>`。
-            conditions.append(
-                type_coerce(Event.tags, JSONB).contains([tag.strip()])
-            )
+            conditions.append(jsonb_contains(Event.tags, [tag.strip()]))
 
         total = int(
             (
@@ -49,12 +48,12 @@ class EventRepository:
                 )
             ).scalar_one()
         )
-        stmt = (
+        stmt = paginate(
             select(Event)
             .where(*conditions)
-            .order_by(Event.is_pinned.desc(), Event.date.desc())
-            .offset(skip)
-            .limit(limit)
+            .order_by(Event.is_pinned.desc(), Event.date.desc()),
+            skip,
+            limit,
         )
         rows = await self.db.execute(stmt)
         return list(rows.scalars().all()), total

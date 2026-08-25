@@ -6,7 +6,7 @@ import os
 
 import pytest
 
-# arq 是可选队列依赖（requirements-queue.txt），未安装时整个模块 skip 而非收集报错
+# arq 已在主依赖（pyproject.toml）；importorskip 仅作防御，缺失时整模块 skip 而非收集报错
 arq = pytest.importorskip("arq")
 from arq import Retry, Worker, func as arq_func  # noqa: E402
 from arq.jobs import Job  # noqa: E402

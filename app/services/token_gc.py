@@ -2,19 +2,14 @@
 
 from __future__ import annotations
 
-import asyncio
-from typing import Optional
-
 from sqlalchemy import text
 
 from app.core.config import settings
-from app.core.lifecycle import register_shutdown, register_startup
+from app.core.lifecycle import register_startup
 from app.core.loguru_logger import get_logger
 
 logger = get_logger("token_gc")
 
-_gc_task: Optional[asyncio.Task] = None
-_stop = asyncio.Event()
 _TOKEN_GC_LOCK_KEY = 873924003
 
 
@@ -35,41 +30,23 @@ async def _purge_once() -> int:
         return n
 
 
-async def _gc_loop(interval: int) -> None:
-    logger.info(f"refresh token GC 已启动，间隔 {interval}s")
-    while not _stop.is_set():
-        try:
-            n = await _purge_once()
-            if n:
-                logger.info(f"refresh token GC 清理 {n} 行")
-        except Exception as e:  # noqa: BLE001
-            logger.warning(f"refresh token GC 失败（已忽略）: {type(e).__name__}: {e}")
-        try:
-            await asyncio.wait_for(_stop.wait(), timeout=interval)
-        except asyncio.TimeoutError:
-            continue
-    logger.info("refresh token GC 已停止")
-
-
 @register_startup("refresh_token_gc", priority=40, critical=False)
 async def startup_refresh_token_gc() -> None:
-    """启动后台 GC；间隔为 0 则禁用。"""
-    global _gc_task
+    """启动兜底清理一次；跨实例幂等由 ``_purge_once`` 内 advisory lock 保证。
+
+    常驻循环已移除（避免每实例每 worker 各起空转循环）；周期调度已由
+    ``app.core.queue.worker.WorkerSettings.cron_jobs``（arq cron 单点）承担
+    （AR-S2 方案B 已落地）。此处仅做启动兜底（cold-start 兜底）。
+    """
     interval = int(getattr(settings, "REFRESH_TOKEN_GC_INTERVAL_SECONDS", 0) or 0)
     if interval <= 0:
-        logger.info("refresh token GC 已禁用（REFRESH_TOKEN_GC_INTERVAL_SECONDS<=0）")
+        logger.info("refresh token GC 已禁用（间隔<=0）")
         return
-    _stop.clear()
-    _gc_task = asyncio.create_task(_gc_loop(interval))
-
-
-@register_shutdown("refresh_token_gc", priority=30)
-async def shutdown_refresh_token_gc() -> None:
-    global _gc_task
-    _stop.set()
-    if _gc_task is not None:
-        try:
-            await asyncio.wait_for(_gc_task, timeout=5)
-        except Exception:  # noqa: BLE001
-            _gc_task.cancel()
-        _gc_task = None
+    try:
+        n = await _purge_once()
+        if n:
+            logger.info("refresh token GC 启动清理完成", deleted=n)
+    except Exception as e:  # noqa: BLE001 - 启动兜底可降级
+        logger.warning(
+            f"refresh token GC 启动清理失败（已忽略）: {type(e).__name__}: {e}"
+        )

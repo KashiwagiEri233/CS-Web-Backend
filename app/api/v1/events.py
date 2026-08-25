@@ -14,17 +14,12 @@ from app.schemas.event import (
     EventOut,
     EventRegistrationInput,
     EventRegistrationOut,
+    event_to_out,
 )
 from app.schemas.pagination import PaginatedResponse, PaginationParams
-from app.services.event_service import EventService
+from app.services.event.event_service import EventService
 
 router = APIRouter()
-
-
-def _to_event_out(event) -> dict:
-    data = EventOut.model_validate(event).model_dump()
-    data["registered_count"] = getattr(event, "registered_count", None)
-    return data
 
 
 @router.get("", response_model=PaginatedResponse[EventOut])
@@ -44,7 +39,7 @@ async def list_events(
         limit=pagination.limit,
     )
     return PaginatedResponse(
-        items=[_to_event_out(e) for e in events],
+        items=[event_to_out(e) for e in events],
         total=total,
         skip=pagination.skip,
         limit=pagination.limit,
@@ -58,7 +53,7 @@ async def list_registered(
 ) -> Any:
     """当前用户已报名的活动列表。"""
     events = await service.list_user_registered_events(current_user.id)
-    return [_to_event_out(e) for e in events]
+    return [event_to_out(e) for e in events]
 
 
 @router.get("/{event_id}", response_model=EventOut)
@@ -67,7 +62,7 @@ async def get_event(
     service: EventService = Depends(get_event_service),
 ) -> Any:
     """活动详情（含报名人数）。"""
-    return _to_event_out(await service.get_event(event_id))
+    return event_to_out(await service.get_event(event_id))
 
 
 @router.get("/{event_id}/registration", response_model=EventRegistrationOut)

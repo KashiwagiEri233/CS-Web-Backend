@@ -6,7 +6,7 @@
 docs/
 ├── README.md              # 本文件：文档索引 + 约定 + 模板
 ├── BackDoc-01-Arch.md     # 系统架构总览（Part A 分层/中间件链/生命周期/不变量 + Part B 业务模块契约）
-├── BackDoc-Conv.md         # 编码规范、命名、质量红线
+├── BackDoc-03-Conv.md         # 编码规范、命名、质量红线
 ├── BackDoc-02-Sec.md            # 安全与防护：鉴权/异常处理/请求限流
 └── BackDoc-Infra.md      # 运行基础设施：可观测性/数据库/生命周期/队列/缓存
 ```
@@ -18,7 +18,7 @@ docs/
 | `BackDoc-01-Arch.md` | 系统级架构：分层、中间件链、请求生命周期、关键不变量（**Part A**）+ 业务模块契约：认证 / 用户 / RBAC / 审计 / 工作台 / 学习助手 / API 统计中间件（**Part B**） |
 | `BackDoc-02-Sec.md` | 鉴权（JWT/密码/黑名单）、异常体系、请求限流 |
 | `BackDoc-Infra.md` | 日志 + 追踪/指标（可观测）、数据库/事务、启动关闭任务、队列、缓存 |
-| `BackDoc-Conv.md` | 编码规范、命名、质量红线、安全/错误处理约定 |
+| `BackDoc-03-Conv.md` | 编码规范、命名、质量红线、安全/错误处理约定 |
 
 > 拿不准放哪时问一句"换一个完全不同的项目，这块还用得上吗？"——用得上 → 系统级（`BackDoc-02-Sec.md`/`BackDoc-Infra.md`）；
 > 与具体业务实体（用户/角色…）绑定 → `BackDoc-01-Arch.md` **Part B**（业务模块契约）。
@@ -65,7 +65,7 @@ schema 见 `app/schemas/<x>.py`。
 | 文档 | 说明 |
 |---|---|
 | [BackDoc-01-Arch.md](BackDoc-01-Arch.md) | 系统架构总览（Part A 分层/目录结构/扩展配方 + Part B 业务模块契约） |
-| [BackDoc-Conv.md](BackDoc-Conv.md) | 编码规范、命名、质量红线、安全/错误处理约定 |
+| [BackDoc-03-Conv.md](BackDoc-03-Conv.md) | 编码规范、命名、质量红线、安全/错误处理约定 |
 
 ### 系统能力
 | 文档 | 覆盖代码 |
@@ -83,10 +83,10 @@ schema 见 `app/schemas/<x>.py`。
 |---|---|
 | [BackDoc-Infra.md §六 迁移验证](BackDoc-Infra.md#六迁移验证migration_verification) | 数据层迁移的 Linux/PG 环境验证指南 |
 
-### 重构与演进（规划）
+### 重构与演进（已落地）
 | 文档 | 说明 |
 |---|---|
-| [BackDoc-Refactor-CommunityService.md](BackDoc-Refactor-CommunityService.md) | ER-15 / AL-2 重构史诗：community_service.py（1088 行 God Module）按子域拆 Post/Comment/Reaction/Feed/Notification 5 服务 + 事件总线边界，分阶段迁移策略与 CI 闸门。**规划中，不阻塞 0.9.9/1.0.0** |
+| [BackDoc-Refactor-CommunityService.md](BackDoc-Refactor-CommunityService.md) | ER-15 / AL-2 重构史诗：community_service.py（1088 行 God Module）按子域拆 Post/Comment/Reaction/Feed/Notification 5 服务 + 事件总线边界。**已完成（2026-08-11，Phase 0~4 全量落地：432 passed / OpenAPI 契约零漂移）** |
 
 ### 历史归档
 已完成特性的迁移计划与设计稿，仅作演进痕迹保留，**不作现行方案**。当前能力以根级正式文档为准。

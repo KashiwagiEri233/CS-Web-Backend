@@ -41,7 +41,9 @@ async def _make_user(db, sfx: str, *, tech_tags=None) -> int:
     return user.id
 
 
-async def _cleanup(db, user_ids: list[int], category_ids: list[int] | None = None) -> None:
+async def _cleanup(
+    db, user_ids: list[int], category_ids: list[int] | None = None
+) -> None:
     """先删鉴权/社区侧挂靠行（按 user_id），再删用户（社区 posts/comments 等
     author_id FK ondelete=CASCADE 随用户删除级联），最后删分类（created_by 为
     SET NULL 不随用户删除，且 posts 已级联删除后才可删）。"""
@@ -68,7 +70,10 @@ async def _cleanup(db, user_ids: list[int], category_ids: list[int] | None = Non
                 )
         except Exception:
             pass
-    for table, col in (("community_reports", "reporter_id"), ("community_series", "created_by")):
+    for table, col in (
+        ("community_reports", "reporter_id"),
+        ("community_series", "created_by"),
+    ):
         try:
             async with db.begin_nested():
                 await db.execute(
@@ -77,9 +82,7 @@ async def _cleanup(db, user_ids: list[int], category_ids: list[int] | None = Non
                 )
         except Exception:
             pass
-    await db.execute(
-        text("DELETE FROM users WHERE id = ANY(:ids)"), {"ids": user_ids}
-    )
+    await db.execute(text("DELETE FROM users WHERE id = ANY(:ids)"), {"ids": user_ids})
     if category_ids:
         await db.execute(
             text("DELETE FROM community_categories WHERE id = ANY(:ids)"),

@@ -1,4 +1,4 @@
-﻿"""组件注册表服务：items / variants / guides。"""
+"""组件注册表服务：items / variants / guides。"""
 
 from __future__ import annotations
 
@@ -136,7 +136,7 @@ class ComponentRegistryService:
 
     async def replace_variants(
         self, item_id: int, variants: list[ComponentVariantInput]
-    ) -> dict:
+    ) -> ComponentItemOut:
         await self.get_component(item_id)
         await self.repo.replace_variants(item_id, [v.model_dump() for v in variants])
         await self.db.commit()

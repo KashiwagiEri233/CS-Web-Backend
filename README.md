@@ -3,7 +3,7 @@
 > 计算机社团官网后端 — FastAPI + PostgreSQL
 >
 > 由原 Next.js 全栈单体（CS-Web-Frontend）按模块分离而来：前端降级为「UI + BFF 薄转发」，
-> 认证、数据、业务逻辑全部由本仓库接管。分离计划与 ADR 见 `docs/项目演变历史.md` 的「前后端分离迁移」一节。
+> 认证、数据、业务逻辑全部由本仓库接管。分离计划与 ADR 见根仓 [`CHANGELOG.md`](../CHANGELOG.md) 的「前后端分离迁移」一节。
 
 ## 技术栈
 
@@ -30,7 +30,7 @@ alembic upgrade head
 
 # 4. 启动（--env 1 开发热重载 / --prod 生产 4 workers）
 python run.py --env 1
-# 或直接（uvicorn 默认 :8000；本地联调端口见仓库根 Makefile 的 BACKEND_PORT=9000）：
+# 或直接（uvicorn 默认 :8000；端口约定见仓库根 README「快速开始 · 高频事实速查表」）：
 uvicorn app.main:app --reload
 ```
 
@@ -46,7 +46,7 @@ uvicorn app.main:app --reload
 
 - `SECRET_KEY`（≥32 字节）、`DATABASE_PASSWORD`、`ALLOWED_ORIGINS`（前端地址，如 `http://localhost:2333`）
 - `TOTP_ENCRYPTION_KEY`（2FA 加密）、`COMMUNITY_IP_HASH_SECRET`（浏览去重 IP 哈希，≥16 字节必填）、`PASSWORD_RESET_DEFAULT`（默认重置密码）
-- `BACKEND_URL` 是前端侧配置（BFF 指向本仓库，默认 `http://localhost:9000`）
+- `BACKEND_URL` 是前端侧配置（BFF 指向本仓库）；前后端地址/端口约定见仓库根 README「快速开始 · 高频事实速查表」
 
 ## 模块清单
 
@@ -65,16 +65,11 @@ uvicorn app.main:app --reload
 
 ## 与前端的分工
 
-```
-浏览器 ──> Next.js (CS-Web-Frontend) ──proxy──> FastAPI (本仓库)
-           · UI + 页面 + 客户端状态        · 全部业务 API（/api/v1）
-           · BFF 薄转发（src/app/api/**）   · PostgreSQL + 迁移
-           · JWT 存 HttpOnly Cookie        · JWT 签发/校验/轮换
-```
+> 全栈架构图与前后端职责边界见仓库根 README「架构」章节（以根仓为唯一事实源）。
 
-- 前端 `backend-client.ts` 负责：Cookie 注入 Authorization、401 静默刷新重试、snake_case → camelCase 翻译
-- 本地联调：前端 `BACKEND_URL=http://localhost:9000`，前端地址加入后端 `ALLOWED_ORIGINS`
-- 生产 Cookie 用 `__Host-` 前缀（Secure + Path=/）
+- 本仓库为**唯一业务/数据 owner**：FastAPI + PostgreSQL（Alembic 管理 schema），JWT 双 token 认证、签发与轮换。
+- 前端 `backend-client.ts` 负责：Cookie 注入 Authorization、401 静默刷新重试、snake_case → camelCase 翻译。
+- 生产 Cookie 用 `__Host-` 前缀（Secure + Path=/）；本地联调前端地址须加入后端 `ALLOWED_ORIGINS`。
 
 ## 数据库与迁移
 
@@ -93,7 +88,7 @@ uv run mypy app
 uv run python -m pytest -q --no-cov -m "not integration and not queue_integration"
 
 # PG 集成测试（需 Linux + PostgreSQL，验证流程见 tools/docs/BackDoc-Infra.md §六 迁移验证）
-uv run python -m pytest tools/tests/integration -v --no-cov
+uv run python -m pytest tools/tests/features tools/tests/integration -v --no-cov
 ```
 
 集成测试按 Phase 组织：`test_auth_phase1.py` / `test_phase2_modules.py` / `test_phase2_5_admin.py` /
@@ -123,5 +118,5 @@ tools/docs/            # 验证指南（BackDoc-Infra.md §六 迁移验证）�
 | 文档 | 内容 |
 |---|---|
 | `tools/docs/BackDoc-Infra.md §六 迁移验证` | Linux/PG 环境验证指引（各 Phase 集成测试、2FA/密码兼容检查清单） |
-| `CLAUDE.md` / `AGENTS.md` | 项目定位、扩展约定、Alembic 管理、不变量 |
-| `tools/docs/BackDoc-Conv.md` | 编码规范与质量红线 |
+| `AGENTS.md` | 项目定位、扩展约定、Alembic 管理、不变量 |
+| `tools/docs/BackDoc-03-Conv.md` | 编码规范与质量红线 |

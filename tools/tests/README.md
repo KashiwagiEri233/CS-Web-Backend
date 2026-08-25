@@ -19,7 +19,7 @@ tools/tests/
 - 文件名 `test_*.py`，函数 `test_*`，类 `Test*`（见 `pytest.ini`）。
 - `asyncio_mode = auto`：异步测试直接写 `async def test_xxx()`，无需 `@pytest.mark.asyncio`。
 - **单元测试不依赖外部服务**：用 monkeypatch / fake 隔离 Redis、数据库；需要会话时用 `app.database.get_session`。
-- 需要真实数据库的集成测试，建议放在 `tools/tests/integration/`（按需新建），并用独立测试库（见 `.env.test`）。
+- 需要真实数据库的集成测试，建议按域放在 `tools/tests/features/<域>/`（按需新建）；跨域/端到端类（e2e / redis / concurrency）留在 `tools/tests/integration/`。均用独立测试库（见 `.env.test`）。
 
 ## 数据库隔离
 

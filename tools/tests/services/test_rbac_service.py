@@ -9,10 +9,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-import app.services.rbac_service as rbac_svc_module
+import app.services.rbac.rbac_service as rbac_svc_module
 from app.core.exceptions import PermissionDeniedException
-from app.services.rbac_seed_data import ADMIN_ROLE_NAME
-from app.services.rbac_service import RBACService
+from app.services.rbac.rbac_seed_data import ADMIN_ROLE_NAME
+from app.services.rbac.rbac_service import RBACService
 
 
 def _stub_cache() -> MagicMock:
@@ -174,7 +174,9 @@ async def test_get_all_roles_delegates(rbac_service, monkeypatch):
     svc.rbac_repo.get_all_roles.assert_awaited_once()
 
 
-async def test_get_role_delegates_to_get_role_with_permissions(rbac_service, monkeypatch):
+async def test_get_role_delegates_to_get_role_with_permissions(
+    rbac_service, monkeypatch
+):
     svc = rbac_service
     svc.rbac_repo.get_role_with_permissions.return_value = None
     assert await svc.get_role(9) is None
@@ -202,7 +204,9 @@ async def test_get_all_permissions_delegates(rbac_service, monkeypatch):
     assert await svc.get_all_permissions() == ["p1"]
 
 
-async def test_get_permission_delegates_to_get_permission_by_id(rbac_service, monkeypatch):
+async def test_get_permission_delegates_to_get_permission_by_id(
+    rbac_service, monkeypatch
+):
     svc = rbac_service
     svc.rbac_repo.get_permission_by_id.return_value = None
     assert await svc.get_permission(5) is None
@@ -334,7 +338,9 @@ async def test_grant_role_to_user_invalidates_cache(rbac_service, monkeypatch):
     assert await cache.get(rbac_svc_module._user_perm_cache_key(1)) is None
 
 
-async def test_grant_permission_to_role_invalidates_all_role_users(rbac_service, monkeypatch):
+async def test_grant_permission_to_role_invalidates_all_role_users(
+    rbac_service, monkeypatch
+):
     """角色授予权限应失效该角色下所有用户的权限缓存。"""
     cache = _real_memory_cache()
     # 用户 1 和 2 都在该角色下，预先写入缓存
@@ -397,7 +403,9 @@ async def test_grant_admin_role_allowed_for_superuser(rbac_service, monkeypatch)
     assert await svc.grant_role_to_user(1, 9, actor=_make_actor(True)) is True
 
 
-async def test_grant_role_to_superuser_target_requires_superuser(rbac_service, monkeypatch):
+async def test_grant_role_to_superuser_target_requires_superuser(
+    rbac_service, monkeypatch
+):
     svc = rbac_service
     target = MagicMock(id=2, is_superuser=True)
     target.roles = []
@@ -408,7 +416,9 @@ async def test_grant_role_to_superuser_target_requires_superuser(rbac_service, m
         await svc.grant_role_to_user(2, 3, actor=_make_actor(False))
 
 
-async def test_revoke_role_from_superuser_target_requires_superuser(rbac_service, monkeypatch):
+async def test_revoke_role_from_superuser_target_requires_superuser(
+    rbac_service, monkeypatch
+):
     svc = rbac_service
     role = _make_role(3, "developer")
     target = MagicMock(id=2, is_superuser=True)
@@ -420,7 +430,9 @@ async def test_revoke_role_from_superuser_target_requires_superuser(rbac_service
         await svc.revoke_role_from_user(2, 3, actor=_make_actor(False))
 
 
-async def test_grant_admin_role_without_actor_is_trusted_internal_call(rbac_service, monkeypatch):
+async def test_grant_admin_role_without_actor_is_trusted_internal_call(
+    rbac_service, monkeypatch
+):
     """actor=None（种子初始化/脚本）不受防护限制。"""
     svc = rbac_service
     user = MagicMock(id=1, is_superuser=False)

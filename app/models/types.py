@@ -11,5 +11,5 @@ from sqlalchemy.dialects.postgresql import JSONB
 # 没有任何好处。
 #
 # 用 with_variant 而不是直接写 JSONB：保留方言无关性，模型定义本身不绑死 PostgreSQL
-# （生产库仍然只支持 PostgreSQL，见 CLAUDE.md）。
+# （生产库仍然只支持 PostgreSQL，见 AGENTS.md）。
 JSONDict = JSON().with_variant(JSONB(), "postgresql")

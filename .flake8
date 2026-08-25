@@ -10,4 +10,4 @@ exclude =
 per-file-ignores =
     app/database.py:E402
     app/core/lifecycle/__init__.py:E402,F401
-    scripts/init_database.py:E402
+    tools/scripts/db/init_database.py:E402

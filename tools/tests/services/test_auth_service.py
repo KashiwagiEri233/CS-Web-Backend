@@ -16,7 +16,7 @@ from app.core.exceptions import (
 )
 from app.core.security import hash_refresh_token
 from app.core.timezone import now_utc
-from app.services.auth_service import AuthService
+from app.services.auth.auth_service import AuthService
 
 
 @pytest.fixture
@@ -27,7 +27,7 @@ def auth_service(monkeypatch) -> AuthService:
     bcrypt 已在线程池包装；测试以 AsyncMock 替代耗时哈希。
     """
     monkeypatch.setattr(
-        "app.services.auth_service.async_get_password_hash",
+        "app.services.auth.auth_service.async_get_password_hash",
         AsyncMock(side_effect=lambda raw: f"hash:{raw}"),
     )
     db = MagicMock()
@@ -191,11 +191,13 @@ async def test_refresh_revoked_without_active_family_is_reuse():
     svc.refresh_repo.revoke_family.assert_awaited_once_with("family")
 
 
-async def test_authenticate_missing_user_still_verifies_dummy_hash(auth_service, monkeypatch):
+async def test_authenticate_missing_user_still_verifies_dummy_hash(
+    auth_service, monkeypatch
+):
     svc = auth_service
     svc.user_repo.get_by_username.return_value = None
     verify = AsyncMock(return_value=False)
-    monkeypatch.setattr("app.services.auth_service.async_verify_password", verify)
+    monkeypatch.setattr("app.services.auth.auth_service.async_verify_password", verify)
 
     assert await svc.authenticate("missing", "Password1!") is None
     verify.assert_awaited_once()
@@ -229,7 +231,7 @@ def _make_login_service(monkeypatch, *, limiter_allowed: bool = True):
 
     limiter = AsyncMock()
     limiter.is_allowed.return_value = limiter_allowed
-    monkeypatch.setattr("app.services.auth_service.get_limiter", lambda: limiter)
+    monkeypatch.setattr("app.services.auth.auth_service.get_limiter", lambda: limiter)
 
     issue = AsyncMock(return_value="pair")
     monkeypatch.setattr(AuthService, "issue_token_pair", issue)

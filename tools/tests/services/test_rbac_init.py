@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-import app.services.rbac_init as rbac_init_module
-from app.services.rbac_init import RBACInitializer
+import app.services.rbac.rbac_init as rbac_init_module
+from app.services.rbac.rbac_init import RBACInitializer
 
 
 def _initializer() -> RBACInitializer:

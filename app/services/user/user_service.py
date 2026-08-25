@@ -32,9 +32,11 @@ from app.models.exam import Exam, ExamAttempt, ExamQuestion
 from app.models.role import Role
 from app.models.user import User
 from app.repositories.activity_participation_repo import ActivityParticipationRepository
+from app.repositories.base import paginate
 from app.repositories.refresh_token_repo import RefreshTokenRepository
 from app.repositories.user_repo import UserRepository
 from app.schemas.auth import UserOut
+from app.schemas.pagination import compute_total_pages
 from app.schemas.profile import ProfileUpdate
 from app.schemas.user import AdminUserUpdate
 from app.services.audit_service import AuditService
@@ -53,6 +55,13 @@ _DATA_DIR = Path("data")
 _AVATARS_DIR = _DATA_DIR / "avatars"
 
 
+def to_admin_out(user: User) -> dict:
+    """UserOut + roles（前端管理员视图需要角色列表；admin_users 路由与 user_service 共用，波次 B2 收敛）。"""
+    base = UserOut.model_validate(user).model_dump()
+    base["roles"] = [r.name for r in user.roles]
+    return base
+
+
 class UserService:
     """用户管理服务（CRUD）。"""
 
@@ -61,6 +70,8 @@ class UserService:
         self.user_repo = UserRepository(db)
         self.refresh_repo = RefreshTokenRepository(db)
         self.activity_repo = ActivityParticipationRepository(db)
+        # 注入共享请求会话，使 record_atomic 可同事务提交审计（否则 db=None 会抛错）；与 auth_service 一致
+        self.audit = AuditService(self.db)
 
     async def list_users(self, skip: int = 0, limit: int = 100) -> Tuple[list, int]:
         """分页获取未删除用户列表，返回 (users, total)。"""
@@ -194,13 +205,13 @@ class UserService:
                 )
             ).scalar_one()
         )
-        stmt = (
+        stmt = paginate(
             select(User)
             .options(selectinload(User.roles))
             .where(*conditions)
-            .order_by(User.created_at.desc())
-            .offset((page - 1) * page_size)
-            .limit(page_size)
+            .order_by(User.created_at.desc()),
+            (page - 1) * page_size,
+            page_size,
         )
         users = list((await self.db.execute(stmt)).scalars().all())
 
@@ -208,17 +219,12 @@ class UserService:
         if role != "all":
             users = [u for u in users if role in {r.name for r in u.roles}]
 
-        def _admin_out(u: User) -> dict:
-            base = UserOut.model_validate(u).model_dump()
-            base["roles"] = [r.name for r in u.roles]
-            return base
-
         return {
-            "users": [_admin_out(u) for u in users],
+            "users": [to_admin_out(u) for u in users],
             "total": total,
             "page": page,
             "page_size": page_size,
-            "total_pages": (total + page_size - 1) // page_size,
+            "total_pages": compute_total_pages(total, page_size),
         }
 
     async def update_user_admin(
@@ -306,10 +312,10 @@ class UserService:
                 if not active_change:
                     await self.refresh_repo.revoke_all_for_user(target.id)
 
-        target.updated_at = now_utc()
-        await self.user_repo.update(target)
-        await self.db.commit()
-        await self.db.refresh(target)
+            target.updated_at = now_utc()
+            await self.user_repo.update(target)
+            # 移除提前 commit：改由 _audit_admin 的 record_atomic 同事务原子提交，审计失败整体回滚
+            await self.db.refresh(target)
 
         await self._audit_admin(
             action="user.update",
@@ -381,7 +387,7 @@ class UserService:
         await self.user_repo.update(target)
         if not active:
             await self.refresh_repo.revoke_all_for_user(target.id)
-        await self.db.commit()
+        # 移除提前 commit：改由 _audit_admin 的 record_atomic 同事务原子提交，审计失败整体回滚
         await self.db.refresh(target)
 
         await self._audit_admin(
@@ -443,12 +449,13 @@ class UserService:
                 )
             password = new_password or ""
 
+        # 默认密码与自定义密码分支都须应用新密码哈希 + 撤销旧 refresh token
         target.hashed_password = await async_get_password_hash(password)
         target.password_changed_at = now_utc()
         target.updated_at = now_utc()
         await self.user_repo.update(target)
         await self.refresh_repo.revoke_all_for_user(target.id)
-        await self.db.commit()
+        # 移除提前 commit：改由 _audit_admin 的 record_atomic 同事务原子提交，审计失败整体回滚
 
         await self._audit_admin(
             action="user.reset_password",
@@ -495,12 +502,19 @@ class UserService:
             )
 
         # 级联清理（依赖 FK ondelete 的表由 PG 处理；无 FK 的显式清理）
-        for table in ("refresh_tokens", "login_history", "password_history"):
-            await self.db.execute(
-                text(f"DELETE FROM {table} WHERE user_id=:i"), {"i": target.id}
-            )
+        # 表名无法参数化，改为字面量语句（不再用 f-string 动态拼接 SQL，消除代码味）；
+        # 表名取自固定白名单，无注入风险。
+        await self.db.execute(
+            text("DELETE FROM refresh_tokens WHERE user_id=:i"), {"i": target.id}
+        )
+        await self.db.execute(
+            text("DELETE FROM login_history WHERE user_id=:i"), {"i": target.id}
+        )
+        await self.db.execute(
+            text("DELETE FROM password_history WHERE user_id=:i"), {"i": target.id}
+        )
         await self.db.delete(target)
-        await self.db.commit()
+        # 移除提前 commit：改由 _audit_admin 的 record_atomic 同事务原子提交，审计失败整体回滚
 
         await self._audit_admin(
             action="user.delete",
@@ -555,7 +569,8 @@ class UserService:
         detail: dict,
         client_meta: Optional[dict],
     ) -> None:
-        await AuditService().record(
+        # 原子提交：审计与主操作同事务；审计写失败整体回滚（管理员审计不丢，门槛#2）
+        await self.audit.record_atomic(
             action=action,
             resource_type="user",
             resource_id=str(target_id) if target_id else None,

@@ -64,7 +64,7 @@ def setup_telemetry(app, engine) -> None:
     except ImportError as exc:
         logger.error(
             "可观测性(OTel): SDK 依赖缺失，已跳过装配。"
-            "请安装 requirements.txt 中的 opentelemetry-* 包",
+            "opentelemetry-* 已在 pyproject.toml 主依赖，请重新安装依赖",
             error=str(exc),
         )
         return
