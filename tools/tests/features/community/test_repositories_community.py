@@ -17,14 +17,7 @@ import pytest
 from sqlalchemy import delete, text
 
 from app.database import get_session
-from app.models.community import (
-    CommunityCategory,
-    CommunityComment,
-    CommunityFollow,
-    CommunityPost,
-    CommunityReaction,
-    CommunityReport,
-)
+from app.models.community import CommunityCategory
 from app.models.user import User
 from app.repositories.community_repo import (
     CommunityCategoryRepository,
@@ -343,7 +336,7 @@ async def test_follow_create_counts_and_bulk(integration_db_ready):
         async with get_session() as db:
             repo = CommunityFollowRepository(db)
             assert (await repo.get(u1, u2)) is None
-            follow = await repo.create(u1, u2)
+            await repo.create(u1, u2)
             await db.commit()
             assert (await repo.get(u1, u2)) is not None
 

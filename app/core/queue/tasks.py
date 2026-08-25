@@ -9,6 +9,8 @@
 新增任务：在此定义 `async def`，并加入下方 `TASKS` 列表（worker 与 enqueue 都据此注册/校验）。
 """
 
+from typing import Optional
+
 from app.core.events import event_bus
 from app.core.loguru_logger import get_logger
 
@@ -43,7 +45,9 @@ async def dispatch_event_broadcast(ctx, event: str, data: dict) -> dict:
     return {"event": event, "delivered": True}
 
 
-async def send_email_task(ctx, to: str, subject: str, text: str) -> dict:
+async def send_email_task(
+    ctx, to: str, subject: str, text: str, html: Optional[str] = None
+) -> dict:
     """异步邮件发送任务（arq 队列投递 + 自动重试）。
 
     由 email_service.send_mail 在 QUEUE_ENABLED 时经 enqueue 投递。
@@ -56,7 +60,7 @@ async def send_email_task(ctx, to: str, subject: str, text: str) -> dict:
     )
     from app.services.email_service import _send_sync
 
-    _send_sync(to, subject, text)
+    _send_sync(to, subject, text, html)
     return {"to": to, "subject": subject, "delivered": True}
 
 

@@ -15,10 +15,11 @@ from app.dependencies_services import (
 from app.middleware.rbac import require_admin_2fa, require_permission
 from app.models.user import User
 from app.schemas.community import post_to_dict
-from app.services.community_category import CategoryService
-from app.services.community_comment import CommentService
-from app.services.community_post import PostService
-from app.services.community_report import ReportService
+from app.schemas.pagination import PaginatedResponse, PaginationParams
+from app.services.community.community_category import CategoryService
+from app.services.community.community_comment import CommentService
+from app.services.community.community_post import PostService
+from app.services.community.community_report import ReportService
 
 router = APIRouter(dependencies=[Depends(require_admin_2fa())])
 
@@ -32,8 +33,7 @@ async def admin_list_posts(
     status: Optional[str] = None,
     search: Optional[str] = None,
     sort: str = "latest",
-    skip: int = 0,
-    limit: int = 50,
+    pagination: PaginationParams = Depends(),
     service: PostService = Depends(get_post_service),
     current_user: User = Depends(require_permission("community", "read")),
 ) -> Any:
@@ -44,10 +44,15 @@ async def admin_list_posts(
         search=search,
         sort=sort,
         include_hidden=True,
-        skip=skip,
-        limit=limit,
+        skip=pagination.skip,
+        limit=pagination.limit,
     )
-    return {"items": [post_to_dict(p) for p in posts], "total": total}
+    return PaginatedResponse(
+        items=[post_to_dict(p) for p in posts],
+        total=total,
+        skip=pagination.skip,
+        limit=pagination.limit,
+    )
 
 
 @router.put("/topics/{post_id}")
@@ -220,14 +225,15 @@ async def delete_category(
 @router.get("/reports")
 async def list_reports(
     status: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 20,
+    pagination: PaginationParams = Depends(),
     service: ReportService = Depends(get_report_service),
     current_user: User = Depends(require_permission("community", "read")),
 ) -> Any:
-    reports, total = await service.list_reports(status=status, skip=skip, limit=limit)
-    return {
-        "items": [
+    reports, total = await service.list_reports(
+        status=status, skip=pagination.skip, limit=pagination.limit
+    )
+    return PaginatedResponse(
+        items=[
             {
                 "id": r.id,
                 "reporter_id": r.reporter_id,
@@ -242,8 +248,10 @@ async def list_reports(
             }
             for r in reports
         ],
-        "total": total,
-    }
+        total=total,
+        skip=pagination.skip,
+        limit=pagination.limit,
+    )
 
 
 @router.post("/reports/{report_id}/resolve")

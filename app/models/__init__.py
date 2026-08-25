@@ -42,10 +42,13 @@ from app.models.task import Task, TaskClaim
 from app.models.points import PointsTransaction
 from app.models.contribution import ContributionCache
 from app.models.api_usage import ApiCallLog
-from app.models.conversation import Conversation, ChatMessage
+from app.models.conversation import AgentRun, ChatEvent, ChatMessage, Conversation
 from app.models.focus import FocusSession
 from app.models.llm_usage import LlmUsageLog
 from app.models.llm_config import LlmConfig
+from app.models.learning import WrongAnswer
+from app.models.learning_goal import LearningGoal
+from app.models.learning_plan import LearningPlanItem
 
 __all__ = [
     "Base",
@@ -94,8 +97,13 @@ __all__ = [
     "ContributionCache",
     "ApiCallLog",
     "Conversation",
+    "AgentRun",
     "ChatMessage",
+    "ChatEvent",
     "FocusSession",
     "LlmUsageLog",
     "LlmConfig",
+    "WrongAnswer",
+    "LearningGoal",
+    "LearningPlanItem",
 ]

@@ -17,7 +17,7 @@ from app.database import get_session
 from app.models.role import Role
 from app.schemas.rbac import AdminRoleCreate, AdminRoleUpdate
 from app.services.audit_service import AuditService
-from app.services.rbac_service import RBACService
+from app.services.rbac.rbac_service import RBACService
 
 
 def _sfx() -> str:

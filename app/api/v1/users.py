@@ -14,8 +14,8 @@ from app.models.user import User
 from app.schemas.pagination import PaginatedResponse, PaginationParams
 from app.schemas.user import UserCreate, UserResponse, UserUpdate
 from app.services.audit_service import AuditService
-from app.services.auth_service import AuthService
-from app.services.user_service import UserService
+from app.services.auth.auth_service import AuthService
+from app.services.user.user_service import UserService
 
 router = APIRouter()
 

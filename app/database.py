@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import NullPool
 
+from pathlib import Path
+
 from app.core.config import settings
 from app.core.constants import CONNECTION_POOL_BUDGET_RATIO
 
@@ -39,6 +41,10 @@ engine = create_async_engine(settings.database_url, **_engine_options)
 
 # 创建异步会话工厂
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+
+# alembic.ini 位于项目根（app/ 的上一级）；run_alembic_upgrade / _verify_alembic_version
+# 两处共用此常量，避免路径散落重复（方案「database.py alembic.ini 路径常量化」）。
+ALEMBIC_INI_PATH = Path(__file__).resolve().parent.parent / "alembic.ini"
 
 
 async def ensure_database_exists() -> bool:
@@ -165,13 +171,12 @@ async def run_alembic_upgrade() -> None:
     复用本函数，避免 alembic 路径/配置在两处重复。
     """
     import asyncio
-    from pathlib import Path
 
     from alembic import command
     from alembic.config import Config
 
     def _upgrade():
-        ini_path = Path(__file__).resolve().parent.parent / "alembic.ini"
+        ini_path = ALEMBIC_INI_PATH
         command.upgrade(Config(str(ini_path)), "head")
 
     # alembic command 是同步阻塞调用，放线程池避免阻塞事件循环
@@ -190,14 +195,12 @@ async def _verify_alembic_version() -> None:
     并发自动 upgrade 的竞态，又把“忘了跑迁移”从一堆 relation does not exist
     变成一句清晰提示。真正的迁移由独立步骤执行：alembic upgrade head。
     """
-    from pathlib import Path
-
     from alembic.config import Config
     from alembic.runtime.migration import MigrationContext
     from alembic.script import ScriptDirectory
 
     def _read_revisions(sync_conn):
-        ini_path = Path(__file__).resolve().parent.parent / "alembic.ini"
+        ini_path = ALEMBIC_INI_PATH
         script = ScriptDirectory.from_config(Config(str(ini_path)))
         heads = script.get_heads()
         current = MigrationContext.configure(sync_conn).get_current_revision()

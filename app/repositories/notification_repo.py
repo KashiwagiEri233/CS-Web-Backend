@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.notification import Notification
 from app.repositories.base import dml_rowcount
+from app.repositories.base import paginate
 
 
 class NotificationRepository:
@@ -85,12 +86,12 @@ class NotificationRepository:
                 )
             ).scalar_one()
         )
-        stmt = (
+        stmt = paginate(
             select(Notification)
             .where(*conditions)
-            .order_by(Notification.created_at.desc())
-            .offset(skip)
-            .limit(limit)
+            .order_by(Notification.created_at.desc()),
+            skip,
+            limit,
         )
         result = await self.db.execute(stmt)
         return list(result.scalars().all()), total

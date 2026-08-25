@@ -18,7 +18,7 @@
     display = utc_to_local(stored_utc_datetime)
 """
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Optional
 
 from app.core.config import settings
@@ -64,3 +64,20 @@ def local_to_utc(dt: Optional[datetime]) -> Optional[datetime]:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=settings.tzinfo)
     return dt.astimezone(timezone.utc)
+
+
+def local_day_start_utc(d: Optional[date] = None) -> datetime:
+    """配置时区某日（默认今天）的零点，转换为 UTC aware（存储层比较口径）。
+
+    重复实现治理波次 B2：收敛 workbench._local_day_start_utc 与
+    auxilio_tool_repo._today_start_utc 的相同实现。
+    """
+    day = d or now_local().date()
+    start = local_to_utc(datetime.combine(day, datetime.min.time()))
+    assert start is not None  # 入参恒非 None
+    return start
+
+
+def iso_or_none(dt: Optional[datetime]) -> Optional[str]:
+    """datetime → ISO 字符串；None 原样返回（重复实现治理波次 D2 B17）。"""
+    return dt.isoformat() if dt else None

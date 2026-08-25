@@ -31,6 +31,7 @@ def _run_without_loop(coro: Awaitable[Any]) -> Any:
         _EMERGENCY_LOOP = asyncio.new_event_loop()
     return _EMERGENCY_LOOP.run_until_complete(coro)
 
+
 # 跨实例广播总开关：默认关闭（单实例，行为与改造前完全一致）。
 _MULTI_INSTANCE = os.getenv("MULTI_INSTANCE", "false").strip().lower() in (
     "1",

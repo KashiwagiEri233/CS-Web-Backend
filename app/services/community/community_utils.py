@@ -13,7 +13,13 @@ import re
 import unicodedata
 
 from app.core.config import settings
+from typing import Iterable
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.constants import COMMUNITY_LIMITS, MENTION_PATTERN
+from app.models.user import User
 from app.utils.mask import mask_email
 
 
@@ -25,9 +31,7 @@ def hash_ip_for_view(ip: str) -> str:
     """
     secret = settings.COMMUNITY_IP_HASH_SECRET
     if not secret:
-        raise RuntimeError(
-            "COMMUNITY_IP_HASH_SECRET 未配置：拒绝处理访客 IP 匿名化"
-        )
+        raise RuntimeError("COMMUNITY_IP_HASH_SECRET 未配置：拒绝处理访客 IP 匿名化")
     return hmac.new(secret.encode(), ip.encode(), hashlib.sha256).hexdigest()
 
 
@@ -50,3 +54,12 @@ def to_author_summary(user) -> dict:
         "avatar_url": user.avatar_url,
         "avatar_type": user.avatar_type or "initial",
     }
+
+
+async def load_users_by_ids(db: AsyncSession, ids: Iterable[int]) -> dict[int, User]:
+    """批量加载用户（id → User）。重复实现治理波次 B2b：收敛 post/comment 作者补齐重复。"""
+    id_set = {i for i in ids if i}
+    if not id_set:
+        return {}
+    rows = (await db.execute(select(User).where(User.id.in_(id_set)))).scalars().all()
+    return {u.id: u for u in rows}

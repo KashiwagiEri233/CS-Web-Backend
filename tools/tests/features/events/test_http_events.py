@@ -72,9 +72,7 @@ async def _cleanup(db, user_ids: list[int], event_ids: list[int]) -> None:
     await db.execute(
         text("DELETE FROM events WHERE id = ANY(:ids)"), {"ids": event_ids}
     )
-    await db.execute(
-        text("DELETE FROM users WHERE id = ANY(:ids)"), {"ids": user_ids}
-    )
+    await db.execute(text("DELETE FROM users WHERE id = ANY(:ids)"), {"ids": user_ids})
     await db.commit()
 
 

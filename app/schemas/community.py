@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from app.schemas.base import TZModel
-from app.core.constants import COMMUNITY_LIMITS, MENTION_PATTERN
+from app.core.constants import COMMUNITY_LIMITS
 
 # ------------------------------------------------------------------ 社区
 
@@ -82,7 +82,9 @@ class TopicInput(BaseModel):
         if not v:
             raise ValueError("内容不能为空")
         if len(v) > COMMUNITY_LIMITS["TOPIC_CONTENT_MAX"]:
-            raise ValueError(f"内容不能超过 {COMMUNITY_LIMITS['TOPIC_CONTENT_MAX']} 字符")
+            raise ValueError(
+                f"内容不能超过 {COMMUNITY_LIMITS['TOPIC_CONTENT_MAX']} 字符"
+            )
         return v
 
 
@@ -170,7 +172,9 @@ class ReplyInput(BaseModel):
         if not v:
             raise ValueError("内容不能为空")
         if len(v) > COMMUNITY_LIMITS["REPLY_CONTENT_MAX"]:
-            raise ValueError(f"内容不能超过 {COMMUNITY_LIMITS['REPLY_CONTENT_MAX']} 字符")
+            raise ValueError(
+                f"内容不能超过 {COMMUNITY_LIMITS['REPLY_CONTENT_MAX']} 字符"
+            )
         return v
 
 

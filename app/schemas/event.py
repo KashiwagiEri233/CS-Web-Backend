@@ -139,6 +139,13 @@ class EventInput(BaseModel):
         return v
 
 
+def event_to_out(event) -> dict:
+    """EventOut 序列化 + registered_count（events 路由与 admin_events 共用，波次 B2 收敛）。"""
+    data = EventOut.model_validate(event).model_dump()
+    data["registered_count"] = getattr(event, "registered_count", None)
+    return data
+
+
 class EventOut(TZModel):
     """活动出参。"""
 

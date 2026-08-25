@@ -28,9 +28,7 @@ def upgrade() -> None:
         sa.Column("platform", sa.String(length=20), nullable=False),
         sa.Column("username", sa.String(length=120), nullable=False),
         sa.Column("year", sa.Integer(), nullable=False),
-        sa.Column(
-            "data", postgresql.JSONB(astext_type=sa.Text()), nullable=True
-        ),
+        sa.Column("data", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.Column("total", sa.Integer(), nullable=False),
         sa.Column("streak", sa.Integer(), nullable=False),
         sa.Column("fetched_at", sa.DateTime(timezone=True), nullable=False),
@@ -98,9 +96,7 @@ def upgrade() -> None:
         sa.Column("conversation_id", sa.Integer(), nullable=False),
         sa.Column("role", sa.String(length=20), nullable=False),
         sa.Column("content", sa.Text(), nullable=True),
-        sa.Column(
-            "tool_calls", postgresql.JSONB(astext_type=sa.Text()), nullable=True
-        ),
+        sa.Column("tool_calls", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(["conversation_id"], ["conversations.id"]),
         sa.PrimaryKeyConstraint("id"),
@@ -122,5 +118,7 @@ def downgrade() -> None:
     op.drop_index(op.f("ix_api_call_logs_created_at"), table_name="api_call_logs")
     op.drop_index(op.f("ix_api_call_logs_endpoint"), table_name="api_call_logs")
     op.drop_table("api_call_logs")
-    op.drop_index(op.f("ix_contribution_cache_user_id"), table_name="contribution_cache")
+    op.drop_index(
+        op.f("ix_contribution_cache_user_id"), table_name="contribution_cache"
+    )
     op.drop_table("contribution_cache")

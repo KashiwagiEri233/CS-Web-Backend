@@ -21,7 +21,7 @@ from app.repositories.community_repo import (
     CommunityCommentRepository,
     CommunityInteractionRepository,
 )
-from app.services.community_utils import scan_mentions
+from app.services.community.community_utils import scan_mentions
 
 
 async def notify_mentions(

@@ -7,8 +7,6 @@
 API 契约不变（api/v1/community.py 端点 path/method/响应结构保持）。
 """
 
-from typing import Any, Optional
-
 from sqlalchemy import func, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,10 +29,9 @@ class ReactionService:
         self.post_repo = CommunityPostRepository(db)
         self.comment_repo = CommunityCommentRepository(db)
 
-    async def toggle_like(
-        self, user_id: int, target_type: str, target_id: int
-    ) -> dict:
+    async def toggle_like(self, user_id: int, target_type: str, target_id: int) -> dict:
         table = CommunityPost if target_type == "post" else CommunityComment
+        target: CommunityPost | CommunityComment | None
         if target_type == "post":
             target = await self.post_repo.get_by_id(target_id)
         else:
@@ -85,9 +82,7 @@ class ReactionService:
         )
         return int(result.scalar() or 0)
 
-    async def _notify_like(
-        self, target_type: str, target, actor_id: int
-    ) -> None:
+    async def _notify_like(self, target_type: str, target, actor_id: int) -> None:
         recipient_id = target.author_id
         if recipient_id == actor_id:
             return

@@ -11,7 +11,7 @@ from app.dependencies_services import get_auth_service
 from app.middleware.rbac import require_permission
 from app.models.user import User
 from app.schemas.password_reset import ResetRequestOut, ResetRequestResolve
-from app.services.auth_service import AuthService
+from app.services.auth.auth_service import AuthService
 from app.services.password_reset_service import PasswordResetService
 
 router = APIRouter()
