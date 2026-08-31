@@ -15,7 +15,7 @@ dependencies = [
     "loguru==0.7.2",
     "opentelemetry-exporter-otlp==1.42.1",
     "opentelemetry-instrumentation-fastapi==0.63b1",
-    "opentelemetry-instrumentation-redis==0.63b1",
+    "opentelemetry-instrumentation-redis==0.65b0",
     "opentelemetry-instrumentation-sqlalchemy==0.63b1",
     "opentelemetry-sdk==1.44.0",
     "psycopg2-binary==2.9.10",
