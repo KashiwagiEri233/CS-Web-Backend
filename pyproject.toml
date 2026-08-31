@@ -13,7 +13,7 @@ dependencies = [
     "greenlet>=3.0,<4.0",
     "httpx>=0.28.1,<1.0",
     "loguru==0.7.2",
-    "opentelemetry-exporter-otlp==1.42.1",
+    "opentelemetry-exporter-otlp==1.44.0",
     "opentelemetry-instrumentation-fastapi==0.63b1",
     "opentelemetry-instrumentation-redis==0.63b1",
     "opentelemetry-instrumentation-sqlalchemy==0.63b1",
