@@ -23,6 +23,7 @@ class EventRepository:
         self,
         *,
         status: Optional[str] = None,
+        month: Optional[str] = None,
         search: Optional[str] = None,
         tag: Optional[str] = None,
         skip: int = 0,
@@ -31,6 +32,17 @@ class EventRepository:
         conditions: list = []
         if status:
             conditions.append(Event.status == status)
+        if month and month.strip():
+            m = month.strip()
+            m_alt = m.replace("-", ".") if "-" in m else m.replace(".", "-")
+            conditions.append(
+                or_(
+                    Event.month == m,
+                    Event.month == m_alt,
+                    Event.date.startswith(m),
+                    Event.date.startswith(m_alt),
+                )
+            )
         if search and search.strip():
             kw = f"%{search.strip()}%"
             conditions.append(or_(Event.title.ilike(kw), Event.description.ilike(kw)))
@@ -48,20 +60,65 @@ class EventRepository:
                 )
             ).scalar_one()
         )
+        reg_subq = (
+            select(
+                EventRegistration.event_id,
+                func.count(EventRegistration.id).label("registered_count"),
+            )
+            .where(EventRegistration.status == "registered")
+            .group_by(EventRegistration.event_id)
+            .subquery()
+        )
         stmt = paginate(
-            select(Event)
+            select(
+                Event,
+                func.coalesce(reg_subq.c.registered_count, 0).label("registered_count"),
+            )
+            .outerjoin(reg_subq, reg_subq.c.event_id == Event.id)
             .where(*conditions)
-            .order_by(Event.is_pinned.desc(), Event.date.desc()),
+            .order_by(
+                Event.is_pinned.desc(),
+                Event.date.desc().nullslast(),
+                Event.id.desc(),
+            ),
             skip,
             limit,
         )
         rows = await self.db.execute(stmt)
-        return list(rows.scalars().all()), total
+        events: list[Event] = []
+        for event, reg_count in rows.all():
+            setattr(event, "registered_count", int(reg_count))
+            events.append(event)
+        return events, total
 
     async def list_all(self) -> list[Event]:
-        stmt = select(Event).order_by(Event.is_pinned.desc(), Event.date.desc())
+        reg_subq = (
+            select(
+                EventRegistration.event_id,
+                func.count(EventRegistration.id).label("registered_count"),
+            )
+            .where(EventRegistration.status == "registered")
+            .group_by(EventRegistration.event_id)
+            .subquery()
+        )
+        stmt = (
+            select(
+                Event,
+                func.coalesce(reg_subq.c.registered_count, 0).label("registered_count"),
+            )
+            .outerjoin(reg_subq, reg_subq.c.event_id == Event.id)
+            .order_by(
+                Event.is_pinned.desc(),
+                Event.date.desc().nullslast(),
+                Event.id.desc(),
+            )
+        )
         rows = await self.db.execute(stmt)
-        return list(rows.scalars().all())
+        events: list[Event] = []
+        for event, reg_count in rows.all():
+            setattr(event, "registered_count", int(reg_count))
+            events.append(event)
+        return events
 
     async def get_by_id(self, event_id: int) -> Optional[Event]:
         # populate_existing：即便对象已在 identity map（含批量更新后的过期状态）
@@ -220,7 +277,7 @@ class EventRegistrationRepository:
                 )
                 .outerjoin(EventRegistration, EventRegistration.event_id == Event.id)
                 .group_by(Event.id)
-                .order_by(Event.date.desc())
+                .order_by(Event.date.desc().nullslast(), Event.id.desc())
             )
         ).all()
         result = []

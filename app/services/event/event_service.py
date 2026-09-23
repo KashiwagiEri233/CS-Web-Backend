@@ -11,6 +11,7 @@ from datetime import date as date_cls
 from typing import Optional
 
 from app.core.constants import VERIFICATION_CODE_MIN, VERIFICATION_CODE_MAX
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events import event_bus
@@ -80,30 +81,32 @@ class EventService:
     # ------------------------------------------------------------------ CRUD
 
     async def auto_archive(self) -> int:
-        """自动归档：日期已过的活动标记 ended。"""
-        return await self.event_repo.auto_archive(date_cls.today().isoformat())
+        """自动归档：日期已过的活动标记 ended。供定时任务或管理任务调用。"""
+        count = await self.event_repo.auto_archive(date_cls.today().isoformat())
+        await self.db.commit()
+        return count
 
     async def list_events(
         self,
         *,
         status: Optional[str] = None,
+        month: Optional[str] = None,
         search: Optional[str] = None,
         tag: Optional[str] = None,
         skip: int = 0,
         limit: int = 50,
     ) -> tuple[list[Event], int]:
-        await self.auto_archive()
         events, total = await self.event_repo.list_events(
-            status=status, search=search, tag=tag, skip=skip, limit=limit
+            status=status,
+            month=month,
+            search=search,
+            tag=tag,
+            skip=skip,
+            limit=limit,
         )
-        # 附报名人数
-        for event in events:
-            count = await self.reg_repo.count_registered(event.id)
-            setattr(event, "registered_count", count)
         return events, total
 
     async def get_event(self, event_id: int) -> Event:
-        await self.auto_archive()
         event = await self.event_repo.get_by_id(event_id)
         if event is None:
             raise NotFoundException(
@@ -196,22 +199,92 @@ class EventService:
     ) -> Optional[EventRegistration]:
         return await self.reg_repo.get(user_id, event_id)
 
+    @staticmethod
+    def _validate_form_data(event: Event, form_data: Optional[dict]) -> None:
+        fields = event.registration_fields or []
+        if not fields:
+            return
+        data = form_data or {}
+        if len(data) > 50:
+            raise ValidationException(
+                message="提交字段数量超出限制",
+                error_code=ErrorCode.Validation.VALIDATION_FAILED,
+            )
+        for field in fields:
+            key = (
+                field.get("key")
+                if isinstance(field, dict)
+                else getattr(field, "key", None)
+            )
+            if not key:
+                continue
+            label = (
+                field.get("label")
+                if isinstance(field, dict)
+                else getattr(field, "label", None)
+            ) or key
+            required = bool(
+                field.get("required", False)
+                if isinstance(field, dict)
+                else getattr(field, "required", False)
+            )
+            field_type = (
+                field.get("type")
+                if isinstance(field, dict)
+                else getattr(field, "type", "text")
+            ) or "text"
+            options = (
+                field.get("options")
+                if isinstance(field, dict)
+                else getattr(field, "options", None)
+            )
+
+            val = data.get(key)
+            val_str = str(val).strip() if val is not None else ""
+
+            if required and not val_str:
+                raise ValidationException(
+                    message=f"{label} 为必填项",
+                    error_code=ErrorCode.Validation.VALIDATION_FAILED,
+                )
+            if val_str and len(val_str) > 1000:
+                raise ValidationException(
+                    message=f"{label} 输入内容过长（最多 1000 字符）",
+                    error_code=ErrorCode.Validation.VALIDATION_FAILED,
+                )
+            if field_type == "select" and options and val_str:
+                if val_str not in options:
+                    raise ValidationException(
+                        message=f"{label} 选项无效",
+                        error_code=ErrorCode.Validation.VALIDATION_FAILED,
+                    )
+
     async def register(
         self, user_id: int, event_id: int, form_data: Optional[dict] = None
     ) -> EventRegistration:
-        event = await self.event_repo.get_by_id(event_id)
+        # 悲观锁锁定活动行，防止并发报名超卖
+        stmt = select(Event).where(Event.id == event_id).with_for_update()
+        event = (await self.db.execute(stmt)).scalar_one_or_none()
         if event is None:
             raise NotFoundException(
                 message="活动不存在", resource_type="event", resource_id=str(event_id)
             )
 
-        await self.auto_archive()
-        await self.db.refresh(event)
         if event.status == "ended":
             raise ConflictException(
                 message="活动已结束，不可报名",
                 error_code=ErrorCode.Event.EVENT_ENDED,
             )
+
+        if event.date:
+            norm_date = event.date.replace(".", "-").replace("/", "-")
+            if len(norm_date) >= 10 and norm_date[:10] < date_cls.today().isoformat():
+                event.status = "ended"
+                await self.db.flush()
+                raise ConflictException(
+                    message="活动已结束，不可报名",
+                    error_code=ErrorCode.Event.EVENT_ENDED,
+                )
 
         existing = await self.reg_repo.get(user_id, event_id)
         if existing is not None and existing.status == "registered":
@@ -224,6 +297,8 @@ class EventService:
             raise ConflictException(
                 message="活动报名已满", error_code=ErrorCode.Event.FULL
             )
+
+        self._validate_form_data(event, form_data)
 
         if existing is not None:  # cancelled → 重新报名
             await self.reg_repo.set_status(existing, "registered", None)
@@ -273,13 +348,13 @@ class EventService:
 
     async def list_user_registered_events(self, user_id: int) -> list[Event]:
         """用户已报名的活动（registered 状态）。"""
-        await self.auto_archive()
         regs = await self.reg_repo.list_for_user_all(user_id)
         events = []
         for reg in regs:
-            event = await self.event_repo.get_by_id(reg.event_id)
-            if event is not None:
-                events.append(event)
+            if reg.status == "registered":
+                event = await self.event_repo.get_by_id(reg.event_id)
+                if event is not None:
+                    events.append(event)
         return events
 
     async def list_event_registrations(self, event_id: int) -> list[EventRegistration]:
@@ -322,7 +397,8 @@ class EventService:
         form_data: Optional[dict] = None,
         client_meta=None,
     ) -> EventRegistration:
-        event = await self.event_repo.get_by_id(event_id)
+        stmt = select(Event).where(Event.id == event_id).with_for_update()
+        event = (await self.db.execute(stmt)).scalar_one_or_none()
         if event is None:
             raise NotFoundException(
                 message="活动不存在", resource_type="event", resource_id=str(event_id)
@@ -338,6 +414,7 @@ class EventService:
             raise ConflictException(
                 message="活动名额已满", error_code=ErrorCode.Event.FULL
             )
+        self._validate_form_data(event, form_data)
         if existing is not None:
             await self.reg_repo.set_status(existing, "registered", None)
             existing.form_data = form_data
