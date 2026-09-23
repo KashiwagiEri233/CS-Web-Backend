@@ -26,13 +26,15 @@ router = APIRouter()
 async def list_events(
     pagination: PaginationParams = Depends(),
     status: Optional[str] = None,
+    month: Optional[str] = None,
     search: Optional[str] = None,
     tag: Optional[str] = None,
     service: EventService = Depends(get_event_service),
 ) -> Any:
-    """活动列表（status/search/tag 筛选 + 分页，含报名人数）。"""
+    """活动列表（status/month/search/tag 筛选 + 分页，含报名人数）。"""
     events, total = await service.list_events(
         status=status,
+        month=month,
         search=search,
         tag=tag,
         skip=pagination.skip,

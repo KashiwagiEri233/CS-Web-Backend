@@ -53,10 +53,6 @@ async def list_all_events(
     body.total / body.total_pages 做分页，裸数组会导致列表永远为空。
     """
     events = await service.event_repo.list_all()
-    for event in events:
-        setattr(
-            event, "registered_count", await service.reg_repo.count_registered(event.id)
-        )
     items = [event_to_out(e) for e in events]
     total = len(items)
     page_size = max(total, 1)  # 管理端全量列表不分页
