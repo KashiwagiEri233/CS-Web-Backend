@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.constants import IMMUTABLE_IMAGE_CACHE_CONTROL
 from app.core.exceptions import NotFoundException, ValidationException
 from app.core.request_context import get_client_meta
 from app.database import get_db
@@ -644,7 +645,10 @@ async def serve_community_image(filename: str) -> Any:
         ".gif": "image/gif",
     }
     return FileResponse(
-        path, media_type=mime_map.get(path.suffix.lower(), "application/octet-stream")
+        path,
+        media_type=mime_map.get(path.suffix.lower(), "application/octet-stream"),
+        # 文件名含毫秒时间戳（{id}-{ms}.ext）且不复用，可安全 immutable
+        headers={"Cache-Control": IMMUTABLE_IMAGE_CACHE_CONTROL},
     )
 
 
@@ -673,27 +677,21 @@ async def list_tags(
     """聚合公开文章（published）中出现过的全部标签，去重排序后返回。
 
     供前端 Feed 页标签云使用；标签云为空时不视为错误。
-    """
-    from app.models.community import CommunityPost
 
-    result = (
+    实现：数据库侧用 ``jsonb_array_elements_text`` 展开 + DISTINCT 去重，
+    不再把全表 tags 列拉回 Python 遍历（文章量增长后原实现是明显的读放大）。
+    """
+    tag_value = func.jsonb_array_elements_text(CommunityPost.tags).label("tag")
+    rows = (
         (
             await db.execute(
-                select(CommunityPost.tags).where(CommunityPost.status == "published")
+                select(tag_value)
+                .where(CommunityPost.status == "published")
+                .distinct()
             )
         )
         .scalars()
         .all()
     )
-
-    collected: list[str] = []
-    seen: set[str] = set()
-    for tag_list in result:
-        if not tag_list:
-            continue
-        for tag in tag_list:
-            if isinstance(tag, str) and tag.strip() and tag not in seen:
-                seen.add(tag)
-                collected.append(tag)
-    collected.sort()
-    return {"tags": collected}
+    tags = sorted({t.strip() for t in rows if isinstance(t, str) and t.strip()})
+    return {"tags": tags}

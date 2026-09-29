@@ -120,6 +120,18 @@ class EventRepository:
             events.append(event)
         return events
 
+    async def list_by_ids(self, event_ids: list[int]) -> list[Event]:
+        """按 id 集合批量取活动（不附带报名数，保持与 get_by_id 一致的最小字段语义）。
+
+        供「用户已报名活动」等场景一次取回，消除逐条 get_by_id 的 N+1。
+        返回顺序不保证，调用方自行排序。
+        """
+        if not event_ids:
+            return []
+        stmt = select(Event).where(Event.id.in_(event_ids))
+        rows = await self.db.execute(stmt)
+        return list(rows.scalars().all())
+
     async def get_by_id(self, event_id: int) -> Optional[Event]:
         # populate_existing：即便对象已在 identity map（含批量更新后的过期状态）
         # 也强制从 DB 刷新，保证返回最新状态
@@ -312,6 +324,17 @@ class EventCheckinRepository:
         self.db.add(obj)
         await self.db.flush()
         return obj
+
+    async def create_many(self, rows: list[dict]) -> int:
+        """批量创建签到码：单次 flush（替代逐条 create 的 N+1 写放大）。
+
+        ``rows`` 为 EventCheckin 字段字典列表；仅 flush，由调用方 commit。
+        """
+        if not rows:
+            return 0
+        self.db.add_all([EventCheckin(**row) for row in rows])
+        await self.db.flush()
+        return len(rows)
 
     async def get_by_code(self, event_id: int, code: str) -> Optional[EventCheckin]:
         stmt = select(EventCheckin).where(

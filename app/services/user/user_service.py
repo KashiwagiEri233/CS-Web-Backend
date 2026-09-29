@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Optional, Tuple
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -197,6 +197,10 @@ class UserService:
             conditions.append(User.is_active.is_(True))
         elif active == "inactive":
             conditions.append(User.is_active.is_(False))
+        if role != "all":
+            # 角色筛选下推到 SQL（EXISTS 子查询）：原实现在分页之后用 Python 过滤，
+            # 会导致 total 与实际结果不一致、当页条数少于 page_size（分页语义失真）。
+            conditions.append(User.roles.any(Role.name == role))
 
         total = int(
             (
@@ -214,10 +218,6 @@ class UserService:
             page_size,
         )
         users = list((await self.db.execute(stmt)).scalars().all())
-
-        # role 筛选（角色走关联表，查询后过滤）
-        if role != "all":
-            users = [u for u in users if role in {r.name for r in u.roles}]
 
         return {
             "users": [to_admin_out(u) for u in users],
@@ -530,21 +530,22 @@ class UserService:
         return user.is_superuser or any(r.name == "admin" for r in user.roles)
 
     async def _active_admin_count(self) -> int:
-        from sqlalchemy import select
-        from sqlalchemy.orm import selectinload
+        """活跃管理员数量（is_superuser 或持有 admin 角色）。
 
-        rows = (
-            (
-                await self.db.execute(
-                    select(User)
-                    .where(User.is_active.is_(True), User.deleted_at.is_(None))
-                    .options(selectinload(User.roles))
-                )
+        单条聚合查询：原实现把全部活跃用户连同角色一起加载回 Python 再逐条过滤，
+        用户量增长后是明显的读放大（且被 update / disable / delete 等写路径调用）。
+        """
+        stmt = (
+            select(func.count(func.distinct(User.id)))
+            .select_from(User)
+            .outerjoin(User.roles)
+            .where(
+                User.is_active.is_(True),
+                User.deleted_at.is_(None),
+                or_(User.is_superuser.is_(True), Role.name == "admin"),
             )
-            .scalars()
-            .all()
         )
-        return sum(1 for u in rows if self._is_admin_target(u))
+        return int((await self.db.execute(stmt)).scalar_one() or 0)
 
     async def _set_user_role(self, user: User, role_name: str) -> None:
         """替换用户角色为单一角色（前端语义：一用户一主角色）。"""

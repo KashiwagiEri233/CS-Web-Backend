@@ -347,15 +347,20 @@ class EventService:
         )
 
     async def list_user_registered_events(self, user_id: int) -> list[Event]:
-        """用户已报名的活动（registered 状态）。"""
-        regs = await self.reg_repo.list_for_user_all(user_id)
-        events = []
-        for reg in regs:
-            if reg.status == "registered":
-                event = await self.event_repo.get_by_id(reg.event_id)
-                if event is not None:
-                    events.append(event)
-        return events
+        """用户已报名的活动（registered 状态）。
+
+        批量取活动（单次 IN 查询）后按报名顺序回填，避免逐条 get_by_id 的 N+1。
+        """
+        regs = [
+            reg
+            for reg in await self.reg_repo.list_for_user_all(user_id)
+            if reg.status == "registered"
+        ]
+        if not regs:
+            return []
+        events = await self.event_repo.list_by_ids([reg.event_id for reg in regs])
+        by_id = {event.id: event for event in events}
+        return [by_id[reg.event_id] for reg in regs if reg.event_id in by_id]
 
     async def list_event_registrations(self, event_id: int) -> list[EventRegistration]:
         return await self.reg_repo.list_for_event(event_id)
@@ -454,18 +459,23 @@ class EventService:
         existing_codes = {
             c.registration_id for c in await self.checkin_repo.list_for_event(event_id)
         }
+        spans = VERIFICATION_CODE_MAX - VERIFICATION_CODE_MIN + 1
+        pending: list[dict] = []
         for reg in regs:
             if reg.id in existing_codes:
                 skipped += 1
                 continue
-            code = f"{secrets.randbelow(VERIFICATION_CODE_MAX - VERIFICATION_CODE_MIN + 1) + VERIFICATION_CODE_MIN}"  # noqa: E501
-            await self.checkin_repo.create(
-                event_id=event_id,
-                registration_id=reg.id,
-                user_id=reg.user_id,
-                checkin_code=code,
+            code = f"{secrets.randbelow(spans) + VERIFICATION_CODE_MIN}"
+            pending.append(
+                {
+                    "event_id": event_id,
+                    "registration_id": reg.id,
+                    "user_id": reg.user_id,
+                    "checkin_code": code,
+                }
             )
-            generated += 1
+        # 批量插入（单次 flush），替代逐条 create 的 N+1 写放大
+        generated = await self.checkin_repo.create_many(pending)
         await self.db.commit()
         await self._audit(
             "event.checkin_generate",
