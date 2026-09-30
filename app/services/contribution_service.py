@@ -15,7 +15,10 @@ from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.constants import CONTRIBUTION_CACHE_TTL_SECONDS
+from app.core.constants import (
+    CONTRIBUTION_CACHE_TTL_SECONDS,
+    GITHUB_FETCH_TIMEOUT_SECONDS,
+)
 from app.core.timezone import now_utc, iso_or_none
 from app.models.contribution import ContributionCache
 
@@ -161,7 +164,11 @@ class ContributionService:
         self, username: str, year: int
     ) -> tuple[dict[str, int], int]:
         url = _GITHUB_CONTRIBUTIONS_URL.format(username=username)
-        async with httpx.AsyncClient(timeout=8, follow_redirects=True) as client:
+        # 抓取在请求路径内：超时收敛到 GITHUB_FETCH_TIMEOUT_SECONDS，超时后由调用方
+        # 降级返回旧缓存（stale=True），避免 GitHub 不可达时把请求挂满 8 秒。
+        async with httpx.AsyncClient(
+            timeout=GITHUB_FETCH_TIMEOUT_SECONDS, follow_redirects=True
+        ) as client:
             resp = await client.get(
                 url,
                 headers={"User-Agent": _UA, "Accept": "text/html"},

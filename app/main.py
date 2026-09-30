@@ -3,10 +3,12 @@ from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 
 from app import __version__, __codename__
 from app.api import api_router
 from app.core.config import settings
+from app.core.constants import GZIP_MINIMUM_SIZE_BYTES
 from app.core.lifecycle import (
     register_startup,
     run_shutdown,
@@ -159,6 +161,9 @@ def create_app() -> FastAPI:
     application.add_middleware(ApiUsageMiddleware)
     application.add_middleware(SecurityHeadersMiddleware)
     application.add_middleware(ExceptionHandlerMiddleware)
+    # 响应压缩：注册在异常处理之外层，保证错误响应同样被压缩。
+    # 生产经 Caddy 时，Caddy 依据 Content-Encoding 判断，不会二次压缩。
+    application.add_middleware(GZipMiddleware, minimum_size=GZIP_MINIMUM_SIZE_BYTES)
     application.add_middleware(
         CORSMiddleware,
         allow_origins=settings.allowed_origins_list,

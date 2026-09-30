@@ -9,6 +9,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, File, Request, UploadFile
 from fastapi.responses import FileResponse
 
+from app.core.constants import IMMUTABLE_IMAGE_CACHE_CONTROL
 from app.core.exceptions import NotFoundException
 from app.core.request_context import get_client_meta
 from app.dependencies import get_current_active_user
@@ -124,7 +125,13 @@ async def serve_avatar(filename: str) -> Any:
         ".webp": "image/webp",
         ".gif": "image/gif",
     }
-    return FileResponse(path, media_type=mime_map.get(ext, "application/octet-stream"))
+    return FileResponse(
+        path,
+        media_type=mime_map.get(ext, "application/octet-stream"),
+        # 文件名含毫秒时间戳（user{id}-{ms}.ext）且一经写入不再复用，可安全 immutable；
+        # FileResponse 自带 ETag/Last-Modified，配合该头二次访问直接命中浏览器缓存。
+        headers={"Cache-Control": IMMUTABLE_IMAGE_CACHE_CONTROL},
+    )
 
 
 @router.get("/users/{user_id}", response_model=PublicUserProfileResponse)

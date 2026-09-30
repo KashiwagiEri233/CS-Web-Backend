@@ -156,6 +156,20 @@ class RBACRepository:
         )
         return [row[0] for row in result.all()]
 
+    async def count_users_by_role(self, role_ids: Sequence[int]) -> dict[int, int]:
+        """按角色统计用户数（单条 group by 聚合，未出现的角色不在结果中）。
+
+        用于管理员角色列表：替代「逐角色 get_user_ids_by_role 再取长度」的 N+1。
+        """
+        if not role_ids:
+            return {}
+        result = await self.db.execute(
+            select(user_roles.c.role_id, func.count(user_roles.c.user_id))
+            .where(user_roles.c.role_id.in_(role_ids))
+            .group_by(user_roles.c.role_id)
+        )
+        return {int(row[0]): int(row[1]) for row in result.all()}
+
     async def get_role_ids_by_permission(self, permission_id: int) -> List[int]:
         """查询拥有指定权限的全部角色 id（用于权限定义变更时缓存失效）。"""
         result = await self.db.execute(

@@ -285,11 +285,15 @@ class RBACService(RBACAssignmentMixin):
     # ------------------------------------------------------------------ 管理员视图（子阶段 2.5）
 
     async def list_roles_admin(self) -> list[dict]:
-        """管理员角色列表：角色 + 权限名 + 用户数（对齐前端 admin 角色管理 UI）。"""
+        """管理员角色列表：角色 + 权限名 + 用户数（对齐前端 admin 角色管理 UI）。
+
+        用户数走单条 group by 聚合，替代「逐角色查询用户 id 再取长度」的 N+1。
+        """
         roles = await self.rbac_repo.get_all_roles(limit=None)
+        counts = await self.rbac_repo.count_users_by_role([role.id for role in roles])
         result: list[dict] = []
         for role in roles:
-            user_count = len(await self.rbac_repo.get_user_ids_by_role(role.id))
+            user_count = counts.get(role.id, 0)
             result.append(
                 {
                     "id": role.id,

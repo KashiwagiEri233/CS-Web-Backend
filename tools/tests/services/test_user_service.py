@@ -305,3 +305,33 @@ async def test_delete_user_blocks_non_superuser_deleting_superuser(
         await svc.delete_user(9, actor=_actor())
 
     svc.user_repo.update.assert_not_called()
+
+
+async def test_list_users_for_admin_filter_role(user_service, monkeypatch):
+    """验证后台用户列表按角色筛选下推至 SQL。"""
+    svc = user_service
+    monkeypatch.setattr(
+        "app.services.user.user_service.to_admin_out",
+        lambda u: {"id": u.id, "email": u.email},
+    )
+    mock_count_result = MagicMock()
+    mock_count_result.scalar_one.return_value = 1
+    mock_users_result = MagicMock()
+    user_mock = MagicMock(id=1, email="test@test.com")
+    mock_users_result.scalars.return_value.all.return_value = [user_mock]
+    svc.db.execute.side_effect = [mock_count_result, mock_users_result]
+
+    result = await svc.list_users_admin(page=1, page_size=10, role="admin")
+    assert result["total"] == 1
+    assert len(result["users"]) == 1
+
+
+async def test_active_admin_count(user_service):
+    """验证 _active_admin_count 单次聚合统计活跃管理员数量。"""
+    svc = user_service
+    mock_result = MagicMock()
+    mock_result.scalar_one.return_value = 3
+    svc.db.execute.return_value = mock_result
+
+    count = await svc._active_admin_count()
+    assert count == 3
