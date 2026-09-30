@@ -685,9 +685,7 @@ async def list_tags(
     rows = (
         (
             await db.execute(
-                select(tag_value)
-                .where(CommunityPost.status == "published")
-                .distinct()
+                select(tag_value).where(CommunityPost.status == "published").distinct()
             )
         )
         .scalars()

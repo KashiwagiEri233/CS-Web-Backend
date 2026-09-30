@@ -12,7 +12,13 @@ def test_validate_form_data_success():
     event = MagicMock(spec=Event)
     event.registration_fields = [
         {"key": "qq", "label": "QQ号", "type": "text", "required": True},
-        {"key": "track", "label": "方向", "type": "select", "required": True, "options": ["Web", "AI", "Sec"]},
+        {
+            "key": "track",
+            "label": "方向",
+            "type": "select",
+            "required": True,
+            "options": ["Web", "AI", "Sec"],
+        },
         {"key": "note", "label": "备注", "type": "textarea", "required": False},
     ]
 
@@ -35,7 +41,13 @@ def test_validate_form_data_missing_required():
 def test_validate_form_data_invalid_select_option():
     event = MagicMock(spec=Event)
     event.registration_fields = [
-        {"key": "track", "label": "方向", "type": "select", "required": True, "options": ["Web", "AI"]},
+        {
+            "key": "track",
+            "label": "方向",
+            "type": "select",
+            "required": True,
+            "options": ["Web", "AI"],
+        },
     ]
 
     with pytest.raises(ValidationException) as exc_info:
