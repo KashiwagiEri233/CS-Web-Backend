@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Optional
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
@@ -13,6 +14,7 @@ from app.core.exceptions import (
 )
 from app.core.timezone import now_utc
 from app.models.task import Task, TaskClaim
+from app.models.user import User
 from app.repositories.tools_repo import TaskRepository
 from app.schemas.tools import TaskInput
 from app.services.points_service import PointsService
@@ -33,9 +35,14 @@ class TaskService:
         skip: int = 0,
         limit: int = 20,
     ) -> tuple[list[Task], int]:
-        return await self.repo.list_tasks(
+        tasks, total = await self.repo.list_tasks(
             status=status, category=category, skip=skip, limit=limit
         )
+        # 附活跃认领数（一次 GROUP BY，TOOLS-GOV Slice E：原前端读取 claimant_count 恒 0）
+        counts = await self.repo.count_active_claims_by_ids([t.id for t in tasks])
+        for task in tasks:
+            setattr(task, "claimant_count", counts.get(task.id, 0))
+        return tasks, total
 
     async def get_task(self, task_id: int) -> Task:
         task = await self.repo.get_by_id(task_id)
@@ -43,6 +50,7 @@ class TaskService:
             raise NotFoundException(
                 message="任务不存在", resource_type="task", resource_id=str(task_id)
             )
+        setattr(task, "claimant_count", await self.repo.count_active_claims(task.id))
         return task
 
     async def create_task(self, created_by: int, data: TaskInput) -> Task:
@@ -118,6 +126,22 @@ class TaskService:
         await self.db.delete(claim)
         await self.db.commit()
 
+    async def cancel_task_claim(self, user_id: int, task_id: int) -> None:
+        """按 (task_id, user_id) 维度取消认领（BFF 以 taskId 发起，TOOLS-GOV Slice B）。"""
+        claim = await self.repo.get_claim(task_id, user_id)
+        if claim is None or claim.user_id != user_id:
+            raise NotFoundException(
+                message="认领记录不存在",
+                resource_type="task_claim",
+                resource_id=str(task_id),
+            )
+        if claim.status != "claimed":
+            raise ConflictException(
+                message="该认领不可取消", error_code=ErrorCode.Community.STATUS_CONFLICT
+            )
+        await self.db.delete(claim)
+        await self.db.commit()
+
     async def user_claims(self, user_id: int) -> list[TaskClaim]:
         return await self.repo.list_claims_for_user(user_id)
 
@@ -126,10 +150,36 @@ class TaskService:
         return await self.repo.list_claims_for_task(task_id)
 
     async def pending_claims(self) -> list[TaskClaim]:
-        return await self.repo.list_pending_claims()
+        claims = await self.repo.list_pending_claims()
+        await self._load_claimant_names(claims)
+        return claims
 
-    async def submit_claim(self, user_id: int, claim_id: int) -> TaskClaim:
-        """用户提交完成（认领 → submitted）。"""
+    async def _load_claimant_names(self, claims: list[TaskClaim]) -> None:
+        """批量填充认领人 display_name（TOOLS-GOV Slice E：管理端待审核列表此前恒空）。"""
+        if not claims:
+            return
+        users = {
+            u.id: u
+            for u in (
+                await self.db.execute(
+                    select(User).where(User.id.in_({c.user_id for c in claims}))
+                )
+            )
+            .scalars()
+            .all()
+        }
+        for claim in claims:
+            user = users.get(claim.user_id)
+            setattr(
+                claim,
+                "display_name",
+                (user.display_name or user.username) if user else None,
+            )
+
+    async def submit_claim(
+        self, user_id: int, claim_id: int, submission_url: Optional[str] = None
+    ) -> TaskClaim:
+        """用户提交完成（认领 → submitted），可选落库证明材料链接（Slice E）。"""
         claim = await self.repo.get_claim_by_id(claim_id)
         if claim is None or claim.user_id != user_id:
             raise NotFoundException(
@@ -143,6 +193,8 @@ class TaskService:
             )
         claim.status = "submitted"
         claim.completed_at = now_utc()
+        if submission_url:
+            claim.submission_url = submission_url
         await self.db.commit()
         return claim
 

@@ -237,6 +237,8 @@ class TaskOut(BaseModel):
     closed_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
+    # 活跃认领数（claimed/submitted，TOOLS-GOV Slice E：原前端读取恒 0）
+    claimant_count: int = 0
 
 
 class TaskClaimOut(BaseModel):
@@ -248,6 +250,7 @@ class TaskClaimOut(BaseModel):
     display_name: Optional[str] = None
     status: str
     claim_note: Optional[str] = None
+    submission_url: Optional[str] = None
     completed_at: Optional[datetime] = None
     reviewed_by: Optional[int] = None
     review_note: Optional[str] = None
@@ -435,4 +438,7 @@ class ComponentMigrationStatusOutput(BaseModel):
     old_migration_status: str
     migration_status: str
     visibility_opened: bool = False
+    # slug↔key 闭环的可见性模块键（service MigrationStatusResult 携带，
+    # 此前 schema 缺失导致联动结果被静默丢弃——TOOLS-GOV Slice D 补齐）。
+    visibility_key: str = ""
     model_config = camel_config()

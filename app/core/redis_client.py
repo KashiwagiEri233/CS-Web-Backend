@@ -75,8 +75,10 @@ async def close_redis_client() -> None:
     if _redis_client is not None:
         try:
             await _redis_client.aclose()
-        except Exception:  # noqa: BLE001
-            pass
+        except (
+            Exception
+        ) as e:  # noqa: BLE001 - 关闭失败不阻断停机，但留痕（ER-49 同族）
+            logger.warning("Redis 连接关闭失败", error=str(e))
     _redis_client = None
     _initialized = False
 

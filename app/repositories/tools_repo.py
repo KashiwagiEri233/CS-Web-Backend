@@ -349,6 +349,26 @@ class TaskRepository:
             ).scalar_one()
         )
 
+    async def count_active_claims_by_ids(self, task_ids: list[int]) -> dict[int, int]:
+        """一次 GROUP BY 统计多个任务的活跃认领数（口径与 count_active_claims 一致），
+        供任务列表批量填充 claimant_count，避免逐任务查询的 N+1（TOOLS-GOV Slice E）。"""
+        if not task_ids:
+            return {}
+        rows = (
+            await self.db.execute(
+                select(
+                    TaskClaim.task_id,
+                    func.count().label("cnt"),
+                )
+                .where(
+                    TaskClaim.task_id.in_(task_ids),
+                    TaskClaim.status.in_(["claimed", "submitted"]),
+                )
+                .group_by(TaskClaim.task_id)
+            )
+        ).all()
+        return {task_id: int(cnt) for task_id, cnt in rows}
+
     async def get_claim(self, task_id: int, user_id: int) -> Optional[TaskClaim]:
         stmt = select(TaskClaim).where(
             TaskClaim.task_id == task_id, TaskClaim.user_id == user_id
@@ -430,12 +450,13 @@ class PointsRepository:
         return obj
 
     async def list_transactions(
-        self, user_id: int, limit: int = 50
+        self, user_id: int, limit: int = 50, skip: int = 0
     ) -> list[PointsTransaction]:
         stmt = (
             select(PointsTransaction)
             .where(PointsTransaction.user_id == user_id)
             .order_by(PointsTransaction.created_at.desc())
+            .offset(skip)
             .limit(limit)
         )
         rows = await self.db.execute(stmt)

@@ -131,7 +131,9 @@ async def close_queue_pool() -> None:
     if _pool is not None:
         try:
             await _pool.aclose()
-        except Exception:  # noqa: BLE001
-            pass
+        except (
+            Exception
+        ) as e:  # noqa: BLE001 - 关闭失败不阻断停机，但留痕（ER-49 同族）
+            logger.warning("arq 连接池关闭失败", error=str(e))
     _pool = None
     _pool_initialized = False

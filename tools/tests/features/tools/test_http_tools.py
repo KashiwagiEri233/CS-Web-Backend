@@ -218,10 +218,10 @@ async def test_tools_http_user_flow(integration_db_ready):
             assert mine.status_code == 200, mine.text
             assert any(c["id"] == claim_id for c in mine.json()["claims"])
 
-            submitted = await client.get(
+            # TOOLS-GOV Slice B：submit 由 GET 改 POST（前端 BFF 语义）
+            submitted = await client.post(
                 f"/api/v1/tools/tasks/claims/{claim_id}/submit",
                 headers=h_user,
-                params={"proof": "已完成"},
             )
             assert submitted.status_code == 200, submitted.text
             assert submitted.json()["status"] == "submitted"
@@ -236,11 +236,23 @@ async def test_tools_http_user_flow(integration_db_ready):
             assert questions.status_code == 200, questions.text
             assert questions.json()["questions"] == []
 
-            # ---- 积分：我的积分 / 排行榜（/points/me + /points/leaderboard）----
+            # ---- 积分：我的积分 / 流水分页 / 排行榜（TOOLS-GOV Slice A 对齐后）----
             points = await client.get("/api/v1/tools/points/me", headers=h_user)
             assert points.status_code == 200, points.text
+            points_json = points.json()
+            assert {"balance", "level", "level_title", "transactions"} <= set(
+                points_json
+            )
+            history = await client.get(
+                "/api/v1/tools/points/me/history",
+                params={"skip": 0, "limit": 10},
+                headers=h_user,
+            )
+            assert history.status_code == 200, history.text
+            assert isinstance(history.json()["records"], list)
             lb = await client.get("/api/v1/tools/points/leaderboard", headers=h_user)
             assert lb.status_code == 200, lb.text
+            assert isinstance(lb.json(), list)
 
             # 注：组件注册表 HTTP 端点（/tools/components）在 module 化重构后与 service 契约
             # 错位（API 调用 list_variants/create_variant/get_guide 等不存在的方法），

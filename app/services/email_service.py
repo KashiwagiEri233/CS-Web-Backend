@@ -72,8 +72,10 @@ def _send_sync(to: str, subject: str, text: str, html: Optional[str] = None) -> 
     finally:
         try:
             transport.quit()
-        except Exception:  # noqa: BLE001 - 关闭失败不掩盖发送结果
-            pass
+        except (
+            Exception
+        ) as e:  # noqa: BLE001 - 关闭失败不掩盖发送结果，但留痕（ER-49 同族）
+            logger.warning("[Mail] SMTP 连接关闭失败", error=str(e))
 
 
 async def send_mail(
