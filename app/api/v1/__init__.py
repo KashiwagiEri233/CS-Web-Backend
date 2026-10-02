@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1 import (
+    agent_inbox,
     admin_community,
     admin_events,
     admin_roles,
@@ -27,6 +28,9 @@ from app.core.config import settings
 api_router = APIRouter()
 
 api_router.include_router(auth.router, prefix="/auth", tags=["认证"])
+api_router.include_router(
+    agent_inbox.router, prefix="/agent-inbox", tags=["Agent建议收件箱"]
+)
 api_router.include_router(profile.router, tags=["个人资料"])
 api_router.include_router(users.router, prefix="/users", tags=["用户管理"])
 api_router.include_router(rbac.router, prefix="/rbac", tags=["RBAC权限管理"])
