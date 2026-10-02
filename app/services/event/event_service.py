@@ -29,6 +29,7 @@ from app.repositories.event_repo import (
     EventRepository,
     EventSettingRepository,
 )
+from app.repositories.user_repo import UserRepository
 from app.schemas.event import EVENT_LIMITS, EventInput, EventSettingsIn
 from app.services.audit_service import AuditService
 
@@ -40,6 +41,7 @@ class EventService:
         self.reg_repo = EventRegistrationRepository(db)
         self.checkin_repo = EventCheckinRepository(db)
         self.setting_repo = EventSettingRepository(db)
+        self.user_repo = UserRepository(db)
         self.audit = audit if audit is not None else AuditService()
 
     # ------------------------------------------------------------------ 设置
@@ -363,7 +365,26 @@ class EventService:
         return [by_id[reg.event_id] for reg in regs if reg.event_id in by_id]
 
     async def list_event_registrations(self, event_id: int) -> list[EventRegistration]:
-        return await self.reg_repo.list_for_event(event_id)
+        """管理端报名列表：批量回填报名人 display_name/email（P1-8c）。
+
+        一次 IN 查询取报名人，display_name 无值时回退 username（与用户公开主页口径一致）。
+        """
+        regs = await self.reg_repo.list_for_event(event_id)
+        if not regs:
+            return []
+        users = {
+            user.id: user
+            for user in await self.user_repo.list_by_ids([reg.user_id for reg in regs])
+        }
+        for reg in regs:
+            user = users.get(reg.user_id)
+            setattr(
+                reg,
+                "display_name",
+                (user.display_name or user.username) if user else None,
+            )
+            setattr(reg, "email", user.email if user else None)
+        return regs
 
     async def registration_stats(self, event_id: int) -> dict:
         return await self.reg_repo.stats_for_event(event_id)

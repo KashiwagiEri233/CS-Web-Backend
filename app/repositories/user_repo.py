@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Sequence
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
@@ -13,6 +13,15 @@ class UserRepository(BaseRepository[User]):
     此处仅保留用户特有查询。"""
 
     model = User
+
+    async def list_by_ids(self, user_ids: Sequence[int]) -> list[User]:
+        """按 ID 集合批量取用户（单次 IN 查询），供聚合出参回填 display_name/email。"""
+        if not user_ids:
+            return []
+        result = await self.db.execute(
+            select(User).where(User.id.in_(list(set(user_ids))))
+        )
+        return list(result.scalars().all())
 
     async def list_active(self, skip: int = 0, limit: int = 100) -> list[User]:
         """分页获取未软删用户。"""
