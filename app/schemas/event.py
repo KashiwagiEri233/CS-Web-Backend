@@ -185,6 +185,9 @@ class EventRegistrationOut(TZModel):
     form_data: Optional[Dict[str, str]] = None
     registered_at: datetime
     cancelled_at: Optional[datetime] = None
+    # 报名人信息（P1-8c）：仅管理端报名列表填充，普通用户出参保持 None
+    display_name: Optional[str] = None
+    email: Optional[str] = None
 
 
 class EventCheckinOut(TZModel):

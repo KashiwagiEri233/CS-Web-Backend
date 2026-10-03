@@ -166,6 +166,47 @@ async def test_registration_flow(integration_db_ready, admin_user):
 
 
 @pytest.mark.integration
+async def test_admin_registration_list_fills_attendee_info(
+    integration_db_ready, admin_user
+):
+    """P1-8c：管理端报名列表回填报名人 display_name/email。
+
+    display_name 无值时回退 username；email 原样透出；二者仅管理端填充。
+    """
+    sfx = _sfx()
+    async with get_session() as db:
+        svc = EventService(db)
+        named = await _make_user(db, f"regname_{sfx}@t.com")
+        plain = await _make_user(db, f"regplain_{sfx}@t.com")
+        named.display_name = f"显示名-{sfx}"
+        await db.commit()
+        try:
+            event = await svc.create_event(
+                admin_user,
+                EventInput(title=f"报名人信息-{sfx}", capacity=5),
+            )
+            await svc.register(named.id, event.id)
+            await svc.register(plain.id, event.id)
+
+            regs = await svc.list_event_registrations(event.id)
+            by_user = {r.user_id: r for r in regs}
+            assert by_user[named.id].display_name == f"显示名-{sfx}"
+            assert by_user[named.id].email == f"regname_{sfx}@t.com"
+            # 无 display_name 回退 username
+            assert by_user[plain.id].display_name == plain.username
+            assert by_user[plain.id].email == f"regplain_{sfx}@t.com"
+
+            await _cleanup(db, named.id, plain.id)
+            await db.execute(delete(Event).where(Event.id == event.id))
+            await db.commit()
+        except Exception:
+            await _cleanup(db, named.id, plain.id)
+            await db.execute(delete(Event).where(Event.title.like(f"%{sfx}%")))
+            await db.commit()
+            raise
+
+
+@pytest.mark.integration
 async def test_checkin_flow(integration_db_ready, admin_user):
     sfx = _sfx()
     async with get_session() as db:
