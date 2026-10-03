@@ -54,8 +54,9 @@ jobs:
           uv lock --check
           uv export --format requirements-txt -o /tmp/requirements.lock
           uv export --extra dev --format requirements-txt -o /tmp/requirements-dev.lock
-          diff -u requirements.lock /tmp/requirements.lock
-          diff -u requirements-dev.lock /tmp/requirements-dev.lock
+          # uv 版本漂移兼容：新版 uv export 头注释含 -o 路径，比对前剥离注释行（锁内容本身必须一致）
+          diff -u <(grep -v '^#' requirements.lock) <(grep -v '^#' /tmp/requirements.lock)
+          diff -u <(grep -v '^#' requirements-dev.lock) <(grep -v '^#' /tmp/requirements-dev.lock)
 
       - name: Install dependencies
         run: |
