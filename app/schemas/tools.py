@@ -19,6 +19,15 @@ EXAM_LIMITS = {
 }
 
 
+def _coerce_tag_list(v: object) -> object:
+    """tech_tags 容错归一化：DB NULL/历史字符串 → 合法列表（防 Out 模型 422）。"""
+    if v is None:
+        return []
+    if isinstance(v, str):
+        return [v] if v else []
+    return v
+
+
 class ExamInput(BaseModel):
     title: str
     description: Optional[str] = None
@@ -163,6 +172,8 @@ class ResourceOut(TZModel):
     description: Optional[str] = None
     resource_type: str
     tech_tags: List[str] = []
+
+    _coerce_tags = field_validator("tech_tags", mode="before")(_coerce_tag_list)
     status: str
     submitted_by: int
     submitted_by_name: Optional[str] = None
@@ -305,6 +316,8 @@ class RecommendedResource(BaseModel):
     description: Optional[str] = None
     resource_type: str
     tech_tags: List[str] = []
+
+    _coerce_tags = field_validator("tech_tags", mode="before")(_coerce_tag_list)
 
 
 class AuxilioAnalysis(BaseModel):
