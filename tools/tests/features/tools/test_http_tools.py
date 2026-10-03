@@ -218,10 +218,10 @@ async def test_tools_http_user_flow(integration_db_ready):
             assert mine.status_code == 200, mine.text
             assert any(c["id"] == claim_id for c in mine.json()["claims"])
 
-            submitted = await client.get(
+            # TOOLS-GOV Slice B：submit 由 GET 改 POST（前端 BFF 语义）
+            submitted = await client.post(
                 f"/api/v1/tools/tasks/claims/{claim_id}/submit",
                 headers=h_user,
-                params={"proof": "已完成"},
             )
             assert submitted.status_code == 200, submitted.text
             assert submitted.json()["status"] == "submitted"
@@ -236,11 +236,23 @@ async def test_tools_http_user_flow(integration_db_ready):
             assert questions.status_code == 200, questions.text
             assert questions.json()["questions"] == []
 
-            # ---- 积分：我的积分 / 排行榜（/points/me + /points/leaderboard）----
+            # ---- 积分：我的积分 / 流水分页 / 排行榜（TOOLS-GOV Slice A 对齐后）----
             points = await client.get("/api/v1/tools/points/me", headers=h_user)
             assert points.status_code == 200, points.text
+            points_json = points.json()
+            assert {"balance", "level", "level_title", "transactions"} <= set(
+                points_json
+            )
+            history = await client.get(
+                "/api/v1/tools/points/me/history",
+                params={"skip": 0, "limit": 10},
+                headers=h_user,
+            )
+            assert history.status_code == 200, history.text
+            assert isinstance(history.json()["records"], list)
             lb = await client.get("/api/v1/tools/points/leaderboard", headers=h_user)
             assert lb.status_code == 200, lb.text
+            assert isinstance(lb.json(), list)
 
             # 注：组件注册表 HTTP 端点（/tools/components）在 module 化重构后与 service 契约
             # 错位（API 调用 list_variants/create_variant/get_guide 等不存在的方法），
@@ -411,3 +423,200 @@ async def test_auxilio_learning_goal_http_budget_and_ownership(integration_db_re
                 {"ids": [owner_id, outsider_id]},
             )
             await _cleanup(db, [owner_id, outsider_id])
+
+
+@pytest.mark.integration
+async def test_tools_http_admin_flow(integration_db_ready):
+    """TOOLS-GOV 切片 B/C/D 管理端路由回归：任务管理/审核、资源审核、注册表迁移状态。
+
+    覆盖 Slice B 补齐的 publish/close/DELETE claim/review、Slice C 的 approve/reject/
+    pending、Slice D 的 migration-status PUT（可见性联动）。
+    """
+    sfx = uuid.uuid4().hex[:8]
+    async with get_session() as db:
+        admin_id = await _make_user(db, f"{sfx}adm", superuser=True)
+        user_id = await _make_user(db, f"{sfx}usr")
+
+    application = create_app()
+    resource_ids: list[int] = []
+    item_id: int | None = None
+    try:
+        transport = httpx.ASGITransport(app=application)
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://testserver"
+        ) as client:
+            h_admin = await _login(client, f"itest_http_tools_{sfx}adm")
+            h_user = await _login(client, f"itest_http_tools_{sfx}usr")
+
+            # ---- 任务：创建 → 更新 → 发布 → 认领 → 审核 → 关闭 ----
+            created = await client.post(
+                "/api/v1/tools/admin/tasks",
+                headers=h_admin,
+                json={
+                    "title": f"管理任务-{sfx}",
+                    "description": "d",
+                    "category": "dev",
+                    "points": 30,
+                    "max_claimants": 2,
+                },
+            )
+            assert created.status_code == 201, created.text
+            task_id = created.json()["id"]
+
+            updated = await client.put(
+                f"/api/v1/tools/admin/tasks/{task_id}",
+                headers=h_admin,
+                json={"title": f"管理任务改-{sfx}", "description": "d"},
+            )
+            assert updated.status_code == 200, updated.text
+
+            published = await client.post(
+                f"/api/v1/tools/admin/tasks/{task_id}/publish", headers=h_admin
+            )
+            assert published.status_code == 200, published.text
+            assert published.json()["status"] == "published"
+
+            claimed = await client.post(
+                f"/api/v1/tools/tasks/{task_id}/claim", headers=h_user
+            )
+            assert claimed.status_code in (200, 201), claimed.text
+            claim_id = claimed.json()["id"]
+
+            submitted = await client.post(
+                f"/api/v1/tools/tasks/claims/{claim_id}/submit",
+                headers=h_user,
+                json={"submission_url": f"https://t.com/{sfx}/proof"},
+            )
+            assert submitted.status_code == 200, submitted.text
+            assert submitted.json()["status"] == "submitted"
+            assert submitted.json()["submission_url"] == f"https://t.com/{sfx}/proof"
+
+            # 待审核 = submitted 状态；提交后进入审核列表
+            pending = await client.get(
+                "/api/v1/tools/admin/tasks/claims/pending", headers=h_admin
+            )
+            assert pending.status_code == 200, pending.text
+            assert any(c["id"] == claim_id for c in pending.json()["items"])
+
+            approved = await client.post(
+                f"/api/v1/tools/admin/tasks/claims/{claim_id}/approve",
+                headers=h_admin,
+            )
+            assert approved.status_code == 200, approved.text
+            assert approved.json()["status"] == "approved"
+
+            closed = await client.post(
+                f"/api/v1/tools/admin/tasks/{task_id}/close", headers=h_admin
+            )
+            assert closed.status_code == 200, closed.text
+            assert closed.json()["status"] == "closed"
+
+            deleted = await client.delete(
+                f"/api/v1/tools/admin/tasks/{task_id}", headers=h_admin
+            )
+            assert deleted.status_code == 200, deleted.text
+
+            # ---- 资源：用户提交 → pending → approve；管理建 → reject → 更新 → 删除 ----
+            submitted_res = await client.post(
+                "/api/v1/tools/resources",
+                headers=h_user,
+                json={
+                    "title": f"用户资源-{sfx}",
+                    "url": f"https://t.com/{sfx}/u",
+                    "resource_type": "article",
+                    "tech_tags": ["python"],
+                },
+            )
+            assert submitted_res.status_code == 201, submitted_res.text
+            res_id = submitted_res.json()["id"]
+            resource_ids.append(res_id)
+
+            pending_res = await client.get(
+                "/api/v1/tools/admin/resources/pending", headers=h_admin
+            )
+            assert pending_res.status_code == 200, pending_res.text
+            assert any(r["id"] == res_id for r in pending_res.json()["items"])
+
+            approved_res = await client.post(
+                f"/api/v1/tools/admin/resources/{res_id}/approve", headers=h_admin
+            )
+            assert approved_res.status_code == 200, approved_res.text
+
+            admin_res = await client.post(
+                "/api/v1/tools/admin/resources",
+                headers=h_admin,
+                json={
+                    "title": f"管理资源-{sfx}",
+                    "url": f"https://t.com/{sfx}/a",
+                    "resource_type": "article",
+                },
+            )
+            assert admin_res.status_code == 201, admin_res.text
+            admin_res_id = admin_res.json()["id"]
+            resource_ids.append(admin_res_id)
+
+            rejected = await client.post(
+                f"/api/v1/tools/admin/resources/{admin_res_id}/reject",
+                headers=h_admin,
+                params={"reason": "质量不足"},
+            )
+            assert rejected.status_code == 200, rejected.text
+
+            admin_list = await client.get(
+                "/api/v1/tools/admin/resources", headers=h_admin
+            )
+            assert admin_list.status_code == 200, admin_list.text
+
+            # ---- 注册表：迁移状态 PUT（可见性联动出参）----
+            comp = await client.post(
+                "/api/v1/tools/components",
+                headers=h_admin,
+                json={"name": f"comp-{sfx}", "description": "d"},
+            )
+            if comp.status_code == 201:
+                item_id = comp.json()["id"]
+                mig = await client.put(
+                    f"/api/v1/tools/components/{item_id}/migration-status",
+                    headers=h_admin,
+                    json={"migration_status": "in-progress"},
+                )
+                assert mig.status_code == 200, mig.text
+                body = mig.json()
+                assert body["migrationStatus"] == "in-progress"
+                assert "visibilityKey" in body
+    finally:
+        async with get_session() as db:
+            # 任务/认领/积分流水按 FK 依赖顺序清场（tasks 为软删，行仍在）
+            for stmt in (
+                "DELETE FROM points_transactions WHERE user_id = ANY(:ids)",
+                "DELETE FROM task_claims WHERE user_id = ANY(:ids)"
+                " OR task_id IN (SELECT id FROM tasks WHERE created_by = ANY(:ids))",
+                "DELETE FROM tasks WHERE created_by = ANY(:ids)",
+            ):
+                try:
+                    async with db.begin_nested():
+                        await db.execute(text(stmt), {"ids": [admin_id, user_id]})
+                except Exception:
+                    pass
+            if item_id:
+                for table in (
+                    "component_registry_variants",
+                    "component_registry_guides",
+                ):
+                    try:
+                        async with db.begin_nested():
+                            await db.execute(
+                                text(f"DELETE FROM {table} WHERE item_id = :i"),
+                                {"i": item_id},
+                            )
+                    except Exception:
+                        pass
+                try:
+                    async with db.begin_nested():
+                        await db.execute(
+                            text("DELETE FROM component_registry_items WHERE id = :i"),
+                            {"i": item_id},
+                        )
+                except Exception:
+                    pass
+            await _cleanup(db, [admin_id, user_id], resource_ids=resource_ids)

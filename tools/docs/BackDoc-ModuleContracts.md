@@ -1,7 +1,7 @@
 # BackDoc-ModuleContracts：后端业务模块契约（Reference · 回答「是什么」，提供 7 个模块的接口、配置、不变量的精确权威定义）
 
 > 更新人：3yearsZ
-> 更新日：2026-08-20
+> 更新日：2026-09-13
 > 版本：1.0.1 · 七夕（Diátaxis R 类规范，模块 SSOT 权威）
 > Diátaxis：R（Reference · 回答「是什么」，提供业务模块的接口契约、配置项、不变量的权威定义；不包含可执行步骤）
 > 适用读者：后端开发者 / 前端 BFF 对接者 / 接口联调测试者；已了解后端架构
@@ -22,6 +22,8 @@
 > - MUST 在新增/修改业务约束时同步更新本文档的不变量表（RFC 2119 关键词）
 > - 完整契约（method / path / requestBody / responses / schemas）以根仓 `openapi.baseline.json` 为准；字段约束以代码 `app/schemas/` 为准
 
+> **覆盖范围声明（2026-09-13）**：本文档**仅深度覆盖 7 个模块**，不是全部路由的清单。全后端约 20+ 路由文件 / 250+ 端点，其中 community、events、announcements、search、exam、tools 等模块的 method/path 全集**以根仓 `openapi.baseline.json`（192 path）为唯一完整清单**，本文档不重复罗列。新增模块若暂未在本报告登记，不视为违规；但已登记模块的契约表 MUST 与代码同步（见下方红线）。
+
 > **文档结构**：本文档按「模块」组织，每个模块独立成节。每节包含：
 > 1. **概述**：模块职责、路由前缀、代码位置
 > 2. **接口契约**：路由 method/path/鉴权/说明
@@ -34,8 +36,8 @@
 
 | 模块 | 概述 | 接口契约 | 配置项与不变量 | 测试覆盖 | 代码位置 |
 |---|---|---|---|---|---|
-| **§1 认证（Auth）** | 登录/令牌/注册/2FA/OAuth | §1.2 | §1.3 | §1.4 | `app/api/v1/auth.py`、`app/services/auth_service.py` |
-| **§2 用户管理（Users）** | CRUD/自助资料/公开主页 | §2.2 | §2.3 | §2.4 | `app/api/v1/users.py`、`app/services/user_service.py` |
+| **§1 认证（Auth）** | 登录/令牌/注册/2FA/OAuth | §1.2 | §1.3 | §1.4 | `app/api/v1/auth.py`、`app/services/auth/auth_service.py` |
+| **§2 用户管理（Users）** | CRUD/自助资料/公开主页 | §2.2 | §2.3 | §2.4 | `app/api/v1/users.py`、`app/services/user/user_service.py` |
 | **§3 RBAC（角色/权限）** | 角色权限 CRUD/分配 | §3.2 | §3.3 | §3.4 | `app/api/v1/rbac/`、`app/middleware/rbac.py` |
 | **§4 审计日志（Audit）** | 敏感操作审计记录 | §4.2 | §4.3 | §4.4 | `app/api/v1/audit.py`、`app/services/audit_service.py` |
 | **§5 工作台（Workbench）** | 个人效率/学习数据聚合 | §5.2 | §5.3 | §5.4 | `app/api/v1/workbench.py`、`app/services/contribution_service.py` |
@@ -53,7 +55,7 @@
 | 属性 | 值 |
 |------|----|
 | 挂载前缀 | `/api/v1/auth` |
-| 代码位置 | `app/api/v1/auth.py`、`app/services/auth_service.py`、`app/core/security.py`、`app/services/totp_service.py`、`verification_service.py`、`oauth_service.py`、`password_reset_service.py` |
+| 代码位置 | `app/api/v1/auth.py`、`app/services/auth/auth_service.py`、`app/core/security.py`、`app/services/totp_service.py`、`verification_service.py`、`oauth_service.py`、`password_reset_service.py` |
 
 ### 1.2 接口契约
 
@@ -157,7 +159,7 @@
 | 属性 | 值 |
 |------|----|
 | 挂载前缀 | `/api/v1/users`、`/profile`、`/avatars` |
-| 代码位置 | `app/api/v1/users.py`、`app/api/v1/profile.py`、`app/services/user_service.py` |
+| 代码位置 | `app/api/v1/users.py`、`app/api/v1/profile.py`、`app/services/user/user_service.py` |
 
 ### 2.2 接口契约
 
@@ -380,22 +382,43 @@
 
 ### 6.1 概述
 
-rule-based + LLM 可选的学习助手。SSE 流式对话；OpenAI / Anthropic 双协议；Skills 工具调用；无 LLM 配置时降级为「学习画像 + 资源推荐」规则摘要。
+rule-based + LLM 可选的学习助手。SSE 流式对话；OpenAI / Anthropic 双协议；Skills 工具调用；无 LLM 配置时降级为「学习画像 + 资源推荐」规则摘要。2026-08 起扩展出学习闭环三件套（错题本 / 学习目标 / 自适应计划）与会话生命周期（归档 / 软删除 / 分支树 / AgentRun 诊断）。
 
 | 属性 | 值 |
 |------|----|
 | 挂载前缀 | `/api/v1/auxilio` |
 | 代码位置 | `app/api/v1/auxilio.py`、`app/services/auxilio_agent.py`、`app/services/auxilio_service.py`、`app/services/llm_client.py` |
-| 核心数据表 | `conversations` / `chat_messages` / `chat_events` / `llm_usage_logs` |
+| 核心数据表 | `conversations` / `chat_messages` / `chat_events` / `agent_runs` / `learning_wrong_answers` / `learning_goals` / `learning_plan_items` / `llm_usage_logs` |
 
-### 6.2 接口契约
+### 6.2 接口契约（18 条，2026-09-13 与 `app/api/v1/auxilio.py` 对账）
+
+**对话与会话生命周期**
 
 | Method | Path | 鉴权 | 说明 |
 |--------|------|------|------|
-| POST | `/auxilio/chat` | 当前活跃用户 | **SSE 流式对话**（`text/event-stream`） |
-| GET | `/auxilio/conversations` | 当前活跃用户 | 当前用户会话列表（按 `updated_at` 倒序） |
+| POST | `/auxilio/chat` | 当前活跃用户 | **SSE 流式对话**（`text/event-stream`）；首事件返回 `conversation` 元数据（新会话握手） |
+| GET | `/auxilio/conversations` | 当前活跃用户 | 当前用户会话列表（按 `updated_at` 倒序，含分支标识） |
 | GET | `/auxilio/conversations/{conversation_id}/messages` | 当前活跃用户 | 指定会话消息历史（含 `toolCalls`） |
-| GET | `/auxilio/conversations/{conversation_id}/events` | 当前活跃用户 | Trajectory 事件回放 |
+| PATCH | `/auxilio/conversations/{conversation_id}` | 当前活跃用户 | 重命名会话 |
+| POST | `/auxilio/conversations/{conversation_id}/archive` | 当前活跃用户 | 归档 / 取消归档；归档会话只读 |
+| DELETE | `/auxilio/conversations/{conversation_id}` | 当前活跃用户 | 删除会话（软删除）；`?cascade=true` 才递归删除整棵子树 |
+| POST | `/auxilio/conversations/{conversation_id}/fork` | 当前活跃用户 | 从指定消息分出新会话（复制截至该消息的快照，不改动原会话） |
+| GET | `/auxilio/conversations/{conversation_id}/events` | 当前活跃用户 | Trajectory 事件回放（序号按 run 隔离） |
+| GET | `/auxilio/conversations/{conversation_id}/runs` | 当前活跃用户 | 每轮 AgentRun 状态 / preset / token / 延迟 / 错误（诊断视图） |
+
+**学习闭环（错题本 / 目标 / 计划）**
+
+| Method | Path | 鉴权 | 说明 |
+|--------|------|------|------|
+| GET | `/auxilio/mistakes` | 当前活跃用户 | 错题本列表（`status` / `tag` / `due_only` / `limit` 过滤） |
+| PATCH | `/auxilio/mistakes/{mistake_id}` | 当前活跃用户 | 更新错题（复习状态 / 掌握标记） |
+| POST | `/auxilio/mistakes/{mistake_id}/review` | 当前活跃用户 | 间隔复习反馈（`again/hard/good/easy` → 生成 `review_due_at`） |
+| GET | `/auxilio/goals` | 当前活跃用户 | 学习目标列表（`include_completed`） |
+| POST | `/auxilio/goals` | 当前活跃用户 | 创建学习目标（`201`；校验每周预算范围） |
+| PATCH | `/auxilio/goals/{goal_id}` | 当前活跃用户 | 更新 / 暂停 / 完成目标 |
+| DELETE | `/auxilio/goals/{goal_id}` | 当前活跃用户 | 删除目标 |
+| GET | `/auxilio/plan` | 当前活跃用户 | 当日学习计划（`plan_date` / `generate`；无则按目标预算 + 薄弱知识点 + 到期错题生成） |
+| PATCH | `/auxilio/plan/{item_id}` | 当前活跃用户 | 计划项状态流转（完成 / 跳过 / 延期 / 锁定） |
 
 ### 6.3 配置项与不变量
 

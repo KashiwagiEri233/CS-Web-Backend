@@ -21,6 +21,7 @@ from app.models.api_usage import ApiCallLog
 from app.models.focus import FocusSession
 from app.models.llm_usage import LlmUsageLog
 from app.models.user import User
+from app.schemas.base import camel_config
 from app.services.contribution_service import ContributionService
 from app.services.workbench_service import WorkbenchService
 
@@ -28,11 +29,21 @@ router = APIRouter(prefix="/workbench", tags=["workbench"])
 
 
 class FocusSessionIn(BaseModel):
-    """前端完成一轮专注后的上报。"""
+    """前端完成一轮专注后的上报。
 
-    duration_seconds: int = Field(gt=0, le=WORKBENCH_MAX_DURATION_SECONDS)
+    camel_config()：JSON 入参走 camelCase（durationSeconds），与全站 camelCase 传输契约一致；
+    populate_by_name=True 同时保留 snake_case 兼容（迁移期旧调用方/测试不破）。
+    """
+
+    model_config = camel_config()
+
+    duration_seconds: int = Field(
+        gt=0, le=WORKBENCH_MAX_DURATION_SECONDS, title="Duration Seconds"
+    )
     phase: str = Field(default="focus", pattern="^(focus|shortBreak|longBreak)$")
-    sound_source: Optional[str] = Field(default=None, max_length=40)
+    sound_source: Optional[str] = Field(
+        default=None, max_length=40, title="Sound Source"
+    )
 
 
 def _github_username(user: User) -> Optional[str]:

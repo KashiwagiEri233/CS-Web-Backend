@@ -112,6 +112,13 @@ class PointsService:
             "transactions": [self._to_out(t) for t in txs],
         }
 
+    async def get_history(
+        self, user_id: int, skip: int = 0, limit: int = 50
+    ) -> list[dict]:
+        """积分流水分页（时间倒序，skip 起始）。供 /points/me/history 端点使用（TOOLS-GOV Slice A）。"""
+        txs = await self.repo.list_transactions(user_id, limit=limit, skip=skip)
+        return [self._to_out(t) for t in txs]
+
     async def leaderboard(self, top_n: int = 20) -> list[dict]:
         rows = await self.repo.leaderboard(top_n)
         users = {}

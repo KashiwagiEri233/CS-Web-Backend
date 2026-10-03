@@ -19,6 +19,15 @@ EXAM_LIMITS = {
 }
 
 
+def _coerce_tag_list(v: object) -> object:
+    """tech_tags 容错归一化：DB NULL/历史字符串 → 合法列表（防 Out 模型 422）。"""
+    if v is None:
+        return []
+    if isinstance(v, str):
+        return [v] if v else []
+    return v
+
+
 class ExamInput(BaseModel):
     title: str
     description: Optional[str] = None
@@ -163,6 +172,8 @@ class ResourceOut(TZModel):
     description: Optional[str] = None
     resource_type: str
     tech_tags: List[str] = []
+
+    _coerce_tags = field_validator("tech_tags", mode="before")(_coerce_tag_list)
     status: str
     submitted_by: int
     submitted_by_name: Optional[str] = None
@@ -237,6 +248,8 @@ class TaskOut(BaseModel):
     closed_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
+    # 活跃认领数（claimed/submitted，TOOLS-GOV Slice E：原前端读取恒 0）
+    claimant_count: int = 0
 
 
 class TaskClaimOut(BaseModel):
@@ -248,6 +261,7 @@ class TaskClaimOut(BaseModel):
     display_name: Optional[str] = None
     status: str
     claim_note: Optional[str] = None
+    submission_url: Optional[str] = None
     completed_at: Optional[datetime] = None
     reviewed_by: Optional[int] = None
     review_note: Optional[str] = None
@@ -302,6 +316,8 @@ class RecommendedResource(BaseModel):
     description: Optional[str] = None
     resource_type: str
     tech_tags: List[str] = []
+
+    _coerce_tags = field_validator("tech_tags", mode="before")(_coerce_tag_list)
 
 
 class AuxilioAnalysis(BaseModel):
@@ -435,4 +451,7 @@ class ComponentMigrationStatusOutput(BaseModel):
     old_migration_status: str
     migration_status: str
     visibility_opened: bool = False
+    # slug↔key 闭环的可见性模块键（service MigrationStatusResult 携带，
+    # 此前 schema 缺失导致联动结果被静默丢弃——TOOLS-GOV Slice D 补齐）。
+    visibility_key: str = ""
     model_config = camel_config()

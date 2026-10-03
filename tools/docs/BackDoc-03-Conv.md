@@ -357,7 +357,13 @@ DB_URL=
 ### 4.3 约束（RFC2119 分层）
 
 **MUST（铁律红线）：**
-1. **依赖管理 MUST 走 `uv add/remove` + `uv.lock` 同步**；**MUST NOT** 手工编辑 `pyproject.toml` 依赖版本后不跑 `uv lock`，**MUST NOT** 修改 `uv.lock` 不跑 `uv sync`。
+1. **依赖管理 MUST 走 `uv add/remove` + `uv.lock` 同步**；**MUST NOT** 手工编辑 `pyproject.toml` 依赖版本后不跑 `uv lock`，**MUST NOT** 修改 `uv.lock` 不跑 `uv sync`。**锁文件三件套的再生成命令**（与 `uv.lock` / `requirements*.lock` 头部注释一致；CI「Lock file freshness gate」步骤逐步强校验，不一致即红）：
+   ```bash
+   uv lock
+   uv export --format requirements-txt -o requirements.lock
+   uv export --extra dev --format requirements-txt -o requirements-dev.lock
+   ```
+   > 教训（2026-09-13 修复）：dependabot 批量 bump 只改 `pyproject.toml` 未重生成锁文件，致 CI 实测版本与声明版本脱节数周，且 `redis==8.1.0` 与 `arq<6` 冲突令 pyproject 长期不可解析。改 pyproject 依赖后**必须**跑上面三条命令一并提交。
 2. **依赖分层 MUST 对齐 §4.2.1 组**；**MUST NOT** 把 `ruff` 等开发工具放入默认 dependencies（导致生产镜像变大 + 引入攻击面）。
 3. **Alembic 迁移链（线性链 + 唯一 head + 可回滚 + Domain 标注）** 四条 **MUST** 同时满足；`alembic heads` 仅 1 条、`alembic check` 0 diff（RootEngConv §2 上位）。
 4. **环境变量高敏类 MUST 用 `SecretStr`**；**MUST NOT** `print(settings.SECRET_KEY)` / `logger.info(f"... {settings.DB_PASSWORD}")`；必须 `.get_secret_value()` 显式使用。

@@ -80,6 +80,8 @@ class TaskClaim(Base):
         String(20), nullable=False, default="claimed", index=True
     )
     claim_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # 完成提交时的证明材料链接（TOOLS-GOV Slice E：原 BFF 发送但无存储列）
+    submission_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     reviewed_by: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("users.id"), nullable=True

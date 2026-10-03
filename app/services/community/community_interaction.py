@@ -12,12 +12,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events import event_bus
 from app.core.exceptions import NotFoundException
+from app.core.loguru_logger import get_logger
 from app.models.community import CommunityComment, CommunityPost
 from app.repositories.community_repo import (
     CommunityCommentRepository,
     CommunityInteractionRepository,
     CommunityPostRepository,
 )
+
+logger = get_logger("community")
 
 
 class ReactionService:
@@ -94,8 +97,12 @@ class ReactionService:
                 actor_id=actor_id,
                 recipient_id=recipient_id,
             )
-        except Exception:  # noqa: BLE001
-            pass
+        except (
+            Exception
+        ) as exc:  # noqa: BLE001 - 通知副作用不阻断主流程（ER-49：留痕升级 warning）
+            logger.warning(
+                "社区通知事件投递失败", event="community.post.liked", error=str(exc)
+            )
 
 
 class FavoriteService:
@@ -155,5 +162,9 @@ class FavoriteService:
                 actor_id=actor_id,
                 recipient_id=post.author_id,
             )
-        except Exception:  # noqa: BLE001
-            pass
+        except (
+            Exception
+        ) as exc:  # noqa: BLE001 - 通知副作用不阻断主流程（ER-49：留痕升级 warning）
+            logger.warning(
+                "社区通知事件投递失败", event="community.post.favorited", error=str(exc)
+            )
