@@ -143,13 +143,6 @@ class EventRepository:
         rows = await self.db.execute(stmt)
         return rows.scalar_one_or_none()
 
-    async def get_by_ids(self, event_ids: Sequence[int]) -> list[Event]:
-        """一次 IN 查询批量取事件，避免按 id 循环查询的 N+1。"""
-        if not event_ids:
-            return []
-        rows = await self.db.execute(select(Event).where(Event.id.in_(event_ids)))
-        return list(rows.scalars().all())
-
     async def create(self, data: dict) -> Event:
         obj = Event(**data)
         self.db.add(obj)
@@ -257,25 +250,6 @@ class EventRegistrationRepository:
                 )
             ).scalar_one()
         )
-
-    async def count_registered_by_ids(self, event_ids: Sequence[int]) -> dict[int, int]:
-        """一次 GROUP BY 查询多个事件的报名人数，避免列表接口逐事件查询的 N+1。"""
-        if not event_ids:
-            return {}
-        rows = (
-            await self.db.execute(
-                select(
-                    EventRegistration.event_id,
-                    func.count().label("registered_count"),
-                )
-                .where(
-                    EventRegistration.event_id.in_(event_ids),
-                    EventRegistration.status == "registered",
-                )
-                .group_by(EventRegistration.event_id)
-            )
-        ).all()
-        return {event_id: count for event_id, count in rows}
 
     async def stats_for_event(self, event_id: int) -> dict:
         rows = (
