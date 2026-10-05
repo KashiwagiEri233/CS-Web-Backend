@@ -19,6 +19,7 @@ from app.core.loguru_logger import get_logger
 from app.core.timezone import now_utc
 from app.database import get_session
 from app.repositories.agent_inbox_repo import AgentInboxRepository
+from app.services.agent_trigger_service import AgentTriggerService
 from app.services.event.event_service import EventService
 
 logger = get_logger("agent.cron")
@@ -52,3 +53,18 @@ async def event_auto_archive_cron(ctx) -> int:
     if count:
         logger.info("event_auto_archive 完成", archived=count)
     return count
+
+
+async def agent_trigger_cron(ctx) -> dict[str, int]:
+    """事件触发扫描（每 30 分钟）：评估启用规则 → 裁决 → 生成收件箱建议。
+
+    去重键 = `rule:{id}:{yyyymmdd}`（AG-P3-01 幂等键），叠加裁决器冷却，
+    不会反复生成同一建议；单条规则失败不阻断扫描。
+    """
+    if not settings.AGENT_SWEEPS_ENABLED:
+        return {"scanned": 0, "created": 0, "gated": 0, "no_signal": 0, "failed": 0}
+    async with get_session() as db:
+        summary = await AgentTriggerService(db).scan_enabled_rules()
+    if summary["created"] or summary["failed"]:
+        logger.info("agent_trigger 扫描完成", **summary)
+    return summary

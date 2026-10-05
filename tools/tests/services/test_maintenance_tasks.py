@@ -169,4 +169,5 @@ async def test_cron_jobs_registered():
         "cron:exception_retention_cron",
         "cron:agent_inbox_sweep_cron",
         "cron:event_auto_archive_cron",
+        "cron:agent_trigger_cron",
     ]
