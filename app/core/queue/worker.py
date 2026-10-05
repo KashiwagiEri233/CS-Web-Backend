@@ -12,7 +12,11 @@ from arq.cron import cron
 from app.core.config import settings
 from app.core.loguru_logger import get_logger
 from app.core.queue.tasks import TASKS
-from app.services.agent_cron import agent_inbox_sweep_cron, event_auto_archive_cron
+from app.services.agent_cron import (
+    agent_inbox_sweep_cron,
+    agent_trigger_cron,
+    event_auto_archive_cron,
+)
 from app.services.maintenance_cron import (
     data_retention_cron,
     exception_retention_cron,
@@ -60,6 +64,9 @@ class WorkerSettings:
         cron(
             event_auto_archive_cron, hour=0, minute=10
         ),  # 每日 00:10：过期活动归档（上游读路径移除 auto_archive 的定时兑现）
+        cron(
+            agent_trigger_cron, minute={5, 35}
+        ),  # 每 30 分钟：事件触发扫描（启用规则 → 裁决 → 收件箱建议）
     ]
     redis_settings = RedisSettings.from_dsn(_BROKER_URL)
     on_startup = on_startup

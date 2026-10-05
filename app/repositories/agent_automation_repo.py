@@ -40,6 +40,11 @@ class AgentAutomationRuleRepository:
         items = list((await self.db.execute(stmt)).scalars().all())
         return items, int(total)
 
+    async def list_enabled_all(self) -> list[AgentAutomationRule]:
+        """全部启用的规则（触发引擎 cron 扫描入口，跨用户）。"""
+        stmt = select(AgentAutomationRule).where(AgentAutomationRule.enabled.is_(True))
+        return list((await self.db.execute(stmt)).scalars().all())
+
     async def create(self, data: dict) -> AgentAutomationRule:
         obj = AgentAutomationRule(**data)
         self.db.add(obj)
