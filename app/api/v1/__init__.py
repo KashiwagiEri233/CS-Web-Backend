@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.api.v1 import (
     agent_inbox,
+    agent_rules,
     admin_community,
     admin_events,
     admin_roles,
@@ -30,6 +31,9 @@ api_router = APIRouter()
 api_router.include_router(auth.router, prefix="/auth", tags=["认证"])
 api_router.include_router(
     agent_inbox.router, prefix="/agent-inbox", tags=["Agent建议收件箱"]
+)
+api_router.include_router(
+    agent_rules.router, prefix="/agent-rules", tags=["Agent自动化规则"]
 )
 api_router.include_router(profile.router, tags=["个人资料"])
 api_router.include_router(users.router, prefix="/users", tags=["用户管理"])
