@@ -167,4 +167,6 @@ async def test_cron_jobs_registered():
         "cron:token_gc_cron",
         "cron:data_retention_cron",
         "cron:exception_retention_cron",
+        "cron:agent_inbox_sweep_cron",
+        "cron:event_auto_archive_cron",
     ]
