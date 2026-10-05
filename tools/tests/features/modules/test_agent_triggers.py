@@ -153,6 +153,71 @@ async def test_trigger_skips_disabled_and_no_signal(integration_db_ready):
 
 
 @pytest.mark.integration
+async def test_goal_stalled_trigger(integration_db_ready):
+    """goal_stalled：active 目标 + 从未专注 → goal_nudge 建议。"""
+    sfx = _sfx()
+    async with get_session() as db:
+        svc = AgentTriggerService(db)
+        auto = AgentAutomationService(db)
+        user = await _make_user(db, f"trig3_{sfx}@t.com")
+        try:
+            from app.models.learning_goal import LearningGoal
+
+            rule = await auto.create_rule(
+                user,
+                {
+                    "name": f"停滞-{sfx}",
+                    "trigger_type": "goal_stalled",
+                    "condition": {"days": 7},
+                },
+            )
+            await auto.set_enabled(user, rule.id, True)
+            db.add(LearningGoal(user_id=user.id, title=f"目标-{sfx}", status="active"))
+            await db.commit()
+
+            ok, reason = await svc.evaluate_rule(rule)
+            assert ok is True
+            item = (
+                (
+                    await db.execute(
+                        select(AgentInboxItem).where(
+                            AgentInboxItem.idempotency_key
+                            == f"rule:{rule.id}:{now_utc():%Y%m%d}"
+                        )
+                    )
+                )
+                .scalars()
+                .one()
+            )
+            assert item.type == "goal_nudge"
+        finally:
+            await _cleanup(db, user.id)
+
+
+@pytest.mark.integration
+async def test_trigger_cron_wrapper_enabled(integration_db_ready):
+    """开关开启：cron 包装层真实执行扫描并返回摘要（规则在扫描期间存在）。"""
+    sfx = _sfx()
+    async with get_session() as db:
+        auto = AgentAutomationService(db)
+        user = await _make_user(db, f"trig4_{sfx}@t.com")
+        rule = await auto.create_rule(
+            user, {"name": f"扫描-{sfx}", "trigger_type": "resource_new"}
+        )
+        await auto.set_enabled(user, rule.id, True)
+
+    from app.core.config import settings
+
+    assert settings.AGENT_SWEEPS_ENABLED is True
+    summary = await agent_trigger_cron({})
+    assert summary["scanned"] >= 1
+    assert summary["failed"] == 0
+
+    async with get_session() as db:
+        await _cleanup(db, user.id)
+
+
+@pytest.mark.integration
 async def test_trigger_cron_wrapper_disabled(integration_db_ready, monkeypatch):
     from app.core.config import settings
 
