@@ -50,6 +50,7 @@ from app.models.learning import WrongAnswer
 from app.models.learning_goal import LearningGoal
 from app.models.learning_plan import LearningPlanItem
 from app.models.agent_automation import AgentAutomationRule
+from app.models.agent_briefing import AgentDailyBriefing
 from app.models.agent_inbox import AgentInboxItem
 
 __all__ = [
@@ -110,4 +111,5 @@ __all__ = [
     "LearningPlanItem",
     "AgentInboxItem",
     "AgentAutomationRule",
+    "AgentDailyBriefing",
 ]
