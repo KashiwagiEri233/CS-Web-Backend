@@ -72,6 +72,34 @@ class AgentInboxRepository:
         result = await self.db.execute(stmt)
         return dml_rowcount(result)
 
+    async def promote_all_due_snoozes(self, now: datetime) -> int:
+        """全量版（定时任务用）：所有用户 snoozed 到期 → pending。"""
+        stmt = (
+            update(AgentInboxItem)
+            .where(
+                AgentInboxItem.status == "snoozed",
+                AgentInboxItem.snoozed_until.is_not(None),
+                AgentInboxItem.snoozed_until <= now,
+            )
+            .values(status="pending", snoozed_until=None, updated_at=now)
+        )
+        result = await self.db.execute(stmt)
+        return dml_rowcount(result)
+
+    async def expire_all_stale(self, now: datetime) -> int:
+        """全量版（定时任务用）：所有用户 pending 过期 → expired。"""
+        stmt = (
+            update(AgentInboxItem)
+            .where(
+                AgentInboxItem.status == "pending",
+                AgentInboxItem.expires_at.is_not(None),
+                AgentInboxItem.expires_at <= now,
+            )
+            .values(status="expired", updated_at=now)
+        )
+        result = await self.db.execute(stmt)
+        return dml_rowcount(result)
+
     async def expire_stale(self, user_id: int, now: datetime) -> int:
         """pending 且已过期 → expired（同上，惰性回收）。"""
         stmt = (
