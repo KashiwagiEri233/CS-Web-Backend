@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.services.agent_automation_service import AgentAutomationService
+from app.services.agent_briefing_service import AgentBriefingService
 from app.services.agent_inbox_service import AgentInboxService
 from app.services.announcement_service import AnnouncementService
 from app.services.audit_service import AuditService
@@ -55,6 +56,12 @@ def get_user_service(db: AsyncSession = Depends(get_db)) -> UserService:
 
 def get_announcement_service(db: AsyncSession = Depends(get_db)) -> AnnouncementService:
     return AnnouncementService(db)
+
+
+def get_agent_briefing_service(
+    db: AsyncSession = Depends(get_db),
+) -> AgentBriefingService:
+    return AgentBriefingService(db)
 
 
 def get_agent_automation_service(
