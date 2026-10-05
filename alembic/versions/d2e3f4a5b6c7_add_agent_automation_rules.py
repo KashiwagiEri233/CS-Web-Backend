@@ -26,10 +26,14 @@ def upgrade() -> None:
             nullable=False,
             server_default="inbox_suggestion",
         ),
-        sa.Column("action_payload", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column(
+            "action_payload", postgresql.JSONB(astext_type=sa.Text()), nullable=True
+        ),
         sa.Column("quiet_hours_start", sa.String(length=5), nullable=True),
         sa.Column("quiet_hours_end", sa.String(length=5), nullable=True),
-        sa.Column("cooldown_minutes", sa.Integer(), nullable=False, server_default="240"),
+        sa.Column(
+            "cooldown_minutes", sa.Integer(), nullable=False, server_default="240"
+        ),
         sa.Column("max_per_hour", sa.Integer(), nullable=False, server_default="3"),
         sa.Column("enabled", sa.Boolean(), nullable=False, server_default="false"),
         sa.Column("last_fired_at", sa.DateTime(timezone=True), nullable=True),
