@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.v1 import (
     agent_briefing,
     agent_inbox,
+    agent_weekly_review,
     agent_rules,
     admin_community,
     admin_events,
@@ -38,6 +39,9 @@ api_router.include_router(
 )
 api_router.include_router(
     agent_briefing.router, prefix="/agent-briefing", tags=["Agent每日简报"]
+)
+api_router.include_router(
+    agent_weekly_review.router, prefix="/agent-weekly-review", tags=["Agent每周复盘"]
 )
 api_router.include_router(profile.router, tags=["个人资料"])
 api_router.include_router(users.router, prefix="/users", tags=["用户管理"])
