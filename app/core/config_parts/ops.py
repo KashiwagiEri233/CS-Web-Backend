@@ -18,6 +18,8 @@ class OpsSettings(BaseSettings):
     PERSIST_CLIENT_ERRORS: bool = False
     EXCEPTION_LOG_RETENTION_DAYS: int = Field(30, ge=1)
     EXCEPTION_LOG_CLEANUP_INTERVAL_SECONDS: int = Field(86400, ge=0)
+    # Agent 专项定时 sweep 总开关（收件箱回收 + 活动归档；AG-P3-06）
+    AGENT_SWEEPS_ENABLED: bool = True
 
     # 数据保留策略（登录历史 / 审计日志）
     LOGIN_HISTORY_RETENTION_DAYS: int = Field(90, ge=1)
