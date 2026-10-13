@@ -49,3 +49,12 @@ class PasswordHistoryRepository:
                 PasswordHistory.id.not_in(subq),
             )
         )
+
+    async def delete_by_user(self, user_id: int) -> int:
+        """物理删除该用户全部历史密码行（用户删除时的级联清理）。"""
+        result = await self.db.execute(
+            delete(PasswordHistory).where(PasswordHistory.user_id == user_id)
+        )
+        from app.repositories.base import dml_rowcount
+
+        return dml_rowcount(result)

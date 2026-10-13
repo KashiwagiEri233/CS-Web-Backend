@@ -33,6 +33,8 @@ from app.models.role import Role
 from app.models.user import User
 from app.repositories.activity_participation_repo import ActivityParticipationRepository
 from app.repositories.base import paginate
+from app.repositories.login_history_repo import LoginHistoryRepository
+from app.repositories.password_history_repo import PasswordHistoryRepository
 from app.repositories.refresh_token_repo import RefreshTokenRepository
 from app.repositories.user_repo import UserRepository
 from app.schemas.auth import UserOut
@@ -70,6 +72,8 @@ class UserService:
         self.user_repo = UserRepository(db)
         self.refresh_repo = RefreshTokenRepository(db)
         self.activity_repo = ActivityParticipationRepository(db)
+        self.login_history_repo = LoginHistoryRepository(db)
+        self.password_history_repo = PasswordHistoryRepository(db)
         # 注入共享请求会话，使 record_atomic 可同事务提交审计（否则 db=None 会抛错）；与 auth_service 一致
         self.audit = AuditService(self.db)
 
@@ -476,8 +480,6 @@ class UserService:
         client_meta: Optional[dict] = None,
     ) -> None:
         """硬删除用户（仅超级用户）：SELF_DELETE / ROOT_PROTECTED / LAST_ADMIN。"""
-        from sqlalchemy import text
-
         if actor.id == target_user_id:
             raise AuthorizationException(
                 message="不能删除自己的账号",
@@ -502,17 +504,11 @@ class UserService:
             )
 
         # 级联清理（依赖 FK ondelete 的表由 PG 处理；无 FK 的显式清理）
-        # 表名无法参数化，改为字面量语句（不再用 f-string 动态拼接 SQL，消除代码味）；
-        # 表名取自固定白名单，无注入风险。
-        await self.db.execute(
-            text("DELETE FROM refresh_tokens WHERE user_id=:i"), {"i": target.id}
-        )
-        await self.db.execute(
-            text("DELETE FROM login_history WHERE user_id=:i"), {"i": target.id}
-        )
-        await self.db.execute(
-            text("DELETE FROM password_history WHERE user_id=:i"), {"i": target.id}
-        )
+        # C-16：原用裸 text("DELETE FROM <table> WHERE user_id=:i") 直查；
+        # 下沉至各自 repo 的 delete_by_user 方法，去表名硬编码，走 ORM delete 语句。
+        await self.refresh_repo.delete_by_user(target.id)
+        await self.login_history_repo.delete_by_user(target.id)
+        await self.password_history_repo.delete_by_user(target.id)
         await self.db.delete(target)
         # 移除提前 commit：改由 _audit_admin 的 record_atomic 同事务原子提交，审计失败整体回滚
 

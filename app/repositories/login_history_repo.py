@@ -72,3 +72,10 @@ class LoginHistoryRepository:
             delete(LoginHistory).where(LoginHistory.created_at < before)
         )
         return dml_rowcount(result)
+
+    async def delete_by_user(self, user_id: int) -> int:
+        """物理删除该用户全部登录历史行（用户删除时的级联清理）。"""
+        result = await self.db.execute(
+            delete(LoginHistory).where(LoginHistory.user_id == user_id)
+        )
+        return dml_rowcount(result)

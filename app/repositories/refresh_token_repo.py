@@ -93,6 +93,19 @@ class RefreshTokenRepository:
         )
         return dml_rowcount(result)
 
+    async def delete_by_user(self, user_id: int) -> int:
+        """物理删除该用户全部 refresh token 行（仅用户删除时的级联清理）。
+
+        与 revoke 不同：revoke 软撤销保留行用于复用检测；本方法彻底删除，
+        当用户被物理删除时调用（用户删除为软删除，但无 FK 的附属表须显式清理）。
+        """
+        from sqlalchemy import delete
+
+        result = await self.db.execute(
+            delete(RefreshToken).where(RefreshToken.user_id == user_id)
+        )
+        return dml_rowcount(result)
+
     async def list_active_for_user(self, user_id: int) -> list[RefreshToken]:
         """列出该用户未撤销且未过期的 refresh token（设备列表，新→旧）。"""
         now = now_utc()
