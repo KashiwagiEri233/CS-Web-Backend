@@ -1,8 +1,9 @@
-from typing import Optional, Sequence
+from typing import Optional, Sequence, Tuple
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import selectinload
 
+from app.models.role import Role
 from app.models.user import User
 from app.repositories.base import BaseRepository
 from app.repositories.base import paginate
@@ -13,6 +14,49 @@ class UserRepository(BaseRepository[User]):
     此处仅保留用户特有查询。"""
 
     model = User
+
+    async def list_admin_paginated(
+        self,
+        *,
+        search: Optional[str] = None,
+        role: str = "all",
+        active: str = "all",
+        skip: int = 0,
+        limit: int = 50,
+    ) -> Tuple[list[User], int]:
+        """管理员用户列表查询：search 匹配 email/display_name；role/active 筛选；分页。
+
+        返回 (users, total)。角色筛选下推到 SQL（EXISTS 子查询），避免分页后
+        Python 过滤导致 total 失真。预加载 roles 供 to_admin_out 组装。
+        """
+        conditions: list = [User.deleted_at.is_(None)]
+        if search:
+            kw = f"%{search}%"
+            conditions.append(or_(User.email.ilike(kw), User.display_name.ilike(kw)))
+        if active == "active":
+            conditions.append(User.is_active.is_(True))
+        elif active == "inactive":
+            conditions.append(User.is_active.is_(False))
+        if role != "all":
+            conditions.append(User.roles.any(Role.name == role))
+
+        total = int(
+            (
+                await self.db.execute(
+                    select(func.count()).select_from(User).where(*conditions)
+                )
+            ).scalar_one()
+        )
+        stmt = paginate(
+            select(User)
+            .options(selectinload(User.roles))
+            .where(*conditions)
+            .order_by(User.created_at.desc()),
+            skip,
+            limit,
+        )
+        users = list((await self.db.execute(stmt)).scalars().all())
+        return users, total
 
     async def list_by_ids(self, user_ids: Sequence[int]) -> list[User]:
         """按 ID 集合批量取用户（单次 IN 查询），供聚合出参回填 display_name/email。"""

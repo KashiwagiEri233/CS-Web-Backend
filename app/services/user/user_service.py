@@ -189,41 +189,16 @@ class UserService:
         page_size: int = 50,
     ) -> dict:
         """管理员用户列表：search 匹配 email/display_name；role/active 筛选；分页。"""
-        from sqlalchemy import func, or_, select
-        from sqlalchemy.orm import selectinload
-
         page = max(1, page)
         page_size = min(max(1, page_size), 200)
 
-        conditions: list = [User.deleted_at.is_(None)]
-        if search:
-            kw = f"%{search}%"
-            conditions.append(or_(User.email.ilike(kw), User.display_name.ilike(kw)))
-        if active == "active":
-            conditions.append(User.is_active.is_(True))
-        elif active == "inactive":
-            conditions.append(User.is_active.is_(False))
-        if role != "all":
-            # 角色筛选下推到 SQL（EXISTS 子查询）：原实现在分页之后用 Python 过滤，
-            # 会导致 total 与实际结果不一致、当页条数少于 page_size（分页语义失真）。
-            conditions.append(User.roles.any(Role.name == role))
-
-        total = int(
-            (
-                await self.db.execute(
-                    select(func.count()).select_from(User).where(*conditions)
-                )
-            ).scalar_one()
+        users, total = await self.user_repo.list_admin_paginated(
+            search=search,
+            role=role,
+            active=active,
+            skip=(page - 1) * page_size,
+            limit=page_size,
         )
-        stmt = paginate(
-            select(User)
-            .options(selectinload(User.roles))
-            .where(*conditions)
-            .order_by(User.created_at.desc()),
-            (page - 1) * page_size,
-            page_size,
-        )
-        users = list((await self.db.execute(stmt)).scalars().all())
 
         return {
             "users": [to_admin_out(u) for u in users],
