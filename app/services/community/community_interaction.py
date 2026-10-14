@@ -14,7 +14,7 @@ from app.core.events import event_bus
 from app.core.exceptions import NotFoundException
 from app.core.loguru_logger import get_logger
 from app.models.community import CommunityComment, CommunityPost
-from app.repositories.community_repo import (
+from app.repositories.community import (
     CommunityCommentRepository,
     CommunityInteractionRepository,
     CommunityPostRepository,

@@ -16,7 +16,7 @@ from app.core.timezone import now_utc
 from app.models.exam import Exam, ExamQuestion
 from app.models.learning import WrongAnswer
 from app.models.user import User
-from app.repositories.tools_repo import ExamRepository
+from app.repositories.tools import ExamRepository
 from app.schemas.tools import ExamInput, QuestionInput
 from app.services.audit_service import AuditService
 

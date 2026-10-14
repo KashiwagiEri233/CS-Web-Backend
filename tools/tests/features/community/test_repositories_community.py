@@ -19,7 +19,7 @@ from sqlalchemy import delete, text
 from app.database import get_session
 from app.models.community import CommunityCategory
 from app.models.user import User
-from app.repositories.community_repo import (
+from app.repositories.community import (
     CommunityCategoryRepository,
     CommunityCommentRepository,
     CommunityFollowRepository,

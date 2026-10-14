@@ -23,7 +23,7 @@ from app.core.exceptions import (
 )
 from app.core.timezone import now_utc
 from app.models.community import CommunityCategory, CommunityPost
-from app.repositories.community_repo import (
+from app.repositories.community import (
     CommunityCategoryRepository,
     CommunityFollowRepository,
     CommunityInteractionRepository,

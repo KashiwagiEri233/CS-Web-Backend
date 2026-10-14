@@ -17,7 +17,7 @@ from app.core.exceptions import (
     ErrorCode,
     NotFoundException,
 )
-from app.repositories.community_repo import CommunityCategoryRepository
+from app.repositories.community import CommunityCategoryRepository
 
 
 class CategoryService:

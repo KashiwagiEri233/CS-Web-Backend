@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundException
 from app.models.community import CommunityReport
-from app.repositories.community_repo import (
+from app.repositories.community import (
     CommunityCommentRepository,
     CommunityPostRepository,
     CommunityReportRepository,

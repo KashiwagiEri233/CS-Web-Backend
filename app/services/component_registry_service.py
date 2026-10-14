@@ -13,7 +13,7 @@ from app.core.exceptions import (
     ValidationException,
 )
 from app.models.component_registry import ComponentRegistryItem
-from app.repositories.tools_repo import ComponentRegistryRepository
+from app.repositories.tools import ComponentRegistryRepository
 from app.schemas.tools import (
     ComponentGuideInput,
     ComponentItemInput,

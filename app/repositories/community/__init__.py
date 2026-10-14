@@ -4,7 +4,6 @@ views / mentions / follows / reports / series。
 搜索基于 PostgreSQL 原生全文检索（GIN + tsvector，Phase 6 已落地）。
 
 各仓储类按职责拆分至同目录子模块，此处统一重新导出以简化调用方 import。
-原 ``app.repositories.community_repo`` 已降级为指向本子包的兼容 shim。
 """
 
 from app.repositories.community.category import CommunityCategoryRepository

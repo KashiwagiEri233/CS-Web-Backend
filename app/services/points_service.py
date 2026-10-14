@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ValidationException, ErrorCode
 from app.models.user import User
-from app.repositories.tools_repo import PointsRepository
+from app.repositories.tools import PointsRepository
 
 
 class _LevelThreshold(TypedDict):

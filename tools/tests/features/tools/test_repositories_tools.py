@@ -35,7 +35,7 @@ from app.models.points import PointsTransaction
 from app.models.resource import Resource
 from app.models.task import Task, TaskClaim
 from app.models.user import User
-from app.repositories.tools_repo import (
+from app.repositories.tools import (
     ComponentRegistryRepository,
     ExamRepository,
     PointsRepository,

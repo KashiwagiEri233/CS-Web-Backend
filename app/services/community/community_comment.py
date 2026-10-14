@@ -21,7 +21,7 @@ from app.core.exceptions import (
 )
 from app.core.timezone import now_utc
 from app.models.community import CommunityComment
-from app.repositories.community_repo import (
+from app.repositories.community import (
     CommunityCommentRepository,
     CommunityPostRepository,
 )

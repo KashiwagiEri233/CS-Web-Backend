@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import NotFoundException
 from app.models.resource import Resource
 from app.models.user import User
-from app.repositories.tools_repo import ResourceRepository
+from app.repositories.tools import ResourceRepository
 from app.schemas.tools import ResourceInput
 
 

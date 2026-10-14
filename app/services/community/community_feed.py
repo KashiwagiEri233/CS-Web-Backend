@@ -21,7 +21,7 @@ from app.core.exceptions import (
 )
 from app.core.loguru_logger import get_logger
 from app.models.user import User
-from app.repositories.community_repo import CommunityFollowRepository
+from app.repositories.community import CommunityFollowRepository
 from app.repositories.user_repo import UserRepository
 
 logger = get_logger("community")

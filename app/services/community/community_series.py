@@ -17,7 +17,7 @@ from app.core.exceptions import (
     ErrorCode,
     NotFoundException,
 )
-from app.repositories.community_repo import CommunitySeriesRepository
+from app.repositories.community import CommunitySeriesRepository
 from app.services.community.community_utils import generate_slug
 
 

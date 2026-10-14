@@ -15,7 +15,7 @@ from app.core.exceptions import (
 from app.core.timezone import now_utc
 from app.models.task import Task, TaskClaim
 from app.models.user import User
-from app.repositories.tools_repo import TaskRepository
+from app.repositories.tools import TaskRepository
 from app.schemas.tools import TaskInput
 from app.services.points_service import PointsService
 
