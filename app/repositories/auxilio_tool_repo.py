@@ -8,15 +8,16 @@ from __future__ import annotations
 
 from typing import Optional
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import ARRAY, String, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timezone import now_utc, local_day_start_utc
 from app.models.api_usage import ApiCallLog
-from app.models.exam import Exam
+from app.models.exam import Exam, ExamAttempt, ExamQuestion
 from app.models.focus import FocusSession
+from app.models.learning import WrongAnswer
 from app.models.llm_usage import LlmUsageLog
 from app.models.resource import Resource
 from app.models.task import Task, TaskClaim
@@ -167,3 +168,51 @@ class AuxilioToolRepository:
             "total_focus_sessions": int(total_sessions),
             "today_focus_minutes": round(today_minutes),
         }
+
+    # ------------------------------------------------------------ 学习画像（AG-P2）
+
+    async def attempt_history_for_analysis(
+        self, user_id: int
+    ) -> list[tuple[int, bool, Optional[datetime], Optional[list]]]:
+        """用户答题历史（question_id, is_correct, submitted_at, exam_tech_tags）。
+
+        供 analyze_learning_profile 计算掌握度/时间衰减/置信度；
+        is_correct 为 NULL 的未判分记录不计入。
+        """
+        rows = await self.db.execute(
+            select(
+                ExamAttempt.question_id,
+                ExamAttempt.is_correct,
+                ExamAttempt.submitted_at,
+                Exam.tech_tags,
+            )
+            .join(ExamQuestion, ExamQuestion.id == ExamAttempt.question_id)
+            .join(Exam, Exam.id == ExamAttempt.exam_id)
+            .where(
+                ExamAttempt.user_id == user_id,
+                ExamAttempt.is_correct.is_not(None),
+            )
+        )
+        return list(rows.tuples().all())
+
+    async def wrong_answer_counts(self, user_id: int) -> dict[int, int]:
+        """用户错题本各题的累计错误次数 {question_id: mistake_count}。"""
+        rows = await self.db.execute(
+            select(WrongAnswer.question_id, WrongAnswer.mistake_count).where(
+                WrongAnswer.user_id == user_id
+            )
+        )
+        return {question_id: mistake_count for question_id, mistake_count in rows.all()}
+
+    async def recommend_by_tags(self, tags: list[str], limit: int) -> list[Resource]:
+        """按技术标签（任一匹配）推荐已审核资源，浏览量/点赞倒序。"""
+        rows = await self.db.execute(
+            select(Resource)
+            .where(
+                Resource.status == "approved",
+                Resource.tech_tags.op("?|")(cast(tags, ARRAY(String))),
+            )
+            .order_by(Resource.view_count.desc(), Resource.like_count.desc())
+            .limit(limit)
+        )
+        return list(rows.scalars().all())

@@ -5,19 +5,19 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy import ARRAY, String, cast, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timezone import now_utc
 from app.core.loguru_logger import get_logger
 
 from app.models.conversation import AgentRun, ChatMessage, Conversation
-from app.models.exam import Exam, ExamAttempt, ExamQuestion
 from app.models.learning import WrongAnswer
 from app.models.learning_goal import LearningGoal
 from app.models.learning_plan import LearningPlanItem
 from app.models.focus import FocusSession
-from app.models.resource import Resource
+from app.repositories.auxilio_tool_repo import AuxilioToolRepository
+from app.repositories.tools.exam import ExamRepository
 
 WEAKNESS_THRESHOLD = 0.6
 MAX_RECOMMENDATIONS = 10
@@ -33,25 +33,14 @@ logger = get_logger("auxilio.service")
 class AuxilioService:
     def __init__(self, db: AsyncSession):
         self.db = db
+        # C-16：学习画像的资源/答题/错题查询下沉 AuxilioToolRepository；
+        # Exam 存在性校验走 tools.exam.ExamRepository。
+        self.tool_repo = AuxilioToolRepository(db)
+        self.exam_repo = ExamRepository(db)
 
     async def analyze_learning_profile(self, user_id: int) -> dict:
         """分析用户答题历史：正确率、时间衰减、置信度和错题证据。"""
-        rows = (
-            await self.db.execute(
-                select(
-                    ExamAttempt.question_id,
-                    ExamAttempt.is_correct,
-                    ExamAttempt.submitted_at,
-                    Exam.tech_tags,
-                )
-                .join(ExamQuestion, ExamQuestion.id == ExamAttempt.question_id)
-                .join(Exam, Exam.id == ExamAttempt.exam_id)
-                .where(
-                    ExamAttempt.user_id == user_id,
-                    ExamAttempt.is_correct.is_not(None),
-                )
-            )
-        ).all()
+        rows = await self.tool_repo.attempt_history_for_analysis(user_id)
 
         if not rows:
             return {
@@ -60,16 +49,7 @@ class AuxilioService:
                 "recommended_resources": [],
             }
 
-        wrong_counts = {
-            question_id: mistake_count
-            for question_id, mistake_count in (
-                await self.db.execute(
-                    select(WrongAnswer.question_id, WrongAnswer.mistake_count).where(
-                        WrongAnswer.user_id == user_id
-                    )
-                )
-            ).all()
-        }
+        wrong_counts = await self.tool_repo.wrong_answer_counts(user_id)
         now = now_utc()
         tag_stats: dict[str, dict] = defaultdict(
             lambda: {
@@ -154,24 +134,8 @@ class AuxilioService:
         recommended = []
         if weak_tags:
             weak_tag_names = [t["tag"] for t in weak_tags]
-            resources = (
-                (
-                    await self.db.execute(
-                        select(Resource)
-                        .where(
-                            Resource.status == "approved",
-                            Resource.tech_tags.op("?|")(
-                                cast(weak_tag_names, ARRAY(String))
-                            ),
-                        )
-                        .order_by(
-                            Resource.view_count.desc(), Resource.like_count.desc()
-                        )
-                        .limit(MAX_RECOMMENDATIONS)
-                    )
-                )
-                .scalars()
-                .all()
+            resources = await self.tool_repo.recommend_by_tags(
+                weak_tag_names, MAX_RECOMMENDATIONS
             )
             recommended = [
                 {
@@ -263,7 +227,7 @@ class AuxilioService:
             or weekly_budget_minutes > MAX_WEEKLY_BUDGET_MINUTES
         ):
             raise ValueError("每周时间预算必须在 15 到 10080 分钟之间")
-        if exam_id is not None and await self.db.get(Exam, exam_id) is None:
+        if exam_id is not None and await self.exam_repo.get_by_id(exam_id) is None:
             raise ValueError("关联考试不存在")
         if target_date is not None:
             if target_date.tzinfo is None:
@@ -317,7 +281,7 @@ class AuxilioService:
             goal.weekly_budget_minutes = budget
         if "exam_id" in changes:
             exam_id = changes["exam_id"]
-            if exam_id is not None and await self.db.get(Exam, exam_id) is None:
+            if exam_id is not None and await self.exam_repo.get_by_id(exam_id) is None:
                 raise ValueError("关联考试不存在")
             goal.exam_id = exam_id
         if "target_date" in changes:
