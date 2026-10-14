@@ -35,6 +35,7 @@ from app.repositories.activity_participation_repo import ActivityParticipationRe
 from app.repositories.base import paginate
 from app.repositories.login_history_repo import LoginHistoryRepository
 from app.repositories.password_history_repo import PasswordHistoryRepository
+from app.repositories.rbac_repo import RBACRepository
 from app.repositories.refresh_token_repo import RefreshTokenRepository
 from app.repositories.user_repo import UserRepository
 from app.schemas.auth import UserOut
@@ -74,6 +75,7 @@ class UserService:
         self.activity_repo = ActivityParticipationRepository(db)
         self.login_history_repo = LoginHistoryRepository(db)
         self.password_history_repo = PasswordHistoryRepository(db)
+        self.rbac_repo = RBACRepository(db)
         # 注入共享请求会话，使 record_atomic 可同事务提交审计（否则 db=None 会抛错）；与 auth_service 一致
         self.audit = AuditService(self.db)
 
@@ -545,9 +547,7 @@ class UserService:
 
     async def _set_user_role(self, user: User, role_name: str) -> None:
         """替换用户角色为单一角色（前端语义：一用户一主角色）。"""
-        role = (
-            await self.db.execute(select(Role).where(Role.name == role_name))
-        ).scalar_one_or_none()
+        role = await self.rbac_repo.get_role_by_name(role_name)
         if role is None:
             raise NotFoundException(
                 message=f"角色 {role_name} 不存在",
