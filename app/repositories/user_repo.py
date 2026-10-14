@@ -80,6 +80,101 @@ class UserRepository(BaseRepository[User]):
         stmt = select(func.count()).select_from(User).where(User.deleted_at.is_(None))
         return int((await self.db.execute(stmt)).scalar_one())
 
+    async def count_active_admins(self) -> int:
+        """活跃管理员数量（is_superuser 或持有 admin 角色）。
+
+        单条聚合查询：distinct User.id + outerjoin roles，
+        避免把全部活跃用户连同角色加载回 Python 再逐条过滤的读放大
+        （该查询被 update / disable / delete 等写路径调用）。
+        """
+        from app.models.role import Role
+
+        stmt = (
+            select(func.count(func.distinct(User.id)))
+            .select_from(User)
+            .outerjoin(User.roles)
+            .where(
+                User.is_active.is_(True),
+                User.deleted_at.is_(None),
+                or_(User.is_superuser.is_(True), Role.name == "admin"),
+            )
+        )
+        return int((await self.db.execute(stmt)).scalar_one() or 0)
+
+    async def get_public_stats(self, user_id: int) -> dict:
+        """用户公开主页统计：社区发帖/评论数 + 考试参与/通过数。
+
+        跨社区与考试两个域的聚合查询（发帖、评论、考试参与、通过）；
+        通过数口径：参与且已结束的考试中，得分合计 ≥ 总分 60% 的考试数。
+        """
+        from app.models.community import CommunityComment, CommunityPost
+        from app.models.exam import Exam, ExamAttempt, ExamQuestion
+
+        topic_count = int(
+            (
+                await self.db.execute(
+                    select(func.count())
+                    .select_from(CommunityPost)
+                    .where(
+                        CommunityPost.author_id == user_id,
+                        CommunityPost.kind == "topic",
+                        CommunityPost.status == "published",
+                    )
+                )
+            ).scalar_one()
+        )
+        reply_count = int(
+            (
+                await self.db.execute(
+                    select(func.count())
+                    .select_from(CommunityComment)
+                    .where(
+                        CommunityComment.author_id == user_id,
+                        CommunityComment.status == "published",
+                    )
+                )
+            ).scalar_one()
+        )
+        exam_count = int(
+            (
+                await self.db.execute(
+                    select(func.count(func.distinct(ExamAttempt.exam_id)))
+                    .join(Exam, Exam.id == ExamAttempt.exam_id)
+                    .where(ExamAttempt.user_id == user_id, Exam.status == "ended")
+                )
+            ).scalar_one()
+        )
+        # 通过数：参与且已结束的考试中，得分合计 ≥ 总分 60% 的考试数（与前端语义一致）
+        per_exam = (
+            select(
+                ExamAttempt.exam_id,
+                func.sum(ExamAttempt.score).label("got"),
+                func.sum(ExamQuestion.score).label("total"),
+            )
+            .join(ExamQuestion, ExamQuestion.exam_id == ExamAttempt.exam_id)
+            .where(ExamAttempt.user_id == user_id)
+            .group_by(ExamAttempt.exam_id)
+            .subquery()
+        )
+        exam_passed_count = int(
+            (
+                await self.db.execute(
+                    select(func.count())
+                    .select_from(per_exam)
+                    .where(
+                        func.coalesce(per_exam.c.got, 0)
+                        >= func.coalesce(per_exam.c.total, 0) * 0.6
+                    )
+                )
+            ).scalar_one()
+        )
+        return {
+            "topic_count": topic_count,
+            "reply_count": reply_count,
+            "exam_count": exam_count,
+            "exam_passed_count": exam_passed_count,
+        }
+
     async def get_by_username(self, username: str) -> Optional[User]:
         """通过用户名获取未删除用户。"""
         stmt = select(User).where(

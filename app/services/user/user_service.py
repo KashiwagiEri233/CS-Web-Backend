@@ -27,8 +27,6 @@ from app.core.exceptions import (
 from app.core.security import async_get_password_hash, async_verify_password
 from app.core.config import settings
 from app.core.timezone import now_utc
-from app.models.community import CommunityComment, CommunityPost
-from app.models.exam import Exam, ExamAttempt, ExamQuestion
 from app.models.role import Role
 from app.models.user import User
 from app.repositories.activity_participation_repo import ActivityParticipationRepository
@@ -503,22 +501,8 @@ class UserService:
         return user.is_superuser or any(r.name == "admin" for r in user.roles)
 
     async def _active_admin_count(self) -> int:
-        """活跃管理员数量（is_superuser 或持有 admin 角色）。
-
-        单条聚合查询：原实现把全部活跃用户连同角色一起加载回 Python 再逐条过滤，
-        用户量增长后是明显的读放大（且被 update / disable / delete 等写路径调用）。
-        """
-        stmt = (
-            select(func.count(func.distinct(User.id)))
-            .select_from(User)
-            .outerjoin(User.roles)
-            .where(
-                User.is_active.is_(True),
-                User.deleted_at.is_(None),
-                or_(User.is_superuser.is_(True), Role.name == "admin"),
-            )
-        )
-        return int((await self.db.execute(stmt)).scalar_one() or 0)
+        """活跃管理员数量（is_superuser 或持有 admin 角色）。"""
+        return await self.user_repo.count_active_admins()
 
     async def _set_user_role(self, user: User, role_name: str) -> None:
         """替换用户角色为单一角色（前端语义：一用户一主角色）。"""
@@ -675,64 +659,7 @@ class UserService:
         if user is None or user.deleted_at is not None or not user.is_active:
             return None
 
-        topic_count = int(
-            (
-                await self.db.execute(
-                    select(func.count())
-                    .select_from(CommunityPost)
-                    .where(
-                        CommunityPost.author_id == user_id,
-                        CommunityPost.kind == "topic",
-                        CommunityPost.status == "published",
-                    )
-                )
-            ).scalar_one()
-        )
-        reply_count = int(
-            (
-                await self.db.execute(
-                    select(func.count())
-                    .select_from(CommunityComment)
-                    .where(
-                        CommunityComment.author_id == user_id,
-                        CommunityComment.status == "published",
-                    )
-                )
-            ).scalar_one()
-        )
-        exam_count = int(
-            (
-                await self.db.execute(
-                    select(func.count(func.distinct(ExamAttempt.exam_id)))
-                    .join(Exam, Exam.id == ExamAttempt.exam_id)
-                    .where(ExamAttempt.user_id == user_id, Exam.status == "ended")
-                )
-            ).scalar_one()
-        )
-        # 通过数：参与且已结束的考试中，得分合计 ≥ 总分 60% 的考试数（与前端语义一致）
-        per_exam = (
-            select(
-                ExamAttempt.exam_id,
-                func.sum(ExamAttempt.score).label("got"),
-                func.sum(ExamQuestion.score).label("total"),
-            )
-            .join(ExamQuestion, ExamQuestion.exam_id == ExamAttempt.exam_id)
-            .where(ExamAttempt.user_id == user_id)
-            .group_by(ExamAttempt.exam_id)
-            .subquery()
-        )
-        exam_passed_count = int(
-            (
-                await self.db.execute(
-                    select(func.count())
-                    .select_from(per_exam)
-                    .where(
-                        func.coalesce(per_exam.c.got, 0)
-                        >= func.coalesce(per_exam.c.total, 0) * 0.6
-                    )
-                )
-            ).scalar_one()
-        )
+        stats = await self.user_repo.get_public_stats(user_id)
 
         return {
             "user": {
@@ -747,12 +674,7 @@ class UserService:
                 "tech_tags": user.tech_tags or [],
                 "created_at": user.created_at,
             },
-            "stats": {
-                "topic_count": topic_count,
-                "reply_count": reply_count,
-                "exam_count": exam_count,
-                "exam_passed_count": exam_passed_count,
-            },
+            "stats": stats,
         }
 
     # ------------------------------------------------------------------ 内部
