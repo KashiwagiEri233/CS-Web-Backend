@@ -45,6 +45,7 @@ from app.services.resource_service import ResourceService
 from app.services.search_service import SearchService
 from app.services.task_service import TaskService
 from app.services.totp_service import TOTPService
+from app.services.user.profile_service import ProfileService
 from app.services.user.user_service import UserService
 from app.services.verification_service import VerificationService
 from app.services.workbench_service import WorkbenchService
@@ -53,6 +54,10 @@ from app.services.contribution_service import ContributionService
 
 def get_user_service(db: AsyncSession = Depends(get_db)) -> UserService:
     return UserService(db)
+
+
+def get_profile_service(db: AsyncSession = Depends(get_db)) -> ProfileService:
+    return ProfileService(db)
 
 
 def get_announcement_service(db: AsyncSession = Depends(get_db)) -> AnnouncementService:

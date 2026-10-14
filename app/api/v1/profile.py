@@ -13,7 +13,7 @@ from app.core.constants import IMMUTABLE_IMAGE_CACHE_CONTROL
 from app.core.exceptions import NotFoundException
 from app.core.request_context import get_client_meta
 from app.dependencies import get_current_active_user
-from app.dependencies_services import get_auth_service, get_user_service
+from app.dependencies_services import get_auth_service, get_profile_service
 from app.models.user import User
 from app.schemas.auth import UserOut
 from app.schemas.profile import (
@@ -24,7 +24,7 @@ from app.schemas.profile import (
     PublicUserProfileResponse,
 )
 from app.services.auth.auth_service import AuthService
-from app.services.user.user_service import UserService
+from app.services.user.profile_service import ProfileService
 
 router = APIRouter()
 
@@ -47,21 +47,21 @@ def _avatar_path(filename: str) -> Path:
 
 @router.get("/profile", response_model=ProfileResponse)
 async def get_profile(
-    user_service: UserService = Depends(get_user_service),
+    profile_service: ProfileService = Depends(get_profile_service),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     """获取当前用户完整资料（含活动参与记录）。"""
-    return await user_service.get_profile(current_user.id)
+    return await profile_service.get_profile(current_user.id)
 
 
 @router.put("/profile", response_model=UserOut)
 async def update_profile(
     body: ProfileUpdate,
-    user_service: UserService = Depends(get_user_service),
+    profile_service: ProfileService = Depends(get_profile_service),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     """更新个人资料（displayName/bio/githubUrl/websiteUrl/techTags）。"""
-    return await user_service.update_profile_fields(current_user.id, body)
+    return await profile_service.update_profile_fields(current_user.id, body)
 
 
 @router.post("/profile/password")
@@ -80,23 +80,23 @@ async def change_password(
 @router.post("/profile/avatar/preset", response_model=UserOut)
 async def set_preset_avatar(
     body: AvatarPresetRequest,
-    user_service: UserService = Depends(get_user_service),
+    profile_service: ProfileService = Depends(get_profile_service),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     """设置预设头像（avatar_type=preset）。"""
-    return await user_service.set_preset_avatar(current_user.id, body.preset_id)
+    return await profile_service.set_preset_avatar(current_user.id, body.preset_id)
 
 
 @router.post("/profile/avatar/upload", response_model=UserOut)
 async def upload_avatar(
     request: Request,
     file: UploadFile = File(...),
-    user_service: UserService = Depends(get_user_service),
+    profile_service: ProfileService = Depends(get_profile_service),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     """上传自定义头像（≤2MB，JPEG/PNG/WebP/GIF，魔数校验）。"""
     content = await file.read()
-    return await user_service.save_uploaded_avatar(
+    return await profile_service.save_uploaded_avatar(
         current_user.id,
         content,
         file.content_type or "",
@@ -137,10 +137,10 @@ async def serve_avatar(filename: str) -> Any:
 @router.get("/users/{user_id}", response_model=PublicUserProfileResponse)
 async def get_public_user(
     user_id: int,
-    user_service: UserService = Depends(get_user_service),
+    profile_service: ProfileService = Depends(get_profile_service),
 ) -> Any:
     """用户公开主页（无需登录）：公开资料 + 社区/考试统计。"""
-    profile = await user_service.get_public_profile(user_id)
+    profile = await profile_service.get_public_profile(user_id)
     if profile is None:
         raise NotFoundException(
             message="用户不存在", resource_type="user", resource_id=str(user_id)
