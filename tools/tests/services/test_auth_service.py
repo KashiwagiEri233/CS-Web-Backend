@@ -17,6 +17,7 @@ from app.core.exceptions import (
 from app.core.security import hash_refresh_token
 from app.core.timezone import now_utc
 from app.services.auth.auth_service import AuthService
+from app.services.auth.token_service import TokenService
 
 
 @pytest.fixture
@@ -125,19 +126,21 @@ async def test_refresh_loads_token_with_row_lock():
     db = MagicMock()
     db.commit = AsyncMock()
     svc = AuthService(db=db)  # ER-41：真实 __init__
-    svc.refresh_repo = AsyncMock()
-    svc.user_repo = AsyncMock()
+    # C-17 切片3：refresh 流程已委托 TokenService，打桩须落到它持有的 repo，
+    # 否则桩不生效（真实 repo 会打到 DB 并因 MagicMock db 报 TypeError）。
+    svc.token_service.refresh_repo = AsyncMock()
+    svc.token_service.user_repo = AsyncMock()
     # 撤销时间远超宽限窗口 → 复用检测 → 吊销 family
     revoked = MagicMock(revoked_at=now_utc() - timedelta(days=1), family_id="family")
-    svc.refresh_repo.get_by_hash.return_value = revoked
+    svc.token_service.refresh_repo.get_by_hash.return_value = revoked
 
     with pytest.raises(InvalidCredentialsException):
         await svc.refresh_access_token("refresh-token")
 
-    svc.refresh_repo.get_by_hash.assert_awaited_once_with(
+    svc.token_service.refresh_repo.get_by_hash.assert_awaited_once_with(
         hash_refresh_token("refresh-token"), for_update=True
     )
-    svc.refresh_repo.revoke_family.assert_awaited_once_with("family")
+    svc.token_service.refresh_repo.revoke_family.assert_awaited_once_with("family")
 
 
 async def test_refresh_within_leeway_allows_concurrent_retry():
@@ -145,8 +148,10 @@ async def test_refresh_within_leeway_allows_concurrent_retry():
     db = MagicMock()
     db.commit = AsyncMock()
     svc = AuthService(db=db)  # ER-41：真实 __init__
-    svc.refresh_repo = AsyncMock()
-    svc.user_repo = AsyncMock()
+    # C-17 切片3：refresh 流程已委托 TokenService，打桩须落到它持有的 repo，
+    # 否则桩不生效（真实 repo 会打到 DB 并因 MagicMock db 报 TypeError）。
+    svc.token_service.refresh_repo = AsyncMock()
+    svc.token_service.user_repo = AsyncMock()
     rotated = MagicMock(
         id=5,
         revoked_at=now_utc(),  # 刚被轮换撤销，处于宽限窗口内
@@ -154,19 +159,19 @@ async def test_refresh_within_leeway_allows_concurrent_retry():
         user_id=1,
         expires_at=now_utc() + timedelta(days=1),
     )
-    svc.refresh_repo.get_by_hash.return_value = rotated
-    svc.refresh_repo.family_has_active.return_value = True
-    svc.user_repo.get_by_id.return_value = MagicMock(
+    svc.token_service.refresh_repo.get_by_hash.return_value = rotated
+    svc.token_service.refresh_repo.family_has_active.return_value = True
+    svc.token_service.user_repo.get_by_id.return_value = MagicMock(
         id=1, username="u", is_active=True, deleted_at=None, password_changed_at=None
     )
 
     pair = await svc.refresh_access_token("refresh-token")
 
     assert pair.access_token and pair.refresh_token
-    svc.refresh_repo.revoke_family.assert_not_called()
+    svc.token_service.refresh_repo.revoke_family.assert_not_called()
     # 不刷新 revoked_at，宽限窗口不被延长
-    svc.refresh_repo.revoke.assert_not_called()
-    assert svc.refresh_repo.create.await_args.kwargs["family_id"] == "family"
+    svc.token_service.refresh_repo.revoke.assert_not_called()
+    assert svc.token_service.refresh_repo.create.await_args.kwargs["family_id"] == "family"
 
 
 async def test_refresh_revoked_without_active_family_is_reuse():
@@ -174,21 +179,23 @@ async def test_refresh_revoked_without_active_family_is_reuse():
     db = MagicMock()
     db.commit = AsyncMock()
     svc = AuthService(db=db)  # ER-41：真实 __init__
-    svc.refresh_repo = AsyncMock()
-    svc.user_repo = AsyncMock()
+    # C-17 切片3：refresh 流程已委托 TokenService，打桩须落到它持有的 repo，
+    # 否则桩不生效（真实 repo 会打到 DB 并因 MagicMock db 报 TypeError）。
+    svc.token_service.refresh_repo = AsyncMock()
+    svc.token_service.user_repo = AsyncMock()
     revoked = MagicMock(
         revoked_at=now_utc(),
         family_id="family",
         user_id=1,
         expires_at=now_utc() + timedelta(days=1),
     )
-    svc.refresh_repo.get_by_hash.return_value = revoked
-    svc.refresh_repo.family_has_active.return_value = False
+    svc.token_service.refresh_repo.get_by_hash.return_value = revoked
+    svc.token_service.refresh_repo.family_has_active.return_value = False
 
     with pytest.raises(InvalidCredentialsException):
         await svc.refresh_access_token("refresh-token")
 
-    svc.refresh_repo.revoke_family.assert_awaited_once_with("family")
+    svc.token_service.refresh_repo.revoke_family.assert_awaited_once_with("family")
 
 
 async def test_authenticate_missing_user_still_verifies_dummy_hash(
@@ -213,7 +220,8 @@ def test_password_change_claim_keeps_microsecond_precision():
         ),
     )
 
-    claims = AuthService._access_token_claims(user)
+    # C-17 切片3：claims 构造已随 token 套件移入 TokenService
+    claims = TokenService._access_token_claims(user)
 
     assert claims["pwd_at"] == 1784030400123456
 
@@ -233,8 +241,10 @@ def _make_login_service(monkeypatch, *, limiter_allowed: bool = True):
     limiter.is_allowed.return_value = limiter_allowed
     monkeypatch.setattr("app.services.auth.auth_service.get_limiter", lambda: limiter)
 
+    # C-17 切片3：login 内部走 self.token_service.issue_token_pair，
+    # 打在 AuthService 的委托方法上拦不到，须落到实例的 token_service。
     issue = AsyncMock(return_value="pair")
-    monkeypatch.setattr(AuthService, "issue_token_pair", issue)
+    svc.token_service.issue_token_pair = issue
     return svc, limiter, issue
 
 

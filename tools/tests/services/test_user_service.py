@@ -14,7 +14,26 @@ from app.core.exceptions import (
     PermissionDeniedException,
     ValidationException,
 )
+from app.services.user.user_admin_service import UserAdminService
 from app.services.user.user_service import UserService
+
+
+@pytest.fixture
+def user_admin_service(monkeypatch) -> UserAdminService:
+    """注入 mock db 的 UserAdminService（C-17 切片2 起的 admin 域测试夹具）。
+
+    repo / 审计一律 AsyncMock 替换，__init__ 正常执行以暴露依赖变化。
+    """
+    db = MagicMock()
+    db.commit = AsyncMock()
+    db.refresh = AsyncMock()
+    db.execute = AsyncMock()
+    svc = UserAdminService(db=db)
+    svc.user_repo = AsyncMock()
+    svc.refresh_repo = AsyncMock()
+    svc.rbac_repo = AsyncMock()
+    svc.audit = AsyncMock()
+    return svc
 
 
 @pytest.fixture
@@ -307,31 +326,32 @@ async def test_delete_user_blocks_non_superuser_deleting_superuser(
     svc.user_repo.update.assert_not_called()
 
 
-async def test_list_users_for_admin_filter_role(user_service, monkeypatch):
-    """验证后台用户列表按角色筛选下推至 SQL。"""
-    svc = user_service
+async def test_list_users_for_admin_filter_role(user_admin_service, monkeypatch):
+    """验证后台用户列表按角色筛选下推至 SQL。
+
+    C-17 切片2：list_users_admin 已移入 UserAdminService（admin 域与自助 CRUD 分离），
+    因此本用例归属 admin 服务夹具，而非 UserService。
+    """
+    svc = user_admin_service
     monkeypatch.setattr(
-        "app.services.user.user_service.to_admin_out",
+        "app.services.user.user_admin_service.to_admin_out",
         lambda u: {"id": u.id, "email": u.email},
     )
-    mock_count_result = MagicMock()
-    mock_count_result.scalar_one.return_value = 1
-    mock_users_result = MagicMock()
-    user_mock = MagicMock(id=1, email="test@test.com")
-    mock_users_result.scalars.return_value.all.return_value = [user_mock]
-    svc.db.execute.side_effect = [mock_count_result, mock_users_result]
+    svc.user_repo.list_admin_paginated.return_value = ([MagicMock(id=1, email="t@t.com")], 1)
 
     result = await svc.list_users_admin(page=1, page_size=10, role="admin")
+
     assert result["total"] == 1
     assert len(result["users"]) == 1
+    assert result["page"] == 1
+    assert result["page_size"] == 10
+    assert svc.user_repo.list_admin_paginated.await_args.kwargs["role"] == "admin"
 
 
-async def test_active_admin_count(user_service):
-    """验证 _active_admin_count 单次聚合统计活跃管理员数量。"""
-    svc = user_service
-    mock_result = MagicMock()
-    mock_result.scalar_one.return_value = 3
-    svc.db.execute.return_value = mock_result
+async def test_active_admin_count(user_admin_service):
+    """验证 _active_admin_count 委托 repo 聚合查询（不自行加载全表）。"""
+    svc = user_admin_service
+    svc.user_repo.count_active_admins.return_value = 3
 
-    count = await svc._active_admin_count()
-    assert count == 3
+    assert await svc._active_admin_count() == 3
+    svc.user_repo.count_active_admins.assert_awaited_once_with()
