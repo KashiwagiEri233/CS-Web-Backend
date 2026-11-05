@@ -337,7 +337,10 @@ async def test_list_users_for_admin_filter_role(user_admin_service, monkeypatch)
         "app.services.user.user_admin_service.to_admin_out",
         lambda u: {"id": u.id, "email": u.email},
     )
-    svc.user_repo.list_admin_paginated.return_value = ([MagicMock(id=1, email="t@t.com")], 1)
+    svc.user_repo.list_admin_paginated.return_value = (
+        [MagicMock(id=1, email="t@t.com")],
+        1,
+    )
 
     result = await svc.list_users_admin(page=1, page_size=10, role="admin")
 

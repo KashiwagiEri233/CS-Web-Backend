@@ -1,4 +1,3 @@
-from datetime import timedelta
 import re
 import secrets
 from typing import Optional
@@ -23,10 +22,7 @@ from app.core.rate_limit import get_limiter
 from app.core.security import (
     async_get_password_hash,
     async_verify_password,
-    create_access_token,
     create_two_factor_token,
-    generate_refresh_token,
-    hash_refresh_token,
     verify_token,
     verify_two_factor_token,
 )
@@ -595,8 +591,7 @@ class AuthService:
         )
         return created
 
-
-    # ------------------------------------------------------------------ token 套件（委托 TokenService，C-17 切片3）
+    # ---------------------------------------------- token 套件（委托 TokenService，C-17 切片3）
 
     async def issue_token_pair(
         self,

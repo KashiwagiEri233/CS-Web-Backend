@@ -18,7 +18,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
-    AuthorizationException,
     ConflictException,
     InvalidCredentialsException,
     NotFoundException,

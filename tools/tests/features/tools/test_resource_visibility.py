@@ -149,4 +149,6 @@ def test_admin_console_read_granted_only_to_admin_role():
     for role_name, perms in roles.items():
         if role_name == "admin":
             continue
-        assert "admin:console_read" not in perms, f"角色 {role_name} 不应持有 admin:console_read"
+        assert (
+            "admin:console_read" not in perms
+        ), f"角色 {role_name} 不应持有 admin:console_read"

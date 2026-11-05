@@ -171,7 +171,9 @@ async def test_refresh_within_leeway_allows_concurrent_retry():
     svc.token_service.refresh_repo.revoke_family.assert_not_called()
     # 不刷新 revoked_at，宽限窗口不被延长
     svc.token_service.refresh_repo.revoke.assert_not_called()
-    assert svc.token_service.refresh_repo.create.await_args.kwargs["family_id"] == "family"
+    assert (
+        svc.token_service.refresh_repo.create.await_args.kwargs["family_id"] == "family"
+    )
 
 
 async def test_refresh_revoked_without_active_family_is_reuse():
