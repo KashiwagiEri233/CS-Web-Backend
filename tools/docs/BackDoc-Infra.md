@@ -201,7 +201,7 @@
 | **MUST** | 多 worker 自动迁移和 RBAC seed **MUST** 使用 PostgreSQL advisory lock |
 | **MUST** | 模型时间列 **MUST** 使用 `DateTime(timezone=True)` |
 | **MUST NOT** | 修改模型后 **MUST NOT** 修改历史迁移或调用 `Base.metadata.create_all`；**MUST** 新增增量迁移 |
-| **MUST** | 迁移链 **MUST** 保持单一 head（当前 head: `e5f6a7b8c9d0`，线性链、无分支） |
+| **MUST** | 迁移链 **MUST** 保持单一 head（当前 head: `f4a5b6c7d8e9`，线性链、无分支） |
 
 ### 3.5 测试覆盖
 
