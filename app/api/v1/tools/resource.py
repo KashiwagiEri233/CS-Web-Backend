@@ -17,7 +17,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, File, UploadFile
 
 from app.core.exceptions import AuthorizationException, ValidationException
-from app.dependencies import get_current_active_user
+from app.dependencies import get_current_active_user, get_optional_current_user
 from app.dependencies_services import get_resource_service
 from app.middleware.rbac import require_permission
 from app.models.user import User
@@ -44,7 +44,11 @@ async def list_resources(
     tag: Optional[str] = None,
     service: ResourceService = Depends(get_resource_service),
 ) -> Any:
+    # A03 修复：公开列表固定只出「已审核通过」资源。
+    # 旧实现 status=None 直接透传 repo（无条件查询），匿名即可读到 pending/rejected 内容。
+    # 作者/管理员的待审预览走独立入口 GET /resources/mine（需登录）。
     items, total = await service.list_resources(
+        status="approved",
         tag=tag,
         skip=pagination.skip,
         limit=pagination.limit,
@@ -61,8 +65,19 @@ async def list_resources(
 async def get_resource(
     resource_id: int,
     service: ResourceService = Depends(get_resource_service),
+    current_user: Optional[User] = Depends(get_optional_current_user),
 ) -> Any:
-    return _resource_out(await service.get_resource(resource_id))
+    """资源详情：默认只开放已审核通过；作者本人或持管理权限者可预览任意状态。"""
+    resource = await service.get_resource(resource_id)
+    if resource.status != "approved":
+        is_owner = current_user is not None and resource.submitted_by == current_user.id
+        is_manager = current_user is not None and (
+            current_user.is_superuser
+            or any(r.name == "admin" for r in getattr(current_user, "roles", []) or [])
+        )
+        if not (is_owner or is_manager):
+            raise AuthorizationException(message="资源未通过审核，暂不可见")
+    return _resource_out(resource)
 
 
 @router.post("/resources", response_model=dict, status_code=201)

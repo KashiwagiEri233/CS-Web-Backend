@@ -16,7 +16,7 @@ from app.core.timezone import now_local, local_day_start_utc
 from app.dependencies import get_current_active_user
 from app.dependencies import get_db
 from app.dependencies_services import get_contribution_service, get_workbench_service
-from app.middleware.rbac import require_admin_2fa
+from app.middleware.rbac import require_admin_2fa, require_permission
 from app.models.api_usage import ApiCallLog
 from app.models.focus import FocusSession
 from app.models.llm_usage import LlmUsageLog
@@ -99,8 +99,14 @@ async def get_github_contributions(
 @router.get("/stats/api-usage")
 async def get_api_usage_stats(
     db: AsyncSession = Depends(get_db),
-    # ER-18 关联：全站 API 用量属管理员可观测性，强制管理员 + 2FA（与所有 admin 端点一致）。
-    user: User = Depends(require_admin_2fa()),
+    # A03 修复：全站 API 用量属管理员可观测性，必须**同时**满足「有权限」与「已启用 2FA」。
+    # 旧实现只挂 require_admin_2fa()，而 Admin2FARequired 对非管理员是 fail-open
+    # （`if not is_admin_role(current_user): return current_user`），
+    # 故任何活跃用户都能读到全站统计。require_permission 才是权限判定权威。
+    # 权限名用专用 admin:console_read（由 admin 角色持有），不复用 exception:read
+    # ——后者 developer 角色也持有，会过度放权。
+    user: User = Depends(require_permission("admin", "console_read")),
+    _admin_2fa: User = Depends(require_admin_2fa()),
     days: int = Query(default=30, ge=1, le=90),
 ):
     """API 调用统计：今日计数 + 近 N 天趋势 + endpoint 分布。"""

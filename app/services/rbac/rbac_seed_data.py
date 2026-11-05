@@ -135,6 +135,14 @@ DEFAULT_PERMISSIONS: List[Dict[str, str]] = [
         "action": "read",
         "description": "查看异常日志",
     },
+    # 管理员控制台可观测性（A03）：全站 API 用量等跨用户统计。
+    # 单列权限而非复用 exception:read —— 后者 developer 角色也持有，会过度放权。
+    {
+        "name": "admin:console_read",
+        "resource": "admin",
+        "action": "console_read",
+        "description": "查看管理员控制台观测数据（全站 API 用量等）",
+    },
     {
         "name": "exception:resolve",
         "resource": "exception",
