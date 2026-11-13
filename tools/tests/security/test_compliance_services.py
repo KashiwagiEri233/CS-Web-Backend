@@ -217,11 +217,11 @@ async def test_rbac_cache_invalidation_failure_warn_vs_fail_closed(monkeypatch):
     monkeypatch.setattr(rs, "get_cache", lambda: _FailingCache())
 
     # 低风险：不抛错（仅 warning）
-    await rs._invalidate_user_perm_cache(1, raise_on_failure=False)
-    await rs._invalidate_user_perm_cache_many([1, 2], raise_on_failure=False)
+    await rs._invalidate_user_perm_cache(1, 1, raise_on_failure=False)
+    await rs._invalidate_user_perm_cache_many([(1, 1), (2, 1)], raise_on_failure=False)
 
     # 高风险：抛错（fail-closed）
     with pytest.raises(RuntimeError):
-        await rs._invalidate_user_perm_cache(1, raise_on_failure=True)
+        await rs._invalidate_user_perm_cache(1, 1, raise_on_failure=True)
     with pytest.raises(RuntimeError):
-        await rs._invalidate_user_perm_cache_many([1, 2], raise_on_failure=True)
+        await rs._invalidate_user_perm_cache_many([(1, 1), (2, 1)], raise_on_failure=True)

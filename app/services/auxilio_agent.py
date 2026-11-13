@@ -95,8 +95,9 @@ async def _handle_list_tasks(db: AsyncSession, user: User, args: dict) -> str:
                 "id": t.id,
                 "title": t.title,
                 "category": t.category,
-                "points": t.points,
-                "claimants": t.claimant_count if hasattr(t, "claimant_count") else None,
+                "reward_total": int(t.reward_total),
+                "execution_mode": t.execution_mode,
+                "claimants": None,
             }
             for t in rows
         ],
@@ -108,7 +109,7 @@ async def _handle_list_my_claims(db: AsyncSession, user: User, args: dict) -> st
     rows = await AuxilioToolRepository(db).my_claims(user.id, limit=10)
     return json.dumps(
         [
-            {"id": t.id, "title": t.title, "category": t.category, "points": t.points}
+            {"id": t.id, "title": t.title, "category": t.category, "reward_total": int(t.reward_total)}
             for t, _claim in rows
         ],
         ensure_ascii=False,

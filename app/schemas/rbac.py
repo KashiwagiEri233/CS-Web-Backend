@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Literal, Optional
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -40,7 +40,7 @@ class RoleBase(BaseModel):
     name: str = Field(min_length=1, max_length=50)
     description: Optional[str] = None
     is_active: bool = True
-    # 管理展示字段（子阶段 2.5）
+    # 管理展示字段
     display_name: Optional[str] = Field(None, max_length=100)
     is_system: bool = False
     sort_order: int = 0
@@ -72,14 +72,18 @@ class AdminRoleCreate(BaseModel):
 
     name: str = Field(min_length=2, max_length=50, pattern=r"^[a-z][a-z0-9_]*$")
     display_name: str = Field(min_length=1, max_length=32)
+    fantasy_display_name: Optional[str] = Field(None, max_length=32)
     description: Optional[str] = Field(None, max_length=200)
     permissions: List[str] = Field(default_factory=list)
+    audit_domains: List[str] = Field(default_factory=list)
     model_config = ConfigDict(str_strip_whitespace=True)
 
 
 class AdminRoleUpdate(BaseModel):
     display_name: Optional[str] = Field(None, min_length=1, max_length=32)
+    fantasy_display_name: Optional[str] = Field(None, max_length=32)
     description: Optional[str] = Field(None, max_length=200)
+    audit_domains: Optional[List[str]] = None
     model_config = ConfigDict(str_strip_whitespace=True)
 
 
@@ -95,11 +99,13 @@ class AdminRoleOut(TZModel):
     id: int
     name: str
     display_name: Optional[str] = None
+    fantasy_display_name: Optional[str] = None
     description: Optional[str] = None
     is_system: bool = False
     is_protected: bool = False
     sort_order: int = 0
     permissions: List[str] = Field(default_factory=list)
+    audit_domains: List[str] = Field(default_factory=list)
     user_count: int = 0
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
@@ -139,3 +145,42 @@ class UserPermissionsResponse(BaseModel):
 
     user_id: int
     permissions: List[str] = Field(default_factory=list)
+
+
+class RoleBindingIn(BaseModel):
+    """单条角色绑定：角色 + 作用范围（own / peak / all）。"""
+
+    role_id: int = Field(gt=0)
+    scope_type: Literal["own", "peak", "all"] = "own"
+    scope_peak_id: Optional[int] = Field(None, gt=0)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class RoleBindingsReplace(BaseModel):
+    """整组替换用户角色绑定。"""
+
+    bindings: List[RoleBindingIn] = Field(default_factory=list)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class RoleBindingOut(TZModel):
+    """用户角色绑定视图。"""
+
+    id: int
+    role_id: int
+    role_name: str
+    display_name: Optional[str] = None
+    fantasy_display_name: Optional[str] = None
+    scope_type: str
+    scope_peak_id: Optional[int] = None
+    created_at: Optional[datetime] = None
+
+
+class UserBindingsResponse(TZModel):
+    """用户角色绑定与授权版本。"""
+
+    user_id: int
+    authorization_version: int
+    bindings: List[RoleBindingOut] = Field(default_factory=list)

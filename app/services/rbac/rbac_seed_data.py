@@ -141,7 +141,7 @@ DEFAULT_PERMISSIONS: List[Dict[str, str]] = [
         "action": "resolve",
         "description": "标记异常已解决",
     },
-    # 密码重置审批（Phase 1 迁移）
+    # 密码重置审批
     {
         "name": "password_reset:read",
         "resource": "password_reset",
@@ -154,7 +154,7 @@ DEFAULT_PERMISSIONS: List[Dict[str, str]] = [
         "action": "approve",
         "description": "批准/拒绝密码重置申请",
     },
-    # 公告（Phase 2 迁移）
+    # 公告
     {
         "name": "announcement:read",
         "resource": "announcement",
@@ -179,7 +179,7 @@ DEFAULT_PERMISSIONS: List[Dict[str, str]] = [
         "action": "delete",
         "description": "删除公告",
     },
-    # 通知（Phase 2 迁移）
+    # 通知
     {
         "name": "notification:read",
         "resource": "notification",
@@ -192,7 +192,7 @@ DEFAULT_PERMISSIONS: List[Dict[str, str]] = [
         "action": "create",
         "description": "发送全站/定向通知",
     },
-    # 入社申请（Phase 2 迁移）
+    # 入社申请
     {
         "name": "join:read",
         "resource": "join",
@@ -205,12 +205,18 @@ DEFAULT_PERMISSIONS: List[Dict[str, str]] = [
         "action": "review",
         "description": "审批入社申请",
     },
-    # 活动（Phase 3 迁移）
+    # 活动
     {
         "name": "event:read",
         "resource": "event",
         "action": "read",
         "description": "查看活动（管理视图）",
+    },
+    {
+        "name": "event:register",
+        "resource": "event",
+        "action": "register",
+        "description": "报名参加活动",
     },
     {
         "name": "event:create",
@@ -260,7 +266,7 @@ DEFAULT_PERMISSIONS: List[Dict[str, str]] = [
         "action": "settings",
         "description": "管理活动设置",
     },
-    # 社区（Phase 4 迁移）
+    # 社区
     {
         "name": "community:read",
         "resource": "community",
@@ -321,14 +327,14 @@ DEFAULT_PERMISSIONS: List[Dict[str, str]] = [
         "action": "category_delete",
         "description": "删除版块",
     },
-    # 社区（Phase 4 迁移）
+    # 社区
     {
         "name": "community:update",
         "resource": "community",
         "action": "update",
         "description": "社区管理（发布/归档/删除任意文章）",
     },
-    # 考试（Phase 5 迁移）
+    # 考试
     {
         "name": "exam:read",
         "resource": "exam",
@@ -383,14 +389,14 @@ DEFAULT_PERMISSIONS: List[Dict[str, str]] = [
         "action": "question_delete",
         "description": "删除题目",
     },
-    # 资源（Phase 5 迁移）
+    # 资源
     {
         "name": "resource:review",
         "resource": "resource",
         "action": "review",
         "description": "审核资源",
     },
-    # 任务（Phase 5 迁移）
+    # 任务
     {
         "name": "task:create",
         "resource": "task",
@@ -427,75 +433,399 @@ DEFAULT_PERMISSIONS: List[Dict[str, str]] = [
         "action": "claim_review",
         "description": "审核任务认领",
     },
+    {
+        "name": "task:read",
+        "resource": "task",
+        "action": "read",
+        "description": "查看任务（管理视图）",
+    },
+    {
+        "name": "task:review",
+        "resource": "task",
+        "action": "review",
+        "description": "审核任务与认领",
+    },
+    # ---- 统一业务权限----
+    {
+        "name": "task:claim",
+        "resource": "task",
+        "action": "claim",
+        "description": "接取任务",
+    },
+    {
+        "name": "task:submit",
+        "resource": "task",
+        "action": "submit",
+        "description": "提交任务成果",
+    },
+    {
+        "name": "task:accept",
+        "resource": "task",
+        "action": "accept",
+        "description": "验收任务成果",
+    },
+    {
+        "name": "team:create",
+        "resource": "team",
+        "action": "create",
+        "description": "创建任务队伍",
+    },
+    {
+        "name": "team:read",
+        "resource": "team",
+        "action": "read",
+        "description": "查看任务队伍",
+    },
+    {
+        "name": "team:manage",
+        "resource": "team",
+        "action": "manage",
+        "description": "管理自己是队长的队伍",
+    },
+    {
+        "name": "wallet:read",
+        "resource": "wallet",
+        "action": "read",
+        "description": "查看本人钱包与流水",
+    },
+    {
+        "name": "wallet:transfer",
+        "resource": "wallet",
+        "action": "transfer",
+        "description": "从本人钱包转账",
+    },
+    {
+        "name": "finance:read",
+        "resource": "finance",
+        "action": "read",
+        "description": "查看财务账户与流水（按作用范围）",
+    },
+    {
+        "name": "finance:allocate",
+        "resource": "finance",
+        "action": "allocate",
+        "description": "总库/峰/成员资金分配",
+    },
+    {
+        "name": "finance:transfer",
+        "resource": "finance",
+        "action": "transfer",
+        "description": "峰间调拨",
+    },
+    {
+        "name": "finance:adjust",
+        "resource": "finance",
+        "action": "adjust",
+        "description": "发行/回收调账",
+    },
+    {
+        "name": "finance:reconcile",
+        "resource": "finance",
+        "action": "reconcile",
+        "description": "触发与查看对账",
+    },
+    {
+        "name": "member:read",
+        "resource": "member",
+        "action": "read",
+        "description": "查看成员",
+    },
+    {
+        "name": "member:update",
+        "resource": "member",
+        "action": "update",
+        "description": "编辑成员资料",
+    },
+    {
+        "name": "member:move",
+        "resource": "member",
+        "action": "move",
+        "description": "调整成员所属峰",
+    },
+    {
+        "name": "member:remove",
+        "resource": "member",
+        "action": "remove",
+        "description": "办理成员离会（不删除账号）",
+    },
+    {
+        "name": "member:approve",
+        "resource": "member",
+        "action": "approve",
+        "description": "审批成员加入",
+    },
+    {
+        "name": "peak:read",
+        "resource": "peak",
+        "action": "read",
+        "description": "查看峰列表",
+    },
+    {
+        "name": "peak:create",
+        "resource": "peak",
+        "action": "create",
+        "description": "创建峰",
+    },
+    {
+        "name": "peak:update",
+        "resource": "peak",
+        "action": "update",
+        "description": "编辑峰",
+    },
+    {
+        "name": "peak:archive",
+        "resource": "peak",
+        "action": "archive",
+        "description": "归档峰",
+    },
+    {
+        "name": "announcement:publish",
+        "resource": "announcement",
+        "action": "publish",
+        "description": "发布公告",
+    },
+    {
+        "name": "announcement:archive",
+        "resource": "announcement",
+        "action": "archive",
+        "description": "归档公告",
+    },
+    {
+        "name": "event:publish",
+        "resource": "event",
+        "action": "publish",
+        "description": "发布活动",
+    },
+    {
+        "name": "event:close",
+        "resource": "event",
+        "action": "close",
+        "description": "结束活动",
+    },
+    {
+        "name": "event:manage_registration",
+        "resource": "event",
+        "action": "manage_registration",
+        "description": "管理活动报名",
+    },
+    {
+        "name": "audit:read",
+        "resource": "audit",
+        "action": "read",
+        "description": "查看审计事件（按业务域）",
+    },
 ]
+
+# 普通注册用户默认角色（不再使用 user 作为机器标识）
+DEFAULT_MEMBER_ROLE_NAME = "member"
+
+# 受保护角色：仅超级用户可以授予/撤销、修改权限或删除
+PROTECTED_ROLE_NAMES = frozenset({"admin", "rbac_admin"})
+
+# 内置角色的作用范围策略：绑定必须落在允许集合内，请求不能自行扩大。
+# 自定义角色默认只允许 own/peak；all 需超级用户显式授权。
+ROLE_SCOPE_POLICY: Dict[str, frozenset] = {
+    "admin": frozenset({"all"}),
+    "rbac_admin": frozenset({"all"}),
+    "organization_admin": frozenset({"all"}),
+    "finance_admin": frozenset({"all"}),
+    "user_manager": frozenset({"all"}),
+    "developer": frozenset({"all"}),
+    "exam_admin": frozenset({"all"}),
+    "peak_manager": frozenset({"peak"}),
+    "member": frozenset({"own"}),
+    "task_publisher": frozenset({"own"}),
+    "task_reviewer": frozenset({"all", "peak"}),
+    "task_admin": frozenset({"all", "peak"}),
+    "content_moderator": frozenset({"all", "peak"}),
+    "guest": frozenset(),
+}
+CUSTOM_ROLE_SCOPE_POLICY = frozenset({"own", "peak"})
+
+# 不可委托给普通自定义角色的安全管理权限（只能由超级用户或受保护角色持有）
+NON_DELEGABLE_PERMISSIONS = frozenset(
+    {
+        "role:create",
+        "role:update",
+        "role:delete",
+        "role:manage_permissions",
+        "permission:create",
+        "permission:update",
+        "permission:delete",
+        "user:manage_roles",
+        "system:monitor",
+        "system:logs",
+    }
+)
 
 
 def build_default_roles(all_permission_keys: List[str]) -> List[Dict[str, Any]]:
     """根据已解析的权限键列表构造默认角色定义。
 
-    Args:
-        all_permission_keys: 形如 ``resource:action`` 的权限键列表（通常为全部权限）。
-
-    Returns:
-        角色定义列表，每项含 name / description / is_system / permissions。
-        种子角色均为系统内置（is_system=True，禁止删除）。
+    统一 RBAC 的内置角色集合：稳定机器标识 + 官网展示名 + 旧端宗门展示名。
+    权限边界按主方案 3.3.1 的默认矩阵给出；admin 持有代码目录全部权限。
     """
     return [
         {
             "name": ADMIN_ROLE_NAME,
+            "display_name": "平台管理员",
+            "fantasy_display_name": "宗主",
             "description": "系统管理员，拥有所有权限",
             "is_system": True,
+            "audit_domains": [],
             "permissions": list(all_permission_keys),
         },
         {
-            "name": "user_manager",
-            "description": "用户管理员，负责管理用户",
+            "name": "rbac_admin",
+            "display_name": "授权管理员",
+            "fantasy_display_name": "掌律长老",
+            "description": "管理自定义角色与受限授权；不含财务与任务验收能力",
             "is_system": True,
+            "audit_domains": ["authorization"],
             "permissions": [
-                "user:create",
-                "user:read",
-                "user:update",
-                "user:list",
+                "role:list",
+                "role:read",
+                "role:create",
+                "role:update",
+                "role:delete",
+                "role:manage_permissions",
+                "permission:list",
+                "permission:read",
                 "user:manage_roles",
-                "role:read",
-                "role:list",
-                "permission:read",
-                "permission:list",
+                "audit:read",
             ],
         },
         {
-            "name": "developer",
-            "description": "开发者，可以查看系统信息和API文档",
+            "name": "organization_admin",
+            "display_name": "组织管理员",
+            "fantasy_display_name": "内务长老",
+            "description": "成员、峰与入会申请管理",
             "is_system": True,
+            "audit_domains": ["organization"],
             "permissions": [
-                "user:read",
-                "user:list",
-                "role:read",
-                "role:list",
-                "permission:read",
-                "permission:list",
-                "system:monitor",
-                "exception:read",
+                "member:read",
+                "member:update",
+                "member:move",
+                "member:remove",
+                "member:approve",
+                "peak:read",
+                "peak:create",
+                "peak:update",
+                "peak:archive",
+                "audit:read",
             ],
         },
         {
-            "name": "user",
-            "description": "普通用户；仅可使用所有已认证用户共有的接口",
+            "name": "peak_manager",
+            "display_name": "分组负责人",
+            "fantasy_display_name": "峰主",
+            "description": "本峰成员、任务、公告与活动；本峰财务只读",
             "is_system": True,
-            "permissions": [],
+            "audit_domains": ["organization", "task"],
+            "permissions": [
+                "task:read",
+                "task:create",
+                "task:update",
+                "task:delete",
+                "task:publish",
+                "member:read",
+                "member:update",
+                "member:move",
+                "member:remove",
+                "peak:read",
+                "peak:update",
+                "announcement:read",
+                "announcement:create",
+                "announcement:update",
+                "announcement:publish",
+                "announcement:archive",
+                "event:read",
+                "event:create",
+                "event:update",
+                "event:publish",
+                "event:close",
+                "event:manage_registration",
+                "finance:read",
+                "audit:read",
+            ],
         },
         {
-            "name": "guest",
-            "description": "访客标签角色；默认不授予业务权限",
+            "name": "task_admin",
+            "display_name": "任务管理员",
+            "fantasy_display_name": "悬赏长老",
+            "description": "任务编辑、审核、验收与强结；无货币发行权",
             "is_system": True,
-            "permissions": [],
+            "audit_domains": ["task"],
+            "permissions": [
+                "task:read",
+                "task:create",
+                "task:update",
+                "task:delete",
+                "task:publish",
+                "task:review",
+                "task:accept",
+                "task:close",
+            ],
         },
-        # 细粒度角色（前后端分离迁移 Phase 2 预建；权限随对应模块迁移补充）
+        {
+            "name": "task_reviewer",
+            "display_name": "任务审核员",
+            "fantasy_display_name": "执事长老",
+            "description": "任务上架审核与成果验收；仍受禁止自审约束",
+            "is_system": True,
+            "audit_domains": ["task"],
+            "permissions": ["task:read", "task:review", "task:accept"],
+        },
+        {
+            "name": "task_publisher",
+            "display_name": "任务发布员",
+            "fantasy_display_name": "悬赏执事",
+            "description": "创建与维护自有任务并申请上架",
+            "is_system": True,
+            "audit_domains": [],
+            "permissions": [
+                "task:read",
+                "task:create",
+                "task:update",
+                "task:delete",
+                "task:publish",
+            ],
+        },
+        {
+            "name": "finance_admin",
+            "display_name": "财务管理员",
+            "fantasy_display_name": "府库长老",
+            "description": "总库、峰与成员资金管理、调账与对账",
+            "is_system": True,
+            "audit_domains": ["finance"],
+            "permissions": [
+                "finance:read",
+                "finance:allocate",
+                "finance:transfer",
+                "finance:adjust",
+                "finance:reconcile",
+                "audit:read",
+            ],
+        },
         {
             "name": "content_moderator",
-            "description": "内容审核员；社区审核权限随 Phase 4 迁移补充",
+            "display_name": "内容管理员",
+            "fantasy_display_name": "传讯长老",
+            "description": "公告、活动与社区内容审核",
             "is_system": True,
+            "audit_domains": [],
             "permissions": [
+                "announcement:read",
+                "announcement:create",
+                "announcement:update",
+                "announcement:publish",
+                "announcement:archive",
+                "event:read",
+                "event:create",
+                "event:update",
+                "event:publish",
+                "event:close",
+                "event:manage_registration",
                 "community:read",
                 "community:update",
                 "community:hide",
@@ -506,8 +836,11 @@ def build_default_roles(all_permission_keys: List[str]) -> List[Dict[str, Any]]:
         },
         {
             "name": "exam_admin",
-            "description": "考试管理员；考试管理权限随 Phase 5 迁移补充",
+            "display_name": "考试管理员",
+            "fantasy_display_name": "试炼长老",
+            "description": "考试域管理权限",
             "is_system": True,
+            "audit_domains": [],
             "permissions": [
                 "exam:read",
                 "exam:create",
@@ -521,16 +854,71 @@ def build_default_roles(all_permission_keys: List[str]) -> List[Dict[str, Any]]:
             ],
         },
         {
-            "name": "task_publisher",
-            "description": "任务发布员；任务管理权限随 Phase 5 迁移补充",
+            "name": "user_manager",
+            "display_name": "用户管理员",
+            "fantasy_display_name": "户籍执事",
+            "description": "用户资料与账号管理；不含角色授权与安全标志",
             "is_system": True,
+            "audit_domains": [],
             "permissions": [
-                "task:create",
-                "task:update",
-                "task:delete",
-                "task:publish",
-                "task:close",
-                "task:claim_review",
+                "user:create",
+                "user:read",
+                "user:update",
+                "user:list",
+                "user:delete",
+                "role:read",
+                "role:list",
+                "permission:read",
+                "permission:list",
             ],
+        },
+        {
+            "name": "developer",
+            "display_name": "运维观察员",
+            "fantasy_display_name": "观测执事",
+            "description": "只读运维与脱敏日志",
+            "is_system": True,
+            "audit_domains": [],
+            "permissions": [
+                "user:read",
+                "user:list",
+                "role:read",
+                "role:list",
+                "permission:read",
+                "permission:list",
+                "system:monitor",
+                "exception:read",
+            ],
+        },
+        {
+            "name": DEFAULT_MEMBER_ROLE_NAME,
+            "display_name": "协会成员",
+            "fantasy_display_name": "外门弟子",
+            "description": "已登录前台成员：接取/组队/提交任务、本人钱包与公开内容",
+            "is_system": True,
+            "audit_domains": [],
+            "permissions": [
+                "task:read",
+                "task:claim",
+                "task:submit",
+                "team:create",
+                "team:read",
+                "team:manage",
+                "wallet:read",
+                "wallet:transfer",
+                "peak:read",
+                "announcement:read",
+                "event:read",
+                "event:register",
+            ],
+        },
+        {
+            "name": "guest",
+            "display_name": "访客",
+            "fantasy_display_name": "访客",
+            "description": "访客标签角色；默认不授予业务权限",
+            "is_system": True,
+            "audit_domains": [],
+            "permissions": [],
         },
     ]

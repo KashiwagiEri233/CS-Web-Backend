@@ -1,5 +1,6 @@
 from app.database import Base
-from app.models.user import User, user_roles
+from app.models.user import User, UserRoleBinding, user_roles
+from app.models.organization import MemberProfile, Peak
 from app.models.role import Role, role_permissions
 from app.models.permission import Permission
 from app.models.refresh_token import RefreshToken
@@ -38,8 +39,14 @@ from app.models.community import (
 )
 from app.models.notification import Notification, Announcement
 from app.models.exam import Exam, ExamQuestion, ExamQuestionOption, ExamAttempt
-from app.models.task import Task, TaskClaim
-from app.models.points import PointsTransaction
+from app.models.task import (
+    Task,
+    TaskAction,
+    TaskClaim,
+    TaskClaimMember,
+    TaskSubmission,
+)
+from app.models.team import Team, TeamInvitation, TeamMember
 from app.models.contribution import ContributionCache
 from app.models.api_usage import ApiCallLog
 from app.models.conversation import AgentRun, ChatEvent, ChatMessage, Conversation
@@ -49,16 +56,22 @@ from app.models.llm_config import LlmConfig
 from app.models.learning import WrongAnswer
 from app.models.learning_goal import LearningGoal
 from app.models.learning_plan import LearningPlanItem
-from app.models.agent_automation import AgentAutomationRule
-from app.models.agent_briefing import AgentDailyBriefing
-from app.models.agent_weekly_review import AgentWeeklyReview
-from app.models.agent_inbox import AgentInboxItem
+from app.models.wallet import (
+    IdempotencyRecord,
+    LedgerEntry,
+    LedgerTransaction,
+    ReconciliationRun,
+    WalletAccount,
+)
 
 __all__ = [
     "Base",
     "User",
+    "UserRoleBinding",
     "Role",
     "Permission",
+    "Peak",
+    "MemberProfile",
     "RefreshToken",
     "user_roles",
     "role_permissions",
@@ -97,7 +110,12 @@ __all__ = [
     "ExamAttempt",
     "Task",
     "TaskClaim",
-    "PointsTransaction",
+    "TaskClaimMember",
+    "TaskSubmission",
+    "TaskAction",
+    "Team",
+    "TeamMember",
+    "TeamInvitation",
     "ContributionCache",
     "ApiCallLog",
     "Conversation",
@@ -110,8 +128,9 @@ __all__ = [
     "WrongAnswer",
     "LearningGoal",
     "LearningPlanItem",
-    "AgentInboxItem",
-    "AgentAutomationRule",
-    "AgentDailyBriefing",
-    "AgentWeeklyReview",
+    "WalletAccount",
+    "LedgerTransaction",
+    "LedgerEntry",
+    "IdempotencyRecord",
+    "ReconciliationRun",
 ]

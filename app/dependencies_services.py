@@ -14,10 +14,6 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.services.agent_automation_service import AgentAutomationService
-from app.services.agent_weekly_review_service import AgentWeeklyReviewService
-from app.services.agent_briefing_service import AgentBriefingService
-from app.services.agent_inbox_service import AgentInboxService
 from app.services.announcement_service import AnnouncementService
 from app.services.audit_service import AuditService
 from app.services.auth.auth_service import AuthService
@@ -39,11 +35,9 @@ from app.services.exam_service import ExamService
 from app.services.exception_service import ExceptionService
 from app.services.join_service import JoinService
 from app.services.notification_service import NotificationService
-from app.services.points_service import PointsService
 from app.services.rbac.rbac_service import RBACService
 from app.services.resource_service import ResourceService
 from app.services.search_service import SearchService
-from app.services.task_service import TaskService
 from app.services.totp_service import TOTPService
 from app.services.user.user_service import UserService
 from app.services.verification_service import VerificationService
@@ -57,28 +51,6 @@ def get_user_service(db: AsyncSession = Depends(get_db)) -> UserService:
 
 def get_announcement_service(db: AsyncSession = Depends(get_db)) -> AnnouncementService:
     return AnnouncementService(db)
-
-
-def get_agent_weekly_review_service(
-    db: AsyncSession = Depends(get_db),
-) -> AgentWeeklyReviewService:
-    return AgentWeeklyReviewService(db)
-
-
-def get_agent_briefing_service(
-    db: AsyncSession = Depends(get_db),
-) -> AgentBriefingService:
-    return AgentBriefingService(db)
-
-
-def get_agent_automation_service(
-    db: AsyncSession = Depends(get_db),
-) -> AgentAutomationService:
-    return AgentAutomationService(db)
-
-
-def get_agent_inbox_service(db: AsyncSession = Depends(get_db)) -> AgentInboxService:
-    return AgentInboxService(db)
 
 
 def get_notification_service(db: AsyncSession = Depends(get_db)) -> NotificationService:
@@ -131,14 +103,6 @@ def get_exam_service(db: AsyncSession = Depends(get_db)) -> ExamService:
 
 def get_resource_service(db: AsyncSession = Depends(get_db)) -> ResourceService:
     return ResourceService(db)
-
-
-def get_task_service(db: AsyncSession = Depends(get_db)) -> TaskService:
-    return TaskService(db)
-
-
-def get_points_service(db: AsyncSession = Depends(get_db)) -> PointsService:
-    return PointsService(db)
 
 
 def get_auxilio_service(db: AsyncSession = Depends(get_db)) -> AuxilioService:

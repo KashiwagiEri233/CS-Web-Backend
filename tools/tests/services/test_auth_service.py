@@ -228,6 +228,11 @@ def _make_login_service(monkeypatch, *, limiter_allowed: bool = True):
     svc = AuthService(db=db)  # ER-41：真实 __init__，不再绕
     svc.user_repo = AsyncMock()
     svc.audit = AsyncMock()
+    # 统一登录路径会检查 2FA；mock 掉 TOTP 读取，避免 MagicMock db 参与 async 查询
+    svc.totp_service = MagicMock()
+    svc.totp_service.is_enabled = AsyncMock(return_value=False)
+    # 统一登录路径会写登录历史；mock 掉真实仓储，避免 MagicMock db 参与 async 查询
+    svc._record_login_history = AsyncMock()
 
     limiter = AsyncMock()
     limiter.is_allowed.return_value = limiter_allowed
@@ -248,12 +253,29 @@ async def test_login_success_issues_pair_and_writes_audit(auth_service, monkeypa
         AuthService, "authenticate", AsyncMock(return_value=_active_user())
     )
 
-    pair = await svc.login("admin", "x", {"ip_address": "127.0.0.1"})
+    result = await svc.login("admin", "x", {"ip_address": "127.0.0.1"})
 
-    assert pair == "pair"
+    assert result["requires_2fa"] is False
+    assert result["pair"] == "pair"
     issue.assert_awaited_once()
     actions = [c.kwargs["action"] for c in svc.audit.record.await_args_list]
     assert actions == ["auth.login"]
+
+
+async def test_login_requires_2fa_when_enabled(auth_service, monkeypatch):
+    """用户名/邮箱登录与邮箱登录一致：启用 2FA 时不得直接签发 token。"""
+    svc, _limiter, issue = _make_login_service(monkeypatch)
+    svc.totp_service.is_enabled = AsyncMock(return_value=True)
+    monkeypatch.setattr(
+        AuthService, "authenticate", AsyncMock(return_value=_active_user())
+    )
+
+    result = await svc.login("admin", "x", {})
+
+    assert result["requires_2fa"] is True
+    assert result["pair"] is None
+    assert result["two_factor_token"]
+    issue.assert_not_awaited()
 
 
 async def test_login_bad_credentials_raises_and_audits(auth_service, monkeypatch):

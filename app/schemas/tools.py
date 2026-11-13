@@ -19,15 +19,6 @@ EXAM_LIMITS = {
 }
 
 
-def _coerce_tag_list(v: object) -> object:
-    """tech_tags 容错归一化：DB NULL/历史字符串 → 合法列表（防 Out 模型 422）。"""
-    if v is None:
-        return []
-    if isinstance(v, str):
-        return [v] if v else []
-    return v
-
-
 class ExamInput(BaseModel):
     title: str
     description: Optional[str] = None
@@ -172,8 +163,6 @@ class ResourceOut(TZModel):
     description: Optional[str] = None
     resource_type: str
     tech_tags: List[str] = []
-
-    _coerce_tags = field_validator("tech_tags", mode="before")(_coerce_tag_list)
     status: str
     submitted_by: int
     submitted_by_name: Optional[str] = None
@@ -198,6 +187,11 @@ class TaskInput(BaseModel):
     points: int = 10
     max_claimants: int = 1
     status: str = "draft"
+    # ---- 外接旧项目任务字段（阶段 3 起前端直接提交；旧字段作等价兜底）----
+    difficulty: Optional[str] = None
+    reward: Optional[int] = None
+    deadline: Optional[datetime] = None
+    tech_requirements: Optional[List[str]] = None
     model_config = ConfigDict(str_strip_whitespace=True)
 
     @field_validator("title")
@@ -231,6 +225,35 @@ class TaskInput(BaseModel):
         return v
 
 
+class TaskSubmitIn(BaseModel):
+    """提交成果入参：兼容前端既有字段名（submission_url / note）与旧项目契约名。"""
+
+    description: Optional[str] = None
+    attachment_url: Optional[str] = None
+    note: Optional[str] = None
+    submission_url: Optional[str] = None
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    @property
+    def effective_description(self) -> Optional[str]:
+        return self.description if self.description is not None else self.note
+
+    @property
+    def effective_attachment(self) -> Optional[str]:
+        return (
+            self.attachment_url
+            if self.attachment_url is not None
+            else self.submission_url
+        )
+
+
+class TaskActionIn(BaseModel):
+    """管理端任务动作入参（驳回 / 强制结项的原因，可选）。"""
+
+    reason: Optional[str] = None
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+
 class TaskOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -248,8 +271,21 @@ class TaskOut(BaseModel):
     closed_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
-    # 活跃认领数（claimed/submitted，TOOLS-GOV Slice E：原前端读取恒 0）
-    claimant_count: int = 0
+    # ---- 外接旧项目任务的对外字段（本地端点不产出，代理端点产出）----
+    difficulty: Optional[str] = None
+    reward: Optional[int] = None
+    deadline: Optional[datetime] = None
+    tech_requirements: Optional[List[str]] = None
+    status_label: Optional[str] = None
+    publisher_id: Optional[str] = None
+    publisher_name: Optional[str] = None
+    publisher_avatar: Optional[str] = None
+    completer: Optional[Dict[str, Any]] = None
+    submission_description: Optional[str] = None
+    attachment_url: Optional[str] = None
+    reject_reason: Optional[str] = None
+    reviewed_by: Optional[int] = None
+    reviewed_at: Optional[datetime] = None
 
 
 class TaskClaimOut(BaseModel):
@@ -261,42 +297,10 @@ class TaskClaimOut(BaseModel):
     display_name: Optional[str] = None
     status: str
     claim_note: Optional[str] = None
-    submission_url: Optional[str] = None
     completed_at: Optional[datetime] = None
     reviewed_by: Optional[int] = None
     review_note: Optional[str] = None
     created_at: datetime
-
-
-# ------------------------------------------------------------------ 积分
-
-
-class PointsTransactionOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    user_id: int
-    amount: int
-    reason: str
-    source_type: str
-    source_id: Optional[int] = None
-    balance_after: int
-    created_at: datetime
-
-
-class PointsProfileOut(BaseModel):
-    balance: int
-    level: int
-    level_title: str
-    transactions: List[PointsTransactionOut] = []
-
-
-class LeaderboardEntry(BaseModel):
-    user_id: int
-    display_name: Optional[str] = None
-    balance: int
-    level: int
-    level_title: str
 
 
 # ------------------------------------------------------------------ Auxilio
@@ -316,8 +320,6 @@ class RecommendedResource(BaseModel):
     description: Optional[str] = None
     resource_type: str
     tech_tags: List[str] = []
-
-    _coerce_tags = field_validator("tech_tags", mode="before")(_coerce_tag_list)
 
 
 class AuxilioAnalysis(BaseModel):
@@ -451,7 +453,4 @@ class ComponentMigrationStatusOutput(BaseModel):
     old_migration_status: str
     migration_status: str
     visibility_opened: bool = False
-    # slug↔key 闭环的可见性模块键（service MigrationStatusResult 携带，
-    # 此前 schema 缺失导致联动结果被静默丢弃——TOOLS-GOV Slice D 补齐）。
-    visibility_key: str = ""
     model_config = camel_config()

@@ -46,6 +46,24 @@ class BusinessSettings(BaseSettings):
         None  # 默认 {SITE_URL}/api/auth/oauth/github/callback
     )
 
+    # 统一钱包/账本（金额单位：最小积分，BIGINT）
+    # 单笔转账上限，防止溢出与误操作；可按部署调整。
+    WALLET_MAX_TRANSFER_AMOUNT: int = Field(10**15, gt=0)
+    # 幂等记录保留天数（HTTP 重放窗口；金融 business_key 永久防重）
+    IDEMPOTENCY_RECORD_TTL_SECONDS: int = Field(7 * 24 * 3600, gt=0)
+
+    # 任务与团队
+    # 团队任务人数上限（含队长），schema 的 max_members 不得超过该值。
+    TASK_TEAM_MAX_MEMBERS: int = Field(20, ge=2)
+    # 入队邀请有效期（小时）。
+    TEAM_INVITATION_TTL_HOURS: int = Field(72, gt=0)
+    # 到期任务批处理单批大小。
+    TASK_EXPIRY_BATCH_SIZE: int = Field(100, gt=0)
+    # 是否启用到期任务后台循环（测试环境自动跳过）。
+    TASK_EXPIRY_ENABLED: bool = True
+    # 到期任务扫描间隔（秒）。
+    TASK_EXPIRY_INTERVAL_SECONDS: int = Field(60, gt=0)
+
     # LLM 学习助手配置（Auxilio Agent）
     # LLM_PROVIDER: openai（OpenAI 兼容协议）/ anthropic / none（禁用，回退规则推荐）
     LLM_PROVIDER: str = "none"
@@ -62,3 +80,4 @@ class BusinessSettings(BaseSettings):
     # 学习助手联网搜索工具开关（融合点 4）：false 时 web_search 工具返回未启用提示。
     # 搜索源为 DuckDuckGo 免费 HTML 接口（无需 API key），结果不可信，经 ER-19 包裹注入。
     WEB_SEARCH_ENABLED: bool = True
+

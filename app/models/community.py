@@ -115,7 +115,7 @@ class CommunityPost(Base):
     published_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     view_count: Mapped[int] = mapped_column(Integer, default=0)
     like_count: Mapped[int] = mapped_column(Integer, default=0)
-    # 全文搜索向量（Phase 6 GIN 优化）：由数据库触发器维护（title + content_markdown）
+    # 全文搜索向量（GIN 优化）：由数据库触发器维护（title + content_markdown）
     search_vector: Mapped[Optional[object]] = mapped_column(
         TSVECTOR, nullable=True, index=True
     )

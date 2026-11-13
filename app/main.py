@@ -3,12 +3,10 @@ from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.gzip import GZipMiddleware
 
 from app import __version__, __codename__
 from app.api import api_router
 from app.core.config import settings
-from app.core.constants import GZIP_MINIMUM_SIZE_BYTES
 from app.core.lifecycle import (
     register_startup,
     run_shutdown,
@@ -161,9 +159,6 @@ def create_app() -> FastAPI:
     application.add_middleware(ApiUsageMiddleware)
     application.add_middleware(SecurityHeadersMiddleware)
     application.add_middleware(ExceptionHandlerMiddleware)
-    # 响应压缩：注册在异常处理之外层，保证错误响应同样被压缩。
-    # 生产经 Caddy 时，Caddy 依据 Content-Encoding 判断，不会二次压缩。
-    application.add_middleware(GZipMiddleware, minimum_size=GZIP_MINIMUM_SIZE_BYTES)
     application.add_middleware(
         CORSMiddleware,
         allow_origins=settings.allowed_origins_list,
@@ -222,7 +217,7 @@ async def health_events():
 async def health_security():
     """返回安全相关组件健康状态（规划中 → 已实现）。
     无需鉴权：供运维探针快速定位安全组件异常。
-    脱敏（ER-48 / P1-1）：仅暴露组件健康/连通性状态，不暴露安全配置姿态
+    脱敏：仅暴露组件健康/连通性状态，不暴露安全配置姿态
     （如 AUTH_ENABLED、TOTP 密钥是否已配置等），避免向匿名探针泄露安全态势。
     """
     from app.core.rate_limit import get_limiter
@@ -253,7 +248,7 @@ async def health_security():
             "backend": blacklist_type,
             "redis_configured": bool(settings.REDIS_URL),
         },
-        # 脱敏（ER-48 / P1-1）：不暴露安全配置姿态（AUTH_ENABLED、TOTP 密钥是否已配置等），
+        # 脱敏：不暴露安全配置姿态（AUTH_ENABLED、TOTP 密钥是否已配置等），
         # 避免向匿名探针泄露安全态势；仅保留组件健康/连通性状态供运维探针使用。
         "migration": {
             "database": db_status.get("status", "unknown"),

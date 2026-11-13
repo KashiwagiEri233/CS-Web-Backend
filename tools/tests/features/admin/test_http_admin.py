@@ -66,28 +66,41 @@ async def _make_user(db, sfx: str, *, is_superuser: bool = False) -> int:
 
 
 async def _grant(db, user_id: int, perms: list[str]) -> tuple[int, list[int]]:
-    """建一个角色，挂 perms（["resource:action", ...]），赋给用户。返回 (role_id, perm_ids)。"""
+    """建一个角色，挂 perms（["resource:action", ...]），赋给用户。
+
+    返回 (role_id, created_perm_ids)；已存在的权限目录项直接复用、不重复创建，
+    清理时也只删除本用例新建的权限（避免破坏已 seed 的统一 RBAC 目录）。
+    """
     repo = RBACRepository(db)
     svc = RBACService(db)
     role = await repo.create_role(
         {"name": f"itest_http_admin_r_{user_id}", "description": "i", "is_active": True}
     )
-    perm_ids: list[int] = []
+    created_perm_ids: list[int] = []
+    all_perm_ids: list[int] = []
     for p in perms:
+        existing = await repo.get_permission_by_name(p)
+        if existing is not None:
+            all_perm_ids.append(existing.id)
+            continue
         resource, action = p.split(":", 1)
         perm = await repo.create_permission(
             {"name": p, "resource": resource, "action": action, "description": "i"}
         )
-        perm_ids.append(perm.id)
+        created_perm_ids.append(perm.id)
+        all_perm_ids.append(perm.id)
     await svc.grant_role_to_user(user_id, role.id)
-    for pid in perm_ids:
+    for pid in all_perm_ids:
         await svc.grant_permission_to_role(role.id, pid)
     await db.commit()
-    return role.id, perm_ids
+    return role.id, created_perm_ids
 
 
-async def _enable_2fa(db, user_id: int) -> None:
-    """在测试中完整启用 2FA：setup 取 secret -> 生成当前时刻 TOTP 码 -> confirm 激活。"""
+async def _enable_2fa(db, user_id: int) -> str:
+    """在测试中完整启用 2FA：setup 取 secret -> 生成当前时刻 TOTP 码 -> confirm 激活。
+
+    返回 secret，供登录二次验证生成同样的验证码。
+    """
     totp = TOTPService(db)
     res = await totp.setup(user_id, "t@t.com")
     secret = res["secret"]
@@ -95,6 +108,7 @@ async def _enable_2fa(db, user_id: int) -> None:
         secret, int(now_utc().timestamp()), period=settings.TOTP_STEP_SECONDS
     )
     await totp.confirm(user_id, code)
+    return secret
 
 
 async def _cleanup(
@@ -144,13 +158,32 @@ async def _cleanup(
     await db.commit()
 
 
-async def _login(client: httpx.AsyncClient, username: str) -> dict:
+async def _login(
+    client: httpx.AsyncClient, username: str, totp_secret: str | None = None
+) -> dict:
     resp = await client.post(
         "/api/v1/auth/login-json",
         json={"username": username, "password": _PASSWORD},
     )
     assert resp.status_code == 200, resp.text
-    return {"Authorization": f"Bearer {resp.json()['accessToken']}"}
+    data = resp.json()
+    if (
+        data.get("requires2Fa")
+        or data.get("requires2fa")
+        or data.get("requires_2fa")
+    ):
+        token = data.get("twoFactorToken") or data.get("two_factor_token")
+        assert totp_secret and token, "启用 2FA 的用户需要提供 secret 完成二次验证"
+        code = generate_code(
+            totp_secret, int(now_utc().timestamp()), period=settings.TOTP_STEP_SECONDS
+        )
+        verify = await client.post(
+            "/api/v1/auth/2fa/verify",
+            json={"mode": "login", "code": code, "twoFactorToken": token},
+        )
+        assert verify.status_code == 200, verify.text
+        data = verify.json()
+    return {"Authorization": f"Bearer {data['accessToken']}"}
 
 
 async def test_admin_routes_forbidden_without_permission(integration_db_ready):
@@ -224,7 +257,7 @@ async def test_admin_2fa_gate_superuser_with_2fa_bypass(integration_db_ready):
     sfx = uuid.uuid4().hex[:8]
     async with get_session() as db:
         uid = await _make_user(db, f"{sfx}su2", is_superuser=True)
-        await _enable_2fa(db, uid)
+        secret = await _enable_2fa(db, uid)
 
     application = create_app()
     try:
@@ -232,7 +265,7 @@ async def test_admin_2fa_gate_superuser_with_2fa_bypass(integration_db_ready):
         async with httpx.AsyncClient(
             transport=transport, base_url="http://testserver"
         ) as client:
-            h = await _login(client, f"itest_http_admin_{sfx}su2")
+            h = await _login(client, f"itest_http_admin_{sfx}su2", secret)
             r = await client.get("/api/v1/admin/users", headers=h)
             assert r.status_code == 200, r.text
     finally:
@@ -254,7 +287,7 @@ async def test_workbench_api_usage_2fa_gate(integration_db_ready):
     async with get_session() as db:
         uid_no2fa = await _make_user(db, f"{sfx}wb1", is_superuser=True)
         uid_2fa = await _make_user(db, f"{sfx}wb2", is_superuser=True)
-        await _enable_2fa(db, uid_2fa)
+        secret_2fa = await _enable_2fa(db, uid_2fa)
 
     application = create_app()
     try:
@@ -273,7 +306,7 @@ async def test_workbench_api_usage_2fa_gate(integration_db_ready):
             assert "TWO_FACTOR_NOT_SETUP" in r1.text, r1.text
 
             # 3) superuser 启用 2FA -> 200（门禁放行）
-            h_yes = await _login(client, f"itest_http_admin_{sfx}wb2")
+            h_yes = await _login(client, f"itest_http_admin_{sfx}wb2", secret_2fa)
             r2 = await client.get("/api/v1/workbench/stats/api-usage", headers=h_yes)
             assert r2.status_code == 200, r2.text
     finally:

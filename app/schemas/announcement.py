@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.schemas.base import TZModel
 
@@ -26,7 +26,16 @@ class AnnouncementInput(BaseModel):
     expires_at: Optional[datetime] = None
     target_roles: Optional[List[str]] = None
     is_active: bool = True
-    model_config = ConfigDict(str_strip_whitespace=True)
+    visibility: Literal["public", "members", "peak"] = "public"
+    peak_id: Optional[int] = Field(default=None, gt=0)
+    status: Optional[Literal["draft", "published", "archived"]] = None
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    @model_validator(mode="after")
+    def _check_scope(self) -> "AnnouncementInput":
+        if self.visibility == "peak" and not self.peak_id:
+            raise ValueError("峰内公告必须指定 peak_id")
+        return self
 
     @field_validator("title")
     @classmethod
@@ -70,6 +79,11 @@ class AnnouncementOut(TZModel):
     priority: int
     expires_at: Optional[datetime] = None
     target_roles: Optional[List[str]] = None
+    visibility: str
+    peak_id: Optional[int] = None
+    status: str
+    published_at: Optional[datetime] = None
+    version: int = 1
     created_by: int
     created_at: datetime
     updated_at: datetime

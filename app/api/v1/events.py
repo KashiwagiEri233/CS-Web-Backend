@@ -6,8 +6,8 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends
 
-from app.core.exceptions import NotFoundException
-from app.dependencies import get_current_active_user
+from app.core.exceptions import AuthorizationException, ErrorCode, NotFoundException
+from app.dependencies import get_current_active_user, get_optional_current_user
 from app.dependencies_services import get_event_service
 from app.models.user import User
 from app.schemas.event import (
@@ -26,17 +26,17 @@ router = APIRouter()
 async def list_events(
     pagination: PaginationParams = Depends(),
     status: Optional[str] = None,
-    month: Optional[str] = None,
     search: Optional[str] = None,
     tag: Optional[str] = None,
     service: EventService = Depends(get_event_service),
+    current_user: Optional[User] = Depends(get_optional_current_user),
 ) -> Any:
-    """活动列表（status/month/search/tag 筛选 + 分页，含报名人数）。"""
+    """活动列表（status/search/tag 筛选 + 分页，含报名人数）。"""
     events, total = await service.list_events(
         status=status,
-        month=month,
         search=search,
         tag=tag,
+        user=current_user,
         skip=pagination.skip,
         limit=pagination.limit,
     )
@@ -62,9 +62,16 @@ async def list_registered(
 async def get_event(
     event_id: int,
     service: EventService = Depends(get_event_service),
+    current_user: Optional[User] = Depends(get_optional_current_user),
 ) -> Any:
-    """活动详情（含报名人数）。"""
-    return event_to_out(await service.get_event(event_id))
+    """活动详情（含报名人数）；非公开活动按可见范围校验。"""
+    event = await service.get_event(event_id)
+    if not await service.user_can_view(current_user, event):
+        raise AuthorizationException(
+            message="无权查看该活动",
+            error_code=ErrorCode.Authorization.ACCOUNT_ACCESS_DENIED,
+        )
+    return event_to_out(event)
 
 
 @router.get("/{event_id}/registration", response_model=EventRegistrationOut)
@@ -92,6 +99,12 @@ async def register_event(
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     """报名活动（限额校验；重复报名/名额已满返回 409）。"""
+    event = await service.get_event(event_id)
+    if not await service.user_can_view(current_user, event):
+        raise AuthorizationException(
+            message="无权报名该活动",
+            error_code=ErrorCode.Authorization.ACCOUNT_ACCESS_DENIED,
+        )
     return await service.register(current_user.id, event_id, body.form_data)
 
 

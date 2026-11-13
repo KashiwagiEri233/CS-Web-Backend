@@ -3,6 +3,7 @@ import re
 import secrets
 from typing import Optional
 
+from sqlalchemy import insert, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,7 +33,9 @@ from app.core.security import (
 )
 from app.core.security_blacklist import get_blacklist
 from app.core.timezone import now_utc
-from app.models.user import User
+from app.models.organization import MemberProfile
+from app.models.role import Role
+from app.models.user import User, user_roles
 from app.repositories.login_history_repo import LoginHistoryRepository
 from app.repositories.password_history_repo import PasswordHistoryRepository
 from app.repositories.refresh_token_repo import RefreshTokenRepository
@@ -267,6 +270,7 @@ class AuthService:
         }
         try:
             user = await self.user_repo.create(user_dict)
+            await self._ensure_member_baseline(user)
             await self.db.commit()
         except IntegrityError as exc:
             await self.db.rollback()
@@ -289,6 +293,49 @@ class AuthService:
 
         event_bus.emit("user.registered", user_id=user.id)
         return pair
+
+    async def _ensure_member_baseline(self, user: User) -> None:
+        """新注册用户：补 active 成员档案与默认 member 绑定（同一事务）。
+
+        普通注册用户默认获得 member（scope=own）；不在此授予任何管理角色。
+        """
+        from app.services.rbac.rbac_seed_data import (
+            DEFAULT_MEMBER_ROLE_NAME,
+            ROLE_SCOPE_POLICY,
+        )
+
+        role = (
+            await self.db.execute(
+                select(Role).where(Role.name == DEFAULT_MEMBER_ROLE_NAME)
+            )
+        ).scalar_one_or_none()
+        if role is None:
+            return
+        exists = (
+            await self.db.execute(
+                select(user_roles.c.id).where(
+                    user_roles.c.user_id == user.id,
+                    user_roles.c.role_id == role.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if exists is None:
+            await self.db.execute(
+                insert(user_roles).values(
+                    user_id=user.id,
+                    role_id=role.id,
+                    scope_type=next(iter(ROLE_SCOPE_POLICY["member"]), "own"),
+                    created_by=None,
+                )
+            )
+        profile = (
+            await self.db.execute(
+                select(MemberProfile).where(MemberProfile.user_id == user.id)
+            )
+        ).scalar_one_or_none()
+        if profile is None:
+            self.db.add(MemberProfile(user_id=user.id, membership_status="active"))
+        await self.db.flush()
 
     async def login_with_github(self, info: dict, client_meta: dict) -> dict:
         """GitHub OAuth 登录/注册（回调验证后调用）。
@@ -331,6 +378,7 @@ class AuthService:
                     "is_superuser": False,
                 }
             )
+            await self._ensure_member_baseline(user)
             await self.db.commit()
             # 非关键审计，允许 best-effort（账号创建已在主事务落库）
             await self.audit.record(
@@ -422,11 +470,11 @@ class AuthService:
         await self.db.commit()
         return revoked
 
-    async def login(self, username: str, password: str, client_meta: dict) -> TokenPair:
-        """登录：账号级防爆破 → 验证凭据 → 检查激活 → 签发双 token。
+    async def login(self, username: str, password: str, client_meta: dict) -> dict:
+        """用户名/邮箱登录：与邮箱登录完全一致地执行 2FA 与激活检查。
 
-        成功与失败都写审计（best-effort 独立会话，故障不阻断登录）；
-        暴力破解溯源依赖登录失败事件。
+        返回 ``{requires_2fa, two_factor_token, pair}``；不再直接下发 token，
+        避免绕过 2FA 的第二条会话签发路径。
         """
         # 账号级防爆破：仅按 IP 限流挡不住分布式撞库（多 IP 打同一账号）。
         # 成功登录也计入预算——真人登录频率远低于阈值，撞库脚本会迅速触顶。
@@ -452,6 +500,9 @@ class AuthService:
         user = await self.authenticate(username, password)
 
         if not user:
+            await self._record_login_history(
+                user_id=None, success=False, attempted_email=username, **client_meta
+            )
             # 非关键审计，允许 best-effort（失败溯源已由 _record_login_history 主事务落库）
             await self.audit.record(
                 action="auth.login_failed",
@@ -462,6 +513,12 @@ class AuthService:
             raise InvalidCredentialsException()
 
         if not user.is_active:
+            await self._record_login_history(
+                user_id=user.id,
+                success=False,
+                attempted_email=username,
+                **client_meta,
+            )
             # 非关键审计，允许 best-effort（失败溯源已由 _record_login_history 主事务落库）
             await self.audit.record(
                 action="auth.login_failed",
@@ -471,7 +528,15 @@ class AuthService:
             )
             raise UserNotActiveException(user_id=user.id)
 
+        if await self.totp_service.is_enabled(user.id):
+            token, _jti = create_two_factor_token(
+                user.id, settings.TOTP_PRE_AUTH_TTL_MINUTES
+            )
+            return {"requires_2fa": True, "two_factor_token": token, "pair": None}
+
         pair = await self.issue_token_pair(user, client_meta)
+        await self._record_login_history(user_id=user.id, success=True, **client_meta)
+        await self.db.commit()
         # 非关键审计，允许 best-effort（登录成功已由 _record_login_history 主事务落库）
         await self.audit.record(
             action="auth.login",
@@ -481,7 +546,7 @@ class AuthService:
             actor_username=user.username,
             **client_meta,
         )
-        return pair
+        return {"requires_2fa": False, "two_factor_token": None, "pair": pair}
 
     async def get_current_user(
         self, token: str, *, payload: Optional[dict] = None

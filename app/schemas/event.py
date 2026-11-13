@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.schemas.base import TZModel
 
-EVENT_STATUSES = {"upcoming", "ongoing", "ended"}
+EVENT_STATUSES = {"draft", "upcoming", "ongoing", "ended", "cancelled"}
 REGISTRATION_STATUSES = {"registered", "cancelled", "waitlisted"}
 FIELD_TYPES = {"text", "textarea", "select", "checkbox"}
 
@@ -69,7 +69,20 @@ class EventInput(BaseModel):
     capacity: Optional[int] = 0
     content_markdown: Optional[str] = None
     registration_fields: Optional[List[RegistrationField]] = None
+    starts_at: Optional[datetime] = None
+    ends_at: Optional[datetime] = None
+    location: Optional[str] = Field(default=None, max_length=255)
+    visibility: Literal["public", "members", "peak"] = "public"
+    peak_id: Optional[int] = Field(default=None, gt=0)
     model_config = ConfigDict(str_strip_whitespace=True)
+
+    @model_validator(mode="after")
+    def _check_time_and_scope(self) -> "EventInput":
+        if self.starts_at and self.ends_at and self.starts_at >= self.ends_at:
+            raise ValueError("活动开始时间必须早于结束时间")
+        if self.visibility == "peak" and not self.peak_id:
+            raise ValueError("峰内活动必须指定 peak_id")
+        return self
 
     @field_validator("title")
     @classmethod
@@ -162,6 +175,13 @@ class EventOut(TZModel):
     capacity: int = 0
     content_markdown: Optional[str] = None
     registration_fields: List[Dict[str, Any]] = []
+    starts_at: Optional[datetime] = None
+    ends_at: Optional[datetime] = None
+    location: Optional[str] = None
+    organizer_id: Optional[int] = None
+    visibility: str = "public"
+    peak_id: Optional[int] = None
+    version: int = 1
     created_by: Optional[int] = None
     created_at: datetime
     updated_at: datetime
@@ -185,9 +205,6 @@ class EventRegistrationOut(TZModel):
     form_data: Optional[Dict[str, str]] = None
     registered_at: datetime
     cancelled_at: Optional[datetime] = None
-    # 报名人信息（P1-8c）：仅管理端报名列表填充，普通用户出参保持 None
-    display_name: Optional[str] = None
-    email: Optional[str] = None
 
 
 class EventCheckinOut(TZModel):

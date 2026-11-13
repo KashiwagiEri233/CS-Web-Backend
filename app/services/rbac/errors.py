@@ -18,3 +18,8 @@ class RbacErrorCode:
     SELF_DELETE = "SELF_DELETE"  # 不能删除自己
     ROOT_PROTECTED = "ROOT_PROTECTED"  # 超级管理员账号不可被修改/禁用/删除
     LAST_ADMIN = "LAST_ADMIN"  # 不能降级/禁用/删除最后一个活跃管理员
+    # 统一授权边界
+    SELF_REVIEW_FORBIDDEN = "SELF_REVIEW_FORBIDDEN"  # 禁止审核/验收自己的任务
+    ROLE_ASSIGNMENT_FORBIDDEN = "ROLE_ASSIGNMENT_FORBIDDEN"  # 不可授予受保护角色
+    SCOPE_FORBIDDEN = "SCOPE_FORBIDDEN"  # 作用范围越权或与角色不符
+    ACCOUNT_ACCESS_DENIED = "ACCOUNT_ACCESS_DENIED"  # 无权访问该账户/资源

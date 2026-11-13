@@ -1,4 +1,4 @@
-"""工具集仓储：考试 / 资源 / 任务 / 积分 / 组件注册表。"""
+"""工具集仓储：考试 / 资源 / 组件注册表。"""
 
 from __future__ import annotations
 
@@ -16,9 +16,7 @@ from app.models.component_registry import (
     ComponentRegistryVariant,
 )
 from app.models.exam import Exam, ExamAttempt, ExamQuestion, ExamQuestionOption
-from app.models.points import PointsTransaction
 from app.models.resource import Resource
-from app.models.task import Task, TaskClaim
 from app.repositories.base import dml_rowcount
 from app.repositories.base import paginate
 from app.core.query_helpers import jsonb_contains
@@ -40,7 +38,7 @@ class ExamRepository:
         if status:
             conditions.append(Exam.status == status)
         if tag and tag.strip():
-            # 2026-08-10 修复：Exam.tech_tags 为 JSON().with_variant(JSONB())（Variant），
+            # Exam.tech_tags 为 JSON().with_variant(JSONB())（Variant），
             # contains 退化成字符串 LIKE 且实际调用报错；type_coerce(JSONB) 走 @> 包含。
             conditions.append(jsonb_contains(Exam.tech_tags, [tag.strip()]))
         total = int(
@@ -235,7 +233,7 @@ class ResourceRepository:
         if resource_type:
             conditions.append(Resource.resource_type == resource_type)
         if tag and tag.strip():
-            # 2026-08-10 修复：Resource.tech_tags 为 JSON().with_variant(JSONB())（Variant），
+            # Resource.tech_tags 为 JSON().with_variant(JSONB())（Variant），
             # contains 退化成字符串 LIKE 且实际调用报错；type_coerce(JSONB) 走 @> 包含。
             conditions.append(jsonb_contains(Resource.tech_tags, [tag.strip()]))
         if submitted_by:
@@ -281,204 +279,6 @@ class ResourceRepository:
             .where(Resource.id == resource_id)
             .values(view_count=Resource.view_count + 1)
         )
-
-
-class TaskRepository:
-    def __init__(self, db: AsyncSession):
-        self.db = db
-
-    async def list_tasks(
-        self,
-        *,
-        status: Optional[str] = None,
-        category: Optional[str] = None,
-        skip: int = 0,
-        limit: int = 20,
-    ) -> tuple[list[Task], int]:
-        conditions = []
-        if status:
-            conditions.append(Task.status == status)
-        if category:
-            conditions.append(Task.category == category)
-        total = int(
-            (
-                await self.db.execute(
-                    select(func.count()).select_from(Task).where(*conditions)
-                )
-            ).scalar_one()
-        )
-        stmt = paginate(
-            select(Task).where(*conditions).order_by(Task.created_at.desc()),
-            skip,
-            limit,
-        )
-        rows = await self.db.execute(stmt)
-        return list(rows.scalars().all()), total
-
-    async def get_by_id(self, task_id: int) -> Optional[Task]:
-        return await self.db.get(Task, task_id)
-
-    async def create(self, data: dict) -> Task:
-        obj = Task(**data)
-        self.db.add(obj)
-        await self.db.flush()
-        return obj
-
-    async def update(self, task: Task, data: dict) -> None:
-        for key, value in data.items():
-            setattr(task, key, value)
-
-    async def delete(self, task_id: int) -> bool:
-        obj = await self.get_by_id(task_id)
-        if obj is None:
-            return False
-        await self.db.delete(obj)
-        return True
-
-    async def count_active_claims(self, task_id: int) -> int:
-        return int(
-            (
-                await self.db.execute(
-                    select(func.count())
-                    .select_from(TaskClaim)
-                    .where(
-                        TaskClaim.task_id == task_id,
-                        TaskClaim.status.in_(["claimed", "submitted"]),
-                    )
-                )
-            ).scalar_one()
-        )
-
-    async def count_active_claims_by_ids(self, task_ids: list[int]) -> dict[int, int]:
-        """一次 GROUP BY 统计多个任务的活跃认领数（口径与 count_active_claims 一致），
-        供任务列表批量填充 claimant_count，避免逐任务查询的 N+1（TOOLS-GOV Slice E）。"""
-        if not task_ids:
-            return {}
-        rows = (
-            await self.db.execute(
-                select(
-                    TaskClaim.task_id,
-                    func.count().label("cnt"),
-                )
-                .where(
-                    TaskClaim.task_id.in_(task_ids),
-                    TaskClaim.status.in_(["claimed", "submitted"]),
-                )
-                .group_by(TaskClaim.task_id)
-            )
-        ).all()
-        return {task_id: int(cnt) for task_id, cnt in rows}
-
-    async def get_claim(self, task_id: int, user_id: int) -> Optional[TaskClaim]:
-        stmt = select(TaskClaim).where(
-            TaskClaim.task_id == task_id, TaskClaim.user_id == user_id
-        )
-        rows = await self.db.execute(stmt)
-        return rows.scalar_one_or_none()
-
-    async def get_claim_by_id(self, claim_id: int) -> Optional[TaskClaim]:
-        return await self.db.get(TaskClaim, claim_id)
-
-    async def create_claim(self, data: dict) -> TaskClaim:
-        obj = TaskClaim(**data)
-        self.db.add(obj)
-        await self.db.flush()
-        return obj
-
-    async def list_claims_for_task(self, task_id: int) -> list[TaskClaim]:
-        stmt = (
-            select(TaskClaim)
-            .where(TaskClaim.task_id == task_id)
-            .order_by(TaskClaim.created_at.asc())
-        )
-        rows = await self.db.execute(stmt)
-        return list(rows.scalars().all())
-
-    async def list_claims_for_user(self, user_id: int) -> list[TaskClaim]:
-        stmt = (
-            select(TaskClaim)
-            .where(TaskClaim.user_id == user_id)
-            .order_by(TaskClaim.created_at.desc())
-        )
-        rows = await self.db.execute(stmt)
-        return list(rows.scalars().all())
-
-    async def list_pending_claims(self) -> list[TaskClaim]:
-        stmt = (
-            select(TaskClaim)
-            .where(TaskClaim.status == "submitted")
-            .order_by(TaskClaim.created_at.asc())
-        )
-        rows = await self.db.execute(stmt)
-        return list(rows.scalars().all())
-
-
-class PointsRepository:
-    def __init__(self, db: AsyncSession):
-        self.db = db
-
-    async def last_balance(self, user_id: int) -> int:
-        stmt = (
-            select(PointsTransaction.balance_after)
-            .where(PointsTransaction.user_id == user_id)
-            .order_by(PointsTransaction.created_at.desc(), PointsTransaction.id.desc())
-            .limit(1)
-        )
-        value = (await self.db.execute(stmt)).scalar_one_or_none()
-        return int(value or 0)
-
-    async def create_transaction(
-        self,
-        *,
-        user_id: int,
-        amount: int,
-        reason: str,
-        source_type: str,
-        source_id,
-        balance_after: int,
-    ) -> PointsTransaction:
-        obj = PointsTransaction(
-            user_id=user_id,
-            amount=amount,
-            reason=reason,
-            source_type=source_type,
-            source_id=source_id,
-            balance_after=balance_after,
-        )
-        self.db.add(obj)
-        await self.db.flush()
-        return obj
-
-    async def list_transactions(
-        self, user_id: int, limit: int = 50, skip: int = 0
-    ) -> list[PointsTransaction]:
-        stmt = (
-            select(PointsTransaction)
-            .where(PointsTransaction.user_id == user_id)
-            .order_by(PointsTransaction.created_at.desc())
-            .offset(skip)
-            .limit(limit)
-        )
-        rows = await self.db.execute(stmt)
-        return list(rows.scalars().all())
-
-    async def leaderboard(self, top_n: int = 20) -> list[tuple[int, int]]:
-        """(user_id, balance) 按余额倒序。"""
-        subq = (
-            select(
-                PointsTransaction.user_id,
-                func.max(PointsTransaction.balance_after).label("balance"),
-            )
-            .group_by(PointsTransaction.user_id)
-            .subquery()
-        )
-        stmt = (
-            select(subq.c.user_id, subq.c.balance)
-            .order_by(subq.c.balance.desc())
-            .limit(top_n)
-        )
-        rows = await self.db.execute(stmt)
-        return [(int(uid), int(balance)) for uid, balance in rows.all()]
 
 
 class ComponentRegistryRepository:

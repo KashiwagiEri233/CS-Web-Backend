@@ -15,11 +15,14 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, Query, Request
 
 from app.core.request_context import get_client_meta
-from app.dependencies_services import get_user_service
+from app.dependencies_services import get_audit_service, get_rbac_service, get_user_service
 from app.middleware.rbac import require_admin_2fa, require_permission
 from app.models.user import User
 from app.schemas.auth import UserOut
+from app.schemas.rbac import RoleBindingsReplace, UserBindingsResponse
 from app.schemas.user import AdminUserListOut, AdminUserOut, AdminUserUpdate
+from app.services.audit_service import AuditService
+from app.services.rbac.rbac_service import RBACService
 from app.services.user.user_service import UserService, to_admin_out
 
 router = APIRouter(dependencies=[Depends(require_admin_2fa())])
@@ -28,6 +31,71 @@ router = APIRouter(dependencies=[Depends(require_admin_2fa())])
 def _is_admin(user: User) -> bool:
     """是否管理员（admin 角色或超级用户）。"""
     return user.is_superuser or any(r.name == "admin" for r in user.roles)
+
+
+def _parse_if_match(request: Request) -> Optional[int]:
+    """解析 If-Match（带引号的整数 version）；缺失返回 None 由服务层返回 428。"""
+    raw = request.headers.get("If-Match")
+    if not raw:
+        return None
+    value = raw.strip().strip('"')
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
+
+@router.get("/{user_id}/role-bindings", response_model=UserBindingsResponse)
+async def get_user_role_bindings(
+    user_id: int,
+    rbac_service: RBACService = Depends(get_rbac_service),
+    current_user: User = Depends(require_permission("user", "manage_roles")),
+) -> Any:
+    """读取用户的角色绑定与授权版本（需要 user:manage_roles）。"""
+    version = await rbac_service.get_user_authorization_version(user_id)
+    if version is None:
+        from app.core.exceptions import NotFoundException
+
+        raise NotFoundException(
+            message="用户不存在", resource_type="user", resource_id=user_id
+        )
+    return UserBindingsResponse(
+        user_id=user_id,
+        authorization_version=version,
+        bindings=await rbac_service.get_user_bindings(user_id),
+    )
+
+
+@router.put("/{user_id}/role-bindings", response_model=UserBindingsResponse)
+async def replace_user_role_bindings(
+    user_id: int,
+    body: RoleBindingsReplace,
+    request: Request,
+    rbac_service: RBACService = Depends(get_rbac_service),
+    audit: AuditService = Depends(get_audit_service),
+    current_user: User = Depends(require_permission("user", "manage_roles")),
+) -> Any:
+    """整组替换用户角色绑定（If-Match 版本 + 防提权 + 同事务审计）。"""
+    bindings = await rbac_service.replace_user_role_bindings(
+        user_id,
+        [item.model_dump() for item in body.bindings],
+        actor=current_user,
+        expected_version=_parse_if_match(request),
+        commit=False,
+    )
+    await audit.record_atomic(
+        action="user.replace_role_bindings",
+        resource_type="user",
+        resource_id=str(user_id),
+        actor_id=current_user.id,
+        actor_username=current_user.username,
+        detail={"bindings": [item.model_dump() for item in body.bindings]},
+        **get_client_meta(request),
+    )
+    version = await rbac_service.get_user_authorization_version(user_id) or 1
+    return UserBindingsResponse(
+        user_id=user_id, authorization_version=version, bindings=bindings
+    )
 
 
 @router.get("", response_model=AdminUserListOut)

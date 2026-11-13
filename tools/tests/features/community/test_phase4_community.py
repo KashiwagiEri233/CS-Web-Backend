@@ -63,9 +63,19 @@ async def _cleanup_users(db, *user_ids: int) -> None:
         ):
             try:
                 async with db.begin_nested():
-                    await db.execute(
-                        text(f"DELETE FROM {table} WHERE user_id=:i"), {"i": uid}
-                    )
+                    if table == "notifications":
+                        # 通知的 sender_id 也引用 users，必须一并清理，否则删除用户触发 FK 失败
+                        await db.execute(
+                            text(
+                                "DELETE FROM notifications "
+                                "WHERE user_id=:i OR sender_id=:i"
+                            ),
+                            {"i": uid},
+                        )
+                    else:
+                        await db.execute(
+                            text(f"DELETE FROM {table} WHERE user_id=:i"), {"i": uid}
+                        )
             except Exception:
                 pass
         try:

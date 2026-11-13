@@ -7,20 +7,23 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import text
+from sqlalchemy import insert, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.lifecycle import register_startup
 from app.core.loguru_logger import get_logger
 from app.core.security import async_get_password_hash
+from app.models.organization import MemberProfile
 from app.models.permission import Permission
 from app.models.role import Role
-from app.models.user import User
+from app.models.user import User, user_roles
 from app.repositories.rbac_repo import RBACRepository
 from app.repositories.user_repo import UserRepository
 from app.services.rbac.rbac_seed_data import (
     ADMIN_ROLE_NAME,
+    DEFAULT_MEMBER_ROLE_NAME,
     DEFAULT_PERMISSIONS,
+    ROLE_SCOPE_POLICY,
     build_default_roles,
 )
 
@@ -68,6 +71,9 @@ class RBACInitializer:
             roles, roles_created = await self._create_default_roles(permissions)
             result["roles_created"] = roles_created
             self.logger.info(f"创建了 {roles_created} 个默认角色")
+
+            self.logger.info("开始补齐成员档案与默认 member 绑定")
+            await self._ensure_member_baseline(roles)
 
             self.logger.info("开始创建默认管理员账号")
             admin_created = await self._create_admin_user(
@@ -145,6 +151,8 @@ class RBACInitializer:
                     name=role_data["name"],
                     description=role_data["description"],
                     display_name=role_data.get("display_name"),
+                    fantasy_display_name=role_data.get("fantasy_display_name"),
+                    audit_domains=role_data.get("audit_domains") or [],
                     is_system=role_data.get("is_system", False),
                 )
                 for perm_key in role_data["permissions"]:
@@ -160,6 +168,12 @@ class RBACInitializer:
                 )
                 if loaded_role is None:
                     raise RuntimeError(f"角色读取失败: {role_data['name']}")
+                # 种子管理的展示字段保持一致（不覆盖权限的运行时增删）
+                loaded_role.display_name = role_data.get("display_name")
+                loaded_role.fantasy_display_name = role_data.get("fantasy_display_name")
+                loaded_role.audit_domains = role_data.get("audit_domains") or []
+                loaded_role.description = role_data["description"]
+                loaded_role.is_system = role_data.get("is_system", False)
                 assigned_keys = {
                     f"{perm.resource}:{perm.action}" for perm in loaded_role.permissions
                 }
@@ -203,13 +217,85 @@ class RBACInitializer:
             is_active=True,
             is_superuser=True,
         )
-        admin_user.roles.append(admin_role)
-
         self.db.add(admin_user)
         await self.db.flush()
+        # 显式写入 all 范围绑定：user_roles 的默认范围是 own（最小权限）
+        await self.db.execute(
+            insert(user_roles).values(
+                user_id=admin_user.id,
+                role_id=admin_role.id,
+                scope_type="all",
+                created_by=None,
+            )
+        )
 
         self.logger.info(f"管理员账号创建成功: {username}")
         return True
+
+    async def _ensure_member_baseline(self, roles: List[Role]) -> None:
+        """为存量用户补齐 active 成员档案与默认 member 绑定（幂等）。
+
+        - 已有档案不覆盖（避免启动重置用户资料/峰归属）。
+        - 已有 member 绑定不重复插入。
+        - 不复活禁用/软删用户，仅补结构与绑定。
+        """
+        member_role = next(
+            (r for r in roles if r.name == DEFAULT_MEMBER_ROLE_NAME), None
+        )
+        if member_role is None:
+            return
+        user_ids = (
+            (
+                await self.db.execute(
+                    select(User.id).where(User.deleted_at.is_(None))
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if not user_ids:
+            return
+
+        existing_profiles = set(
+            (
+                await self.db.execute(
+                    select(MemberProfile.user_id).where(
+                        MemberProfile.user_id.in_(user_ids)
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for user_id in user_ids:
+            if user_id not in existing_profiles:
+                self.db.add(MemberProfile(user_id=user_id, membership_status="active"))
+
+        existing_member_bindings = set(
+            (
+                await self.db.execute(
+                    select(user_roles.c.user_id).where(
+                        user_roles.c.user_id.in_(user_ids),
+                        user_roles.c.role_id == member_role.id,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        rows = [
+            {
+                "user_id": user_id,
+                "role_id": member_role.id,
+                "scope_type": next(iter(ROLE_SCOPE_POLICY["member"]), "own"),
+                "created_by": None,
+            }
+            for user_id in user_ids
+            if user_id not in existing_member_bindings
+        ]
+        if rows:
+            await self.db.execute(insert(user_roles), rows)
+        await self.db.flush()
 
 
 async def initialize_rbac(db: AsyncSession) -> Dict[str, Any]:

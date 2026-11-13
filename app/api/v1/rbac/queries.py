@@ -13,6 +13,7 @@ from app.middleware.rbac import require_permission
 from app.models.user import User
 from app.schemas.rbac import (
     Role,
+    UserBindingsResponse,
     UserPermissionCheck,
     UserPermissionResult,
     UserPermissionsResponse,
@@ -50,9 +51,25 @@ async def get_my_permissions(
     if current_user.is_superuser:
         permissions = {"*:*"}
     else:
-        permissions = await rbac_service.get_user_permissions(current_user.id)
+        permissions = await rbac_service.get_user_permissions(
+            current_user.id, getattr(current_user, "authorization_version", None)
+        )
     return UserPermissionsResponse(
         user_id=current_user.id, permissions=sorted(permissions)
+    )
+
+
+@router.get("/me/bindings", response_model=UserBindingsResponse)
+async def get_my_bindings(
+    rbac_service: RBACService = Depends(get_rbac_service),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """获取当前用户的角色绑定与授权版本（两端同源）。"""
+    version = await rbac_service.get_user_authorization_version(current_user.id)
+    return UserBindingsResponse(
+        user_id=current_user.id,
+        authorization_version=version or current_user.authorization_version,
+        bindings=await rbac_service.get_user_bindings(current_user.id),
     )
 
 

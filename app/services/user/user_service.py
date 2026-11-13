@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Optional, Tuple
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, insert, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,7 +30,7 @@ from app.core.timezone import now_utc
 from app.models.community import CommunityComment, CommunityPost
 from app.models.exam import Exam, ExamAttempt, ExamQuestion
 from app.models.role import Role
-from app.models.user import User
+from app.models.user import User, user_roles
 from app.repositories.activity_participation_repo import ActivityParticipationRepository
 from app.repositories.base import paginate
 from app.repositories.refresh_token_repo import RefreshTokenRepository
@@ -40,6 +40,7 @@ from app.schemas.pagination import compute_total_pages
 from app.schemas.profile import ProfileUpdate
 from app.schemas.user import AdminUserUpdate
 from app.services.audit_service import AuditService
+from app.services.rbac.rbac_assignments import _default_scope_for_role
 from app.utils.image_validate import is_valid_image_mime
 
 # 预设头像（与前端 src/shared/config/avatar-presets.ts 对齐；文件由前端静态服务）
@@ -167,7 +168,7 @@ class UserService:
         if commit:
             await self.db.commit()
 
-    # -------------------------------------------------------- 管理员操作（Phase 2）
+    # -------------------------------------------------------- 管理员操作
 
     async def _admin_role_names(self, user: User) -> set[str]:
         await self.db.refresh(user, ["roles"])
@@ -197,10 +198,6 @@ class UserService:
             conditions.append(User.is_active.is_(True))
         elif active == "inactive":
             conditions.append(User.is_active.is_(False))
-        if role != "all":
-            # 角色筛选下推到 SQL（EXISTS 子查询）：原实现在分页之后用 Python 过滤，
-            # 会导致 total 与实际结果不一致、当页条数少于 page_size（分页语义失真）。
-            conditions.append(User.roles.any(Role.name == role))
 
         total = int(
             (
@@ -218,6 +215,10 @@ class UserService:
             page_size,
         )
         users = list((await self.db.execute(stmt)).scalars().all())
+
+        # role 筛选（角色走关联表，查询后过滤）
+        if role != "all":
+            users = [u for u in users if role in {r.name for r in u.roles}]
 
         return {
             "users": [to_admin_out(u) for u in users],
@@ -530,25 +531,27 @@ class UserService:
         return user.is_superuser or any(r.name == "admin" for r in user.roles)
 
     async def _active_admin_count(self) -> int:
-        """活跃管理员数量（is_superuser 或持有 admin 角色）。
+        from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
 
-        单条聚合查询：原实现把全部活跃用户连同角色一起加载回 Python 再逐条过滤，
-        用户量增长后是明显的读放大（且被 update / disable / delete 等写路径调用）。
-        """
-        stmt = (
-            select(func.count(func.distinct(User.id)))
-            .select_from(User)
-            .outerjoin(User.roles)
-            .where(
-                User.is_active.is_(True),
-                User.deleted_at.is_(None),
-                or_(User.is_superuser.is_(True), Role.name == "admin"),
+        rows = (
+            (
+                await self.db.execute(
+                    select(User)
+                    .where(User.is_active.is_(True), User.deleted_at.is_(None))
+                    .options(selectinload(User.roles))
+                )
             )
+            .scalars()
+            .all()
         )
-        return int((await self.db.execute(stmt)).scalar_one() or 0)
+        return sum(1 for u in rows if self._is_admin_target(u))
 
     async def _set_user_role(self, user: User, role_name: str) -> None:
-        """替换用户角色为单一角色（前端语义：一用户一主角色）。"""
+        """替换用户角色为单一角色（兼容旧前端「一用户一主角色」语义）。
+
+        写入带 scope 的绑定实体；范围按角色策略取默认值，避免 admin 绑定误落 own。
+        """
         role = (
             await self.db.execute(select(Role).where(Role.name == role_name))
         ).scalar_one_or_none()
@@ -558,8 +561,27 @@ class UserService:
                 resource_type="role",
                 resource_id=role_name,
             )
+        scope_type = _default_scope_for_role(role.name)
+        await self.db.execute(delete(user_roles).where(user_roles.c.user_id == user.id))
+        await self.db.execute(
+            insert(user_roles).values(
+                user_id=user.id,
+                role_id=role.id,
+                scope_type=scope_type,
+                scope_peak_id=None,
+                created_by=None,
+            )
+        )
+        user.authorization_version = (user.authorization_version or 1) + 1
+        await self.db.flush()
+        # 关系缓存与授权缓存都要失效，后续读取才拿到新绑定
         await self.db.refresh(user, ["roles"])
-        user.roles = [role]
+        from app.core.cache import get_cache
+
+        try:
+            await get_cache().delete(f"rbac:user_perms:{user.id}")
+        except Exception:  # noqa: BLE001
+            pass
 
     async def _audit_admin(
         self,
@@ -581,7 +603,7 @@ class UserService:
             **(client_meta or {}),
         )
 
-    # -------------------------------------------------------- 个人资料（Phase 1）
+    # -------------------------------------------------------- 个人资料
 
     async def get_profile(self, user_id: int) -> dict:
         """当前用户完整资料：用户 + 活动参与记录。"""

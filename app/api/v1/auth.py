@@ -38,28 +38,30 @@ from app.services.verification_service import VerificationService
 router = APIRouter()
 
 
-@router.post("/login", response_model=TokenPair)
+@router.post("/login", response_model=LoginResponse)
 async def login(
     request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     auth_service: AuthService = Depends(get_auth_service),
 ) -> Any:
-    """用户登录（OAuth2 表单，用户名），返回 access + refresh 双 token。"""
-    return await auth_service.login(
+    """用户登录（OAuth2 表单，用户名）：统一走 2FA 安全登录流程。"""
+    result = await auth_service.login(
         form_data.username, form_data.password, get_client_meta(request)
     )
+    return _to_login_response(result)
 
 
-@router.post("/login-json", response_model=TokenPair)
+@router.post("/login-json", response_model=LoginResponse)
 async def login_json(
     request: Request,
     login_data: LoginRequest,
     auth_service: AuthService = Depends(get_auth_service),
 ) -> Any:
-    """用户登录（JSON，用户名），返回 access + refresh 双 token。"""
-    return await auth_service.login(
+    """用户登录（JSON，用户名）：统一走 2FA 安全登录流程。"""
+    result = await auth_service.login(
         login_data.username, login_data.password, get_client_meta(request)
     )
+    return _to_login_response(result)
 
 
 @router.post("/login-email", response_model=LoginResponse)

@@ -78,7 +78,25 @@ async def create_role(
     }
 
 
+@router.get("/roles/{role_id}", response_model=AdminRoleOut)
+async def get_role(
+    role_id: int,
+    rbac_service: RBACService = Depends(get_rbac_service),
+    current_user: User = Depends(require_permission("role", "read")),
+) -> Any:
+    """角色详情（含权限名、双展示名与审计域）。"""
+    role_out = next(
+        (r for r in await rbac_service.list_roles_admin() if r["id"] == role_id), None
+    )
+    if role_out is None:
+        raise NotFoundException(
+            message="角色不存在", resource_type="role", resource_id=str(role_id)
+        )
+    return role_out
+
+
 @router.put("/roles/{role_id}", response_model=AdminRoleOut)
+@router.patch("/roles/{role_id}", response_model=AdminRoleOut)
 async def update_role(
     role_id: int,
     body: AdminRoleUpdate,

@@ -11,13 +11,14 @@ import app.middleware.rbac as rbac_module
 
 
 class _FakeUser:
-    def __init__(self, user_id=1, is_superuser=False):
+    def __init__(self, user_id=1, is_superuser=False, authorization_version=1):
         self.id = user_id
         self.is_superuser = is_superuser
+        self.authorization_version = authorization_version
 
 
 def _patch_permissions(monkeypatch, perms):
-    async def fake_get_user_permissions(self, user_id):
+    async def fake_get_user_permissions(self, user_id, authorization_version=None):
         return set(perms)
 
     monkeypatch.setattr(

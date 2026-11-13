@@ -83,6 +83,22 @@ pipeline {
                 }
             }
         }
+        stage('Unified contract gate (reconstruction)') {
+            steps {
+                script {
+                    // 统一契约门禁：后端当前 OpenAPI 必须与两端基线/元数据 SHA256 一致。
+                    // 两端前端与后端同级 checkout 时才执行；单仓 checkout 下跳过并说明，
+                    // 避免空跑或误红（权威门禁仍在根仓流水线）。
+                    if (fileExists('../CS-Web-Frontend/openapi.baseline.json') && fileExists('../FGS_CS_F/openapi.baseline.json')) {
+                        runCommand(isUnix()
+                            ? 'python3 tools/scripts/reconstruction/check_contracts.py'
+                            : 'python tools/scripts/reconstruction/check_contracts.py')
+                    } else {
+                        echo '[skip] 两端前端基线不在同级目录，契约门禁由根仓流水线执行'
+                    }
+                }
+            }
+        }
         stage('Tests') {
             steps {
                 script {

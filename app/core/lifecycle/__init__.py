@@ -51,6 +51,7 @@ _SERVICE_REGISTRANT_MODULES: tuple[str, ...] = (
     "app.services.exception_retention",
     "app.services.token_gc",
     "app.services.data_retention",
+    "app.services.task.expiry_service",
 )
 
 _registrants_loaded: bool = False

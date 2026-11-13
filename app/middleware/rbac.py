@@ -58,7 +58,9 @@ class PermissionChecker:
         # 相比每请求直查库（user+roles+permissions 三条 SQL），这是高并发下
         # 数据库负载的最大单一来源。
         rbac_service = RBACService(db)
-        permissions = await rbac_service.get_user_permissions(current_user.id)
+        permissions = await rbac_service.get_user_permissions(
+            current_user.id, getattr(current_user, "authorization_version", None)
+        )
         checks = [
             ":" in permission and permission in permissions
             for permission in self.required_permissions

@@ -44,11 +44,11 @@ class WebSettings(BaseSettings):
     # 一键开关鉴权：False 时所有接口视为超级用户放行（跳过 token 校验与权限检查）。
     # 仅限本地开发！只允许在 DEBUG=True 下关闭，生产（DEBUG=False）若置 False 会拒绝启动。
     AUTH_ENABLED: bool = True
-    # 管理员强制 2FA（P0 安全策略）：True 时管理员未启用 TOTP 无法访问管理后台。
+    # 管理员强制 2FA：True 时管理员未启用 TOTP 无法访问管理后台。
     # 仅限本地开发！只允许在 DEBUG=True 下关闭，生产（DEBUG=False）若置 False 会拒绝启动。
     ADMIN_2FA_REQUIRED: bool = True
 
-    # ---- 站点 / 业务配置（前后端分离迁移 Phase 1） ----
+    # ---- 站点 / 业务配置 ----
     # 站点公网地址（BFF 域名），用于构造 OAuth 回调等默认 URL
     SITE_URL: str = "http://localhost:2333"
 
