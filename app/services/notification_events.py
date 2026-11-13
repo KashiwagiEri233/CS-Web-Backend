@@ -70,7 +70,7 @@ async def _on_event_cancelled(user_id: int, event_id: int, event_title: str) -> 
         )
 
 
-# ---- 社区（ER-15 Phase 1：community_service 通知事件化后订阅）----
+# ---- 社区（通知事件订阅）----
 
 
 async def _on_community_mention(

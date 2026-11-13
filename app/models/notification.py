@@ -6,9 +6,12 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime as _DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -47,9 +50,29 @@ class Notification(Base):
 
 
 class Announcement(Base):
-    """全站公告：target_roles 为 JSON 数组，NULL 表示所有人可见。"""
+    """全站公告：可见范围 + 发布状态；target_roles 为附加角色条件。
+
+    is_active 为兼容展示字段，由 status 派生（published → True）。
+    """
 
     __tablename__ = "announcements"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('draft', 'published', 'archived')",
+            name="ck_announcements_status",
+        ),
+        CheckConstraint(
+            "visibility IN ('public', 'members', 'peak')",
+            name="ck_announcements_visibility",
+        ),
+        CheckConstraint(
+            "visibility <> 'peak' OR peak_id IS NOT NULL",
+            name="ck_announcements_peak_visibility",
+        ),
+        Index("ix_announcements_status_published", "status", "published_at", "id"),
+        Index("ix_announcements_expires", "expires_at"),
+        Index("ix_announcements_created_by", "created_by"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -61,6 +84,18 @@ class Announcement(Base):
     expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     # 定向角色（JSON 数组）；NULL = 全员可见
     target_roles: Mapped[Optional[list]] = mapped_column(JSONDict, nullable=True)
+    # 组织可见范围
+    visibility: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="public"
+    )
+    peak_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("peaks.id", ondelete="SET NULL"), nullable=True
+    )
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="draft"
+    )
+    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_by: Mapped[int] = mapped_column(
         Integer, ForeignKey("users.id"), nullable=False
     )

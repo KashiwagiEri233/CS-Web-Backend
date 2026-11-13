@@ -28,6 +28,7 @@
 .codebuddy/
 .trae-cn/
 .workbuddy/
+gitpush.py
 
 # OS
 .DS_Store

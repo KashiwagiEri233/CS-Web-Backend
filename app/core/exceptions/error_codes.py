@@ -60,6 +60,11 @@ class ErrorCode:
         NO_CHANGE = "NO_CHANGE"  # 状态无变化
         # 默认重置密码未配置
         PASSWORD_RESET_NOT_CONFIGURED = "PASSWORD_RESET_NOT_CONFIGURED"
+        # 统一后端的输入校验（任务/钱包/授权）
+        INVALID_MONEY_AMOUNT = "INVALID_MONEY_AMOUNT"
+        INVALID_TEAM_SIZE = "INVALID_TEAM_SIZE"
+        UNKNOWN_PERMISSION = "UNKNOWN_PERMISSION"
+        INVALID_DEADLINE = "INVALID_DEADLINE"
 
     # ---------------- 请求本身不合法（HTTP 413 等） ----------------
     class Request:
@@ -78,6 +83,16 @@ class ErrorCode:
         """资源冲突（通用；活动/社区域码已迁至 Event/Community 命名空间）。"""
 
         RESOURCE_CONFLICT = "RESOURCE_CONFLICT"
+        # 任务 / 资金 / 幂等（统一后端）
+        TASK_STATE_CONFLICT = "TASK_STATE_CONFLICT"
+        TASK_ALREADY_CLAIMED = "TASK_ALREADY_CLAIMED"
+        TASK_ALREADY_SETTLED = "TASK_ALREADY_SETTLED"
+        INSUFFICIENT_BALANCE = "INSUFFICIENT_BALANCE"
+        IDEMPOTENCY_KEY_REUSED = "IDEMPOTENCY_KEY_REUSED"
+        TEAM_ROSTER_LOCKED = "TEAM_ROSTER_LOCKED"
+        ROLE_STILL_ASSIGNED = "ROLE_STILL_ASSIGNED"
+        VERSION_MISMATCH = "VERSION_MISMATCH"
+        VERSION_REQUIRED = "VERSION_REQUIRED"
 
     # ---------------- 数据库（HTTP 500） ----------------
     class Database:

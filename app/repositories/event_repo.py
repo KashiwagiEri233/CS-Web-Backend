@@ -23,35 +23,26 @@ class EventRepository:
         self,
         *,
         status: Optional[str] = None,
-        month: Optional[str] = None,
         search: Optional[str] = None,
         tag: Optional[str] = None,
+        visibility_conditions: Optional[Sequence] = None,
         skip: int = 0,
         limit: int = 50,
     ) -> tuple[list[Event], int]:
         conditions: list = []
         if status:
             conditions.append(Event.status == status)
-        if month and month.strip():
-            m = month.strip()
-            m_alt = m.replace("-", ".") if "-" in m else m.replace(".", "-")
-            conditions.append(
-                or_(
-                    Event.month == m,
-                    Event.month == m_alt,
-                    Event.date.startswith(m),
-                    Event.date.startswith(m_alt),
-                )
-            )
         if search and search.strip():
             kw = f"%{search.strip()}%"
             conditions.append(or_(Event.title.ilike(kw), Event.description.ilike(kw)))
         if tag and tag.strip():
-            # 2026-08-10 修复：Event.tags 为 JSON().with_variant(JSONB(),"postgresql")
+            # Event.tags 为 JSON().with_variant(JSONB(),"postgresql")
             # （Variant），ColumnElement.contains 会退化成通用字符串 LIKE（编译为
             # `col LIKE '%' || $n::JSONB || '%'`），实际调用抛 invalid input syntax
             # for type json。type_coerce(..., JSONB).contains([tag]) 走 JSONB `@>`。
             conditions.append(jsonb_contains(Event.tags, [tag.strip()]))
+        if visibility_conditions:
+            conditions.extend(visibility_conditions)
 
         total = int(
             (
@@ -60,75 +51,18 @@ class EventRepository:
                 )
             ).scalar_one()
         )
-        reg_subq = (
-            select(
-                EventRegistration.event_id,
-                func.count(EventRegistration.id).label("registered_count"),
-            )
-            .where(EventRegistration.status == "registered")
-            .group_by(EventRegistration.event_id)
-            .subquery()
-        )
         stmt = paginate(
-            select(
-                Event,
-                func.coalesce(reg_subq.c.registered_count, 0).label("registered_count"),
-            )
-            .outerjoin(reg_subq, reg_subq.c.event_id == Event.id)
+            select(Event)
             .where(*conditions)
-            .order_by(
-                Event.is_pinned.desc(),
-                Event.date.desc().nullslast(),
-                Event.id.desc(),
-            ),
+            .order_by(Event.is_pinned.desc(), Event.date.desc()),
             skip,
             limit,
         )
         rows = await self.db.execute(stmt)
-        events: list[Event] = []
-        for event, reg_count in rows.all():
-            setattr(event, "registered_count", int(reg_count))
-            events.append(event)
-        return events, total
+        return list(rows.scalars().all()), total
 
     async def list_all(self) -> list[Event]:
-        reg_subq = (
-            select(
-                EventRegistration.event_id,
-                func.count(EventRegistration.id).label("registered_count"),
-            )
-            .where(EventRegistration.status == "registered")
-            .group_by(EventRegistration.event_id)
-            .subquery()
-        )
-        stmt = (
-            select(
-                Event,
-                func.coalesce(reg_subq.c.registered_count, 0).label("registered_count"),
-            )
-            .outerjoin(reg_subq, reg_subq.c.event_id == Event.id)
-            .order_by(
-                Event.is_pinned.desc(),
-                Event.date.desc().nullslast(),
-                Event.id.desc(),
-            )
-        )
-        rows = await self.db.execute(stmt)
-        events: list[Event] = []
-        for event, reg_count in rows.all():
-            setattr(event, "registered_count", int(reg_count))
-            events.append(event)
-        return events
-
-    async def list_by_ids(self, event_ids: list[int]) -> list[Event]:
-        """按 id 集合批量取活动（不附带报名数，保持与 get_by_id 一致的最小字段语义）。
-
-        供「用户已报名活动」等场景一次取回，消除逐条 get_by_id 的 N+1。
-        返回顺序不保证，调用方自行排序。
-        """
-        if not event_ids:
-            return []
-        stmt = select(Event).where(Event.id.in_(event_ids))
+        stmt = select(Event).order_by(Event.is_pinned.desc(), Event.date.desc())
         rows = await self.db.execute(stmt)
         return list(rows.scalars().all())
 
@@ -162,8 +96,9 @@ class EventRepository:
 
         result = await self.db.execute(
             text("""
-                UPDATE events SET status = 'ended', updated_at = :now
-                WHERE status != 'ended' AND date IS NOT NULL AND date != ''
+                UPDATE events SET status = 'ended', version = version + 1, updated_at = :now
+                WHERE status IN ('upcoming', 'ongoing', 'planned')
+                  AND date IS NOT NULL AND date != ''
                   AND substr(REPLACE(REPLACE(date, '.', '-'), '/', '-'), 1, 10) < :today
                 """),
             {"now": now_utc(), "today": now_date},
@@ -289,7 +224,7 @@ class EventRegistrationRepository:
                 )
                 .outerjoin(EventRegistration, EventRegistration.event_id == Event.id)
                 .group_by(Event.id)
-                .order_by(Event.date.desc().nullslast(), Event.id.desc())
+                .order_by(Event.date.desc())
             )
         ).all()
         result = []
@@ -324,17 +259,6 @@ class EventCheckinRepository:
         self.db.add(obj)
         await self.db.flush()
         return obj
-
-    async def create_many(self, rows: list[dict]) -> int:
-        """批量创建签到码：单次 flush（替代逐条 create 的 N+1 写放大）。
-
-        ``rows`` 为 EventCheckin 字段字典列表；仅 flush，由调用方 commit。
-        """
-        if not rows:
-            return 0
-        self.db.add_all([EventCheckin(**row) for row in rows])
-        await self.db.flush()
-        return len(rows)
 
     async def get_by_code(self, event_id: int, code: str) -> Optional[EventCheckin]:
         stmt = select(EventCheckin).where(

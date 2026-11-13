@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 
+from app.dependencies import get_optional_current_user
 from app.dependencies_services import get_announcement_service
 from app.middleware.rbac import require_permission
 from app.models.user import User
@@ -19,21 +20,29 @@ router = APIRouter()
 async def list_active_announcements(
     request: Request,
     service: AnnouncementService = Depends(get_announcement_service),
+    current_user: Optional[User] = Depends(get_optional_current_user),
 ) -> Any:
-    """生效公告（公开）。带登录态时按角色定向过滤。"""
-    # 角色定向：BFF 在登录态下附加 X-User-Roles 头（见前端转发层）
+    """生效公告（公开）。登录态按可见范围与角色定向过滤。"""
     roles_header = request.headers.get("x-user-roles", "")
     roles = [r.strip() for r in roles_header.split(",") if r.strip()] or None
-    return await service.list_active(roles)
+    return await service.list_active(user=current_user, roles=roles)
 
 
 @router.get("/admin", response_model=list[AnnouncementOut])
 async def list_all_announcements(
+    created_by: Optional[str] = Query(
+        None, pattern=r"^(me|\d+)$", description="me=本人创建，或指定用户 ID"
+    ),
     service: AnnouncementService = Depends(get_announcement_service),
     current_user: User = Depends(require_permission("announcement", "read")),
 ) -> Any:
-    """管理员：全部公告。"""
-    return await service.list_all()
+    """管理员：全部公告；created_by=me 时只看本人创建。"""
+    creator_id = None
+    if created_by == "me":
+        creator_id = current_user.id
+    elif created_by:
+        creator_id = int(created_by)
+    return await service.list_all(created_by=creator_id)
 
 
 @router.post("/admin", response_model=AnnouncementOut)
@@ -86,3 +95,23 @@ async def toggle_announcement(
 ) -> Any:
     """管理员：切换公告激活状态。"""
     return await service.toggle_active(announcement_id)
+
+
+@router.post("/admin/{announcement_id}/publish", response_model=AnnouncementOut)
+async def publish_announcement(
+    announcement_id: int,
+    service: AnnouncementService = Depends(get_announcement_service),
+    current_user: User = Depends(require_permission("announcement", "publish")),
+) -> Any:
+    """管理员：发布公告。"""
+    return await service.publish(announcement_id)
+
+
+@router.post("/admin/{announcement_id}/archive", response_model=AnnouncementOut)
+async def archive_announcement(
+    announcement_id: int,
+    service: AnnouncementService = Depends(get_announcement_service),
+    current_user: User = Depends(require_permission("announcement", "archive")),
+) -> Any:
+    """管理员：归档公告（不影响历史阅读）。"""
+    return await service.archive(announcement_id)

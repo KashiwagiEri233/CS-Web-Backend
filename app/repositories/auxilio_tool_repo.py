@@ -19,7 +19,7 @@ from app.models.exam import Exam
 from app.models.focus import FocusSession
 from app.models.llm_usage import LlmUsageLog
 from app.models.resource import Resource
-from app.models.task import Task, TaskClaim
+from app.models.task import Task, TaskClaim, TaskClaimMember
 
 
 class AuxilioToolRepository:
@@ -52,12 +52,13 @@ class AuxilioToolRepository:
     async def my_claims(
         self, user_id: int, limit: int = 10
     ) -> list[tuple[Task, TaskClaim]]:
-        """用户已认领的任务（按认领时间倒序）。"""
+        """用户参与（含队长）的任务执行记录（按开始时间倒序）。"""
         rows = await self.db.execute(
             select(Task, TaskClaim)
             .join(TaskClaim, TaskClaim.task_id == Task.id)
-            .where(TaskClaim.user_id == user_id)
-            .order_by(TaskClaim.created_at.desc())
+            .join(TaskClaimMember, TaskClaimMember.claim_id == TaskClaim.id)
+            .where(TaskClaimMember.user_id == user_id)
+            .order_by(TaskClaim.started_at.desc())
             .limit(limit)
         )
         return list(rows.tuples().all())

@@ -8,11 +8,29 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import PermissionDeniedException
+from app.core.exceptions import AuthorizationException, ErrorCode, PermissionDeniedException
 from app.models.role import Role
 from app.models.user import User
 from app.repositories.rbac_repo import RBACRepository
-from app.services.rbac.rbac_seed_data import ADMIN_ROLE_NAME
+from app.services.rbac.rbac_seed_data import (
+    ADMIN_ROLE_NAME,
+    CUSTOM_ROLE_SCOPE_POLICY,
+    ROLE_SCOPE_POLICY,
+)
+
+
+def _default_scope_for_role(role_name: str) -> str:
+    """旧单角色接口的默认范围：优先 all，其次 own；peak 必须走绑定接口指定峰。"""
+    allowed = ROLE_SCOPE_POLICY.get(role_name, CUSTOM_ROLE_SCOPE_POLICY)
+    if "all" in allowed:
+        return "all"
+    if "own" in allowed:
+        return "own"
+    raise AuthorizationException(
+        message="该角色必须在角色绑定接口指定作用峰",
+        error_code=ErrorCode.Authorization.SCOPE_FORBIDDEN,
+        details={"role": role_name, "allowed": sorted(allowed)},
+    )
 
 
 class RBACAssignmentMixin:
@@ -50,7 +68,15 @@ class RBACAssignmentMixin:
         self._check_privilege_escalation(user, role, actor)
 
         if not any(item.id == role.id for item in user.roles):
-            user.roles.append(role)
+            scope_type = _default_scope_for_role(role.name)
+            await self.rbac_repo.add_user_binding(
+                user_id,
+                role.id,
+                scope_type=scope_type,
+                created_by=actor.id if actor else None,
+            )
+            # 绑定是直接 INSERT，关系集合不会自动同步；过期后由下次查询重新加载
+            self.db.expire(user, ["roles"])
             if commit:
                 await self.db.commit()
             await self._invalidate_user_perm_cache(user_id)
@@ -75,7 +101,8 @@ class RBACAssignmentMixin:
 
         target = next((item for item in user.roles if item.id == role.id), None)
         if target is not None:
-            user.roles.remove(target)
+            await self.rbac_repo.delete_user_bindings(user_id, role.id)
+            self.db.expire(user, ["roles"])
             if commit:
                 await self.db.commit()
             await self._invalidate_user_perm_cache(user_id)

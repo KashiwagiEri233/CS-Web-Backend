@@ -3,11 +3,10 @@
 补 ER-11 盲区：tools 路由此前无真实 DB 的 HTTP 级测试
 （test_phase5_tools 与 repo 层测试均不覆盖路由/鉴权接线）。覆盖：
 - 资源：公开列表（status=approved）/ tag 过滤（tools_repo.py:235 修复的 HTTP 回归）/ 详情 / 用户提交；
-- 任务：公开列表 / 详情 / 认领 / 我的认领 / 提交完成；
-- 考试：公开列表 tag 过滤（tools_repo.py:40 修复的 HTTP 回归）/ 详情 / 题目列表；
-- 积分：我的积分 / 排行榜；
-- 组件注册表：创建 / 列表 / 详情 / 变体替换 / 指南更新。
+- 考试：公开列表 tag 过滤（tools_repo.py:40 修复的 HTTP 回归）/ 详情 / 题目列表。
 
+P7 后旧任务代理 `/tools/task*` 与旧积分 `/tools/points*` 已移除，统一任务/钱包链路
+由 `tools/tests/api/v1/{tasks,wallet}.py` 覆盖；本文件不再依赖旧项目 Java。
 管理端（RBAC 权限）与答题提交不在本测试范围。本地无法连接数据库时自动
 skip；CI 严格模式下直接失败。
 """
@@ -24,7 +23,6 @@ from app.main import create_app
 from app.models.conversation import ChatMessage, Conversation
 from app.models.exam import Exam
 from app.models.resource import Resource
-from app.models.task import Task
 from app.models.user import User
 
 pytestmark = pytest.mark.integration
@@ -49,20 +47,10 @@ async def _cleanup(
     db,
     user_ids: list[int],
     resource_ids=None,
-    task_ids=None,
     exam_ids=None,
     item_ids=None,
 ) -> None:
-    """按依赖顺序清场：claims→resources/exams/tasks→registry 子表→items→鉴权表→users。"""
-    if task_ids:
-        try:
-            async with db.begin_nested():
-                await db.execute(
-                    text("DELETE FROM task_claims WHERE task_id = ANY(:ids)"),
-                    {"ids": task_ids},
-                )
-        except Exception:
-            pass
+    """按依赖顺序清场：resources/exams→registry 子表→items→鉴权表→users。"""
     if item_ids:
         for table in ("component_registry_variants", "component_registry_guides"):
             try:
@@ -80,10 +68,6 @@ async def _cleanup(
     if exam_ids:
         await db.execute(
             text("DELETE FROM exams WHERE id = ANY(:ids)"), {"ids": exam_ids}
-        )
-    if task_ids:
-        await db.execute(
-            text("DELETE FROM tasks WHERE id = ANY(:ids)"), {"ids": task_ids}
         )
     if item_ids:
         await db.execute(
@@ -124,7 +108,7 @@ async def _login(client: httpx.AsyncClient, username: str) -> dict:
 async def test_tools_http_user_flow(integration_db_ready):
     sfx = uuid.uuid4().hex[:8]
     async with get_session() as db:
-        # creator 作为提交资源的超管；user 作为普通用户做认领/浏览
+        # creator 作为提交资源的超管；user 作为普通用户做浏览
         creator_id = await _make_user(db, f"{sfx}cr", superuser=True)
         user_id = await _make_user(db, f"{sfx}us")
 
@@ -138,16 +122,6 @@ async def test_tools_http_user_flow(integration_db_ready):
         )
         db.add(resource)
 
-        task = Task(
-            title=f"http-任务-{sfx}",
-            description="d",
-            category="dev",
-            status="published",
-            max_claimants=1,
-            created_by=creator_id,
-        )
-        db.add(task)
-
         exam = Exam(
             title=f"http-考试-{sfx}",
             description="d",
@@ -157,7 +131,7 @@ async def test_tools_http_user_flow(integration_db_ready):
         )
         db.add(exam)
         await db.commit()
-        resource_id, task_id, exam_id = resource.id, task.id, exam.id
+        resource_id, exam_id = resource.id, exam.id
 
     new_resource_id: int | None = None
     item_id: int | None = None
@@ -198,33 +172,7 @@ async def test_tools_http_user_flow(integration_db_ready):
             assert created_res.status_code == 201, created_res.text
             new_resource_id = created_res.json()["id"]
 
-            # ---- 任务：列表 / 详情 / 认领 / 我的认领 / 提交（复数路由 /tasks）----
-            task_lst = await client.get(
-                "/api/v1/tools/tasks", params={"status": "published"}
-            )
-            assert task_lst.status_code == 200, task_lst.text
-            assert any(t["id"] == task_id for t in task_lst.json()["items"])
-            task_det = await client.get(f"/api/v1/tools/tasks/{task_id}")
-            assert task_det.status_code == 200, task_det.text
-
-            claim = await client.post(
-                f"/api/v1/tools/tasks/{task_id}/claim", headers=h_user
-            )
-            assert claim.status_code == 200, claim.text
-            claim_id = claim.json()["id"]
-            assert claim.json()["status"] == "claimed"
-
-            mine = await client.get("/api/v1/tools/tasks/claims/me", headers=h_user)
-            assert mine.status_code == 200, mine.text
-            assert any(c["id"] == claim_id for c in mine.json()["claims"])
-
-            # TOOLS-GOV Slice B：submit 由 GET 改 POST（前端 BFF 语义）
-            submitted = await client.post(
-                f"/api/v1/tools/tasks/claims/{claim_id}/submit",
-                headers=h_user,
-            )
-            assert submitted.status_code == 200, submitted.text
-            assert submitted.json()["status"] == "submitted"
+            # 统一任务/钱包链路由 tests/api/v1/{tasks,wallet}.py 覆盖。
 
             # ---- 考试：列表 tag 过滤 + 详情 + 题目（/exam 未变）----
             exam_lst = await client.get("/api/v1/tools/exam", params={"tag": "python"})
@@ -235,24 +183,6 @@ async def test_tools_http_user_flow(integration_db_ready):
             questions = await client.get(f"/api/v1/tools/exam/{exam_id}/questions")
             assert questions.status_code == 200, questions.text
             assert questions.json()["questions"] == []
-
-            # ---- 积分：我的积分 / 流水分页 / 排行榜（TOOLS-GOV Slice A 对齐后）----
-            points = await client.get("/api/v1/tools/points/me", headers=h_user)
-            assert points.status_code == 200, points.text
-            points_json = points.json()
-            assert {"balance", "level", "level_title", "transactions"} <= set(
-                points_json
-            )
-            history = await client.get(
-                "/api/v1/tools/points/me/history",
-                params={"skip": 0, "limit": 10},
-                headers=h_user,
-            )
-            assert history.status_code == 200, history.text
-            assert isinstance(history.json()["records"], list)
-            lb = await client.get("/api/v1/tools/points/leaderboard", headers=h_user)
-            assert lb.status_code == 200, lb.text
-            assert isinstance(lb.json(), list)
 
             # 注：组件注册表 HTTP 端点（/tools/components）在 module 化重构后与 service 契约
             # 错位（API 调用 list_variants/create_variant/get_guide 等不存在的方法），
@@ -265,7 +195,6 @@ async def test_tools_http_user_flow(integration_db_ready):
                 resource_ids=(
                     [resource_id, new_resource_id] if new_resource_id else [resource_id]
                 ),
-                task_ids=[task_id],
                 exam_ids=[exam_id],
                 item_ids=[item_id] if item_id else None,
             )
@@ -324,9 +253,7 @@ async def test_auxilio_conversation_http_lifecycle_and_ownership(integration_db_
             active_list = await client.get(
                 "/api/v1/auxilio/conversations", headers=owner_headers
             )
-            assert all(
-                c["id"] != branch_id for c in active_list.json()["conversations"]
-            )
+            assert all(c["id"] != branch_id for c in active_list.json()["conversations"])
             full_list = await client.get(
                 "/api/v1/auxilio/conversations",
                 headers=owner_headers,
@@ -371,9 +298,7 @@ async def test_auxilio_learning_goal_http_budget_and_ownership(integration_db_re
     application = create_app()
     try:
         transport = httpx.ASGITransport(app=application)
-        async with httpx.AsyncClient(
-            transport=transport, base_url="http://testserver"
-        ) as client:
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
             owner_headers = await _login(client, f"itest_http_tools_{sfx}go")
             outsider_headers = await _login(client, f"itest_http_tools_{sfx}gx")
             created = await client.post(
@@ -408,10 +333,7 @@ async def test_auxilio_learning_goal_http_budget_and_ownership(integration_db_re
                 headers=owner_headers,
                 json={"status": "paused"},
             )
-            assert (
-                paused.status_code == 200
-                and paused.json()["goal"]["status"] == "paused"
-            )
+            assert paused.status_code == 200 and paused.json()["goal"]["status"] == "paused"
             deleted = await client.delete(
                 f"/api/v1/auxilio/goals/{goal_id}", headers=owner_headers
             )
@@ -423,200 +345,3 @@ async def test_auxilio_learning_goal_http_budget_and_ownership(integration_db_re
                 {"ids": [owner_id, outsider_id]},
             )
             await _cleanup(db, [owner_id, outsider_id])
-
-
-@pytest.mark.integration
-async def test_tools_http_admin_flow(integration_db_ready):
-    """TOOLS-GOV 切片 B/C/D 管理端路由回归：任务管理/审核、资源审核、注册表迁移状态。
-
-    覆盖 Slice B 补齐的 publish/close/DELETE claim/review、Slice C 的 approve/reject/
-    pending、Slice D 的 migration-status PUT（可见性联动）。
-    """
-    sfx = uuid.uuid4().hex[:8]
-    async with get_session() as db:
-        admin_id = await _make_user(db, f"{sfx}adm", superuser=True)
-        user_id = await _make_user(db, f"{sfx}usr")
-
-    application = create_app()
-    resource_ids: list[int] = []
-    item_id: int | None = None
-    try:
-        transport = httpx.ASGITransport(app=application)
-        async with httpx.AsyncClient(
-            transport=transport, base_url="http://testserver"
-        ) as client:
-            h_admin = await _login(client, f"itest_http_tools_{sfx}adm")
-            h_user = await _login(client, f"itest_http_tools_{sfx}usr")
-
-            # ---- 任务：创建 → 更新 → 发布 → 认领 → 审核 → 关闭 ----
-            created = await client.post(
-                "/api/v1/tools/admin/tasks",
-                headers=h_admin,
-                json={
-                    "title": f"管理任务-{sfx}",
-                    "description": "d",
-                    "category": "dev",
-                    "points": 30,
-                    "max_claimants": 2,
-                },
-            )
-            assert created.status_code == 201, created.text
-            task_id = created.json()["id"]
-
-            updated = await client.put(
-                f"/api/v1/tools/admin/tasks/{task_id}",
-                headers=h_admin,
-                json={"title": f"管理任务改-{sfx}", "description": "d"},
-            )
-            assert updated.status_code == 200, updated.text
-
-            published = await client.post(
-                f"/api/v1/tools/admin/tasks/{task_id}/publish", headers=h_admin
-            )
-            assert published.status_code == 200, published.text
-            assert published.json()["status"] == "published"
-
-            claimed = await client.post(
-                f"/api/v1/tools/tasks/{task_id}/claim", headers=h_user
-            )
-            assert claimed.status_code in (200, 201), claimed.text
-            claim_id = claimed.json()["id"]
-
-            submitted = await client.post(
-                f"/api/v1/tools/tasks/claims/{claim_id}/submit",
-                headers=h_user,
-                json={"submission_url": f"https://t.com/{sfx}/proof"},
-            )
-            assert submitted.status_code == 200, submitted.text
-            assert submitted.json()["status"] == "submitted"
-            assert submitted.json()["submission_url"] == f"https://t.com/{sfx}/proof"
-
-            # 待审核 = submitted 状态；提交后进入审核列表
-            pending = await client.get(
-                "/api/v1/tools/admin/tasks/claims/pending", headers=h_admin
-            )
-            assert pending.status_code == 200, pending.text
-            assert any(c["id"] == claim_id for c in pending.json()["items"])
-
-            approved = await client.post(
-                f"/api/v1/tools/admin/tasks/claims/{claim_id}/approve",
-                headers=h_admin,
-            )
-            assert approved.status_code == 200, approved.text
-            assert approved.json()["status"] == "approved"
-
-            closed = await client.post(
-                f"/api/v1/tools/admin/tasks/{task_id}/close", headers=h_admin
-            )
-            assert closed.status_code == 200, closed.text
-            assert closed.json()["status"] == "closed"
-
-            deleted = await client.delete(
-                f"/api/v1/tools/admin/tasks/{task_id}", headers=h_admin
-            )
-            assert deleted.status_code == 200, deleted.text
-
-            # ---- 资源：用户提交 → pending → approve；管理建 → reject → 更新 → 删除 ----
-            submitted_res = await client.post(
-                "/api/v1/tools/resources",
-                headers=h_user,
-                json={
-                    "title": f"用户资源-{sfx}",
-                    "url": f"https://t.com/{sfx}/u",
-                    "resource_type": "article",
-                    "tech_tags": ["python"],
-                },
-            )
-            assert submitted_res.status_code == 201, submitted_res.text
-            res_id = submitted_res.json()["id"]
-            resource_ids.append(res_id)
-
-            pending_res = await client.get(
-                "/api/v1/tools/admin/resources/pending", headers=h_admin
-            )
-            assert pending_res.status_code == 200, pending_res.text
-            assert any(r["id"] == res_id for r in pending_res.json()["items"])
-
-            approved_res = await client.post(
-                f"/api/v1/tools/admin/resources/{res_id}/approve", headers=h_admin
-            )
-            assert approved_res.status_code == 200, approved_res.text
-
-            admin_res = await client.post(
-                "/api/v1/tools/admin/resources",
-                headers=h_admin,
-                json={
-                    "title": f"管理资源-{sfx}",
-                    "url": f"https://t.com/{sfx}/a",
-                    "resource_type": "article",
-                },
-            )
-            assert admin_res.status_code == 201, admin_res.text
-            admin_res_id = admin_res.json()["id"]
-            resource_ids.append(admin_res_id)
-
-            rejected = await client.post(
-                f"/api/v1/tools/admin/resources/{admin_res_id}/reject",
-                headers=h_admin,
-                params={"reason": "质量不足"},
-            )
-            assert rejected.status_code == 200, rejected.text
-
-            admin_list = await client.get(
-                "/api/v1/tools/admin/resources", headers=h_admin
-            )
-            assert admin_list.status_code == 200, admin_list.text
-
-            # ---- 注册表：迁移状态 PUT（可见性联动出参）----
-            comp = await client.post(
-                "/api/v1/tools/components",
-                headers=h_admin,
-                json={"name": f"comp-{sfx}", "description": "d"},
-            )
-            if comp.status_code == 201:
-                item_id = comp.json()["id"]
-                mig = await client.put(
-                    f"/api/v1/tools/components/{item_id}/migration-status",
-                    headers=h_admin,
-                    json={"migration_status": "in-progress"},
-                )
-                assert mig.status_code == 200, mig.text
-                body = mig.json()
-                assert body["migrationStatus"] == "in-progress"
-                assert "visibilityKey" in body
-    finally:
-        async with get_session() as db:
-            # 任务/认领/积分流水按 FK 依赖顺序清场（tasks 为软删，行仍在）
-            for stmt in (
-                "DELETE FROM points_transactions WHERE user_id = ANY(:ids)",
-                "DELETE FROM task_claims WHERE user_id = ANY(:ids)"
-                " OR task_id IN (SELECT id FROM tasks WHERE created_by = ANY(:ids))",
-                "DELETE FROM tasks WHERE created_by = ANY(:ids)",
-            ):
-                try:
-                    async with db.begin_nested():
-                        await db.execute(text(stmt), {"ids": [admin_id, user_id]})
-                except Exception:
-                    pass
-            if item_id:
-                for table in (
-                    "component_registry_variants",
-                    "component_registry_guides",
-                ):
-                    try:
-                        async with db.begin_nested():
-                            await db.execute(
-                                text(f"DELETE FROM {table} WHERE item_id = :i"),
-                                {"i": item_id},
-                            )
-                    except Exception:
-                        pass
-                try:
-                    async with db.begin_nested():
-                        await db.execute(
-                            text("DELETE FROM component_registry_items WHERE id = :i"),
-                            {"i": item_id},
-                        )
-                except Exception:
-                    pass
-            await _cleanup(db, [admin_id, user_id], resource_ids=resource_ids)

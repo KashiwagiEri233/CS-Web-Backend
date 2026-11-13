@@ -47,13 +47,27 @@ async def test_role_admin_crud_flow(integration_db_ready):
     async with get_session() as db:
         svc = RBACService(db)
         try:
-            # 创建（权限名不存在时自动创建）
+            # 统一 RBAC 只接受代码目录中已存在的权限；测试库先确保目录可用
+            for perm_name in ("community:hide", "event:create", "event:delete"):
+                if await svc.get_permission_by_name(perm_name) is None:
+                    resource, action = perm_name.split(":", 1)
+                    await svc.create_permission(
+                        {
+                            "name": perm_name,
+                            "resource": resource,
+                            "action": action,
+                            "description": "itest seed",
+                        },
+                        commit=False,
+                    )
+            await db.commit()
+            # 创建（权限名必须已注册，不再自动创建）
             role = await svc.create_role_admin(
                 AdminRoleCreate(
                     name=role_key,
                     display_name="自定义角色",
                     description="测试",
-                    permissions=["community_topic:hide", "event:create"],
+                    permissions=["community:hide", "event:create"],
                 )
             )
             assert role.display_name == "自定义角色"
@@ -62,7 +76,7 @@ async def test_role_admin_crud_flow(integration_db_ready):
             # 列表含权限名与用户数
             listed = await svc.list_roles_admin()
             item = next(r for r in listed if r["name"] == role_key)
-            assert set(item["permissions"]) == {"community_topic:hide", "event:create"}
+            assert set(item["permissions"]) == {"community:hide", "event:create"}
             assert item["user_count"] == 0
             assert item["is_system"] is False
 
@@ -91,11 +105,12 @@ async def test_role_admin_crud_flow(integration_db_ready):
 async def test_system_role_delete_protected(integration_db_ready):
     async with get_session() as db:
         svc = RBACService(db)
+        # 使用统一角色 member（原 user）
         system_role = (
-            await db.execute(select(Role).where(Role.name == "user"))
+            await db.execute(select(Role).where(Role.name == "member"))
         ).scalar_one_or_none()
         if system_role is None or not system_role.is_system:
-            pytest.skip("缺少系统内置 user 角色")
+            pytest.skip("缺少系统内置 member 角色")
         with pytest.raises(ConflictException):
             await svc.delete_role_admin(system_role.id)
 

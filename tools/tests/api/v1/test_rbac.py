@@ -57,7 +57,7 @@ class _FakeRBACService:
     async def count_permissions(self):
         return 0
 
-    async def get_user_permissions(self, user_id):
+    async def get_user_permissions(self, user_id, authorization_version=None):
         return {"user:read", "role:read"}
 
     async def get_user_roles(self, user_id):

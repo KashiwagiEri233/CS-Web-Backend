@@ -5,14 +5,28 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.cache import get_cache
-from app.core.exceptions import ConflictException
+from app.core.exceptions import (
+    AuthorizationException,
+    BaseAppException,
+    ConflictException,
+    ErrorCode,
+    NotFoundException,
+    ValidationException,
+)
 from app.core.loguru_logger import get_logger
 from app.models.role import Role
 from app.models.permission import Permission
+from app.models.user import User
 from app.repositories.rbac_repo import RBACRepository
 from app.schemas.rbac import AdminRoleCreate, AdminRoleUpdate
 from app.core.constants import RBAC_USER_PERMISSION_CACHE_TTL_SECONDS
 from app.services.rbac.rbac_assignments import RBACAssignmentMixin
+from app.services.rbac.rbac_seed_data import (
+    CUSTOM_ROLE_SCOPE_POLICY,
+    NON_DELEGABLE_PERMISSIONS,
+    PROTECTED_ROLE_NAMES,
+    ROLE_SCOPE_POLICY,
+)
 
 logger = get_logger("rbac")
 
@@ -21,21 +35,17 @@ logger = get_logger("rbac")
 # 具体值见 app.core.constants.RBAC_USER_PERMISSION_CACHE_TTL_SECONDS。
 
 
-def _user_perm_cache_key(user_id: int) -> str:
-    return f"rbac:user_perms:{user_id}"
+def _user_perm_cache_key(user_id: int, version: int) -> str:
+    """权限缓存键含授权版本：版本递增后旧键不可达，撤权立即生效。"""
+    return f"rbac:user_perms:{user_id}:v{version}"
 
 
 async def _invalidate_user_perm_cache(
-    user_id: int, raise_on_failure: bool = False
+    user_id: int, version: int, raise_on_failure: bool = False
 ) -> None:
-    """失效单个用户的权限缓存。
-
-    raise_on_failure=False（默认，grant/低风险路径）：失效失败仅告警，不阻断业务变更。
-    raise_on_failure=True（revoke/降权高风险路径）：失效失败抛错，使授权变更操作中止
-    （拒绝服务优于撤权后残留过期权限，见 ER-20）。
-    """
+    """失效单个用户某一版本的权限缓存。"""
     try:
-        await get_cache().delete(_user_perm_cache_key(user_id))
+        await get_cache().delete(_user_perm_cache_key(user_id, version))
     except Exception as exc:  # noqa: BLE001
         logger.warning("权限缓存失效失败（单用户）", user_id=user_id, error=str(exc))
         if raise_on_failure:
@@ -45,15 +55,10 @@ async def _invalidate_user_perm_cache(
 
 
 async def _invalidate_user_perm_cache_many(
-    user_ids: Iterable[int], raise_on_failure: bool = False
+    entries: Iterable[tuple[int, int]], raise_on_failure: bool = False
 ) -> None:
-    """批量失效多个用户的权限缓存（整批一次往返）。
-
-    角色/权限层面的变更会波及该角色下的**全部**用户，逐个 await 删除会让一次
-    授权变更的耗时随用户数线性增长；这里合并成一次批量删除。
-    raise_on_failure 语义同上。
-    """
-    keys = [_user_perm_cache_key(uid) for uid in user_ids]
+    """批量失效多个用户各自版本的权限缓存（整批一次往返）。"""
+    keys = [_user_perm_cache_key(uid, ver) for uid, ver in entries]
     if not keys:
         return
     try:
@@ -71,15 +76,20 @@ class RBACService(RBACAssignmentMixin):
         self.db = db
         self.rbac_repo = RBACRepository(db)
 
-    async def get_user_permissions(self, user_id: int) -> Set[str]:
-        """获取用户所有权限（带可降级缓存）。**鉴权与展示共用此入口。**
+    async def get_user_permissions(
+        self, user_id: int, authorization_version: Optional[int] = None
+    ) -> Set[str]:
+        """获取用户所有权限（带版本化可降级缓存）。**鉴权与展示共用此入口。**
 
-        缓存键 rbac:user_perms:{user_id}，TTL 见 RBAC_USER_PERMISSION_CACHE_TTL_SECONDS；
-        所有授权变更点（grant/revoke/update/delete）都做了显式失效。
-        缓存故障（Redis 不可用等）不抛错，退回直接查库。
+        authorization_version 由已加载的当前用户传入（鉴权中间件），避免每请求
+        额外查版本；未传入时（后台脚本/其他用户查询）回源读取一次。
         """
+        if authorization_version is None:
+            authorization_version = (
+                await self.rbac_repo.get_user_authorization_version(user_id) or 0
+            )
         cache = get_cache()
-        key = _user_perm_cache_key(user_id)
+        key = _user_perm_cache_key(user_id, authorization_version)
         try:
             hit = await cache.get(key)
             if hit is not None:
@@ -282,28 +292,27 @@ class RBACService(RBACAssignmentMixin):
             resource, action
         )
 
-    # ------------------------------------------------------------------ 管理员视图（子阶段 2.5）
+    # ------------------------------------------------------------------ 管理员视图
 
     async def list_roles_admin(self) -> list[dict]:
-        """管理员角色列表：角色 + 权限名 + 用户数（对齐前端 admin 角色管理 UI）。
-
-        用户数走单条 group by 聚合，替代「逐角色查询用户 id 再取长度」的 N+1。
-        """
+        """管理员角色列表：角色 + 权限名 + 用户数（对齐前端 admin 角色管理 UI）。"""
         roles = await self.rbac_repo.get_all_roles(limit=None)
-        counts = await self.rbac_repo.count_users_by_role([role.id for role in roles])
         result: list[dict] = []
         for role in roles:
-            user_count = counts.get(role.id, 0)
+            user_count = len(await self.rbac_repo.get_user_ids_by_role(role.id))
             result.append(
                 {
                     "id": role.id,
                     "name": role.name,
                     "display_name": role.display_name or role.name,
+                    "fantasy_display_name": role.fantasy_display_name,
                     "description": role.description,
                     "is_system": role.is_system,
-                    "is_protected": role.is_system,
+                    "is_protected": role.is_system
+                    or role.name in PROTECTED_ROLE_NAMES,
                     "sort_order": role.sort_order,
                     "permissions": [p.name for p in role.permissions],
+                    "audit_domains": list(role.audit_domains or []),
                     "user_count": user_count,
                     "created_at": role.created_at,
                     "updated_at": role.updated_at,
@@ -323,7 +332,9 @@ class RBACService(RBACAssignmentMixin):
             {
                 "name": data.name,
                 "display_name": data.display_name,
+                "fantasy_display_name": data.fantasy_display_name,
                 "description": data.description,
+                "audit_domains": data.audit_domains,
                 "is_system": False,
                 "is_active": True,
             }
@@ -342,7 +353,12 @@ class RBACService(RBACAssignmentMixin):
             return None
         await self.rbac_repo.update_role(
             role,
-            {"display_name": data.display_name, "description": data.description},
+            {
+                "display_name": data.display_name,
+                "fantasy_display_name": data.fantasy_display_name,
+                "description": data.description,
+                "audit_domains": data.audit_domains,
+            },
         )
         if commit:
             await self.db.commit()
@@ -368,29 +384,28 @@ class RBACService(RBACAssignmentMixin):
     async def replace_role_permissions(
         self, role_id: int, permission_names: list[str], commit: bool = True
     ) -> Optional[Role]:
-        """全量替换角色权限：权限名（resource:action）不存在则自动创建。"""
+        """全量替换角色权限：只接受代码权限目录中已存在的权限名。
+
+        统一后禁止运行时自动创建权限（否则可借未知权限串扩大目录）；
+        未注册的权限名返回 422 UNKNOWN_PERMISSION。
+        """
         role = await self.rbac_repo.get_role_by_id(role_id)
         if not role:
             return None
         permission_ids: list[int] = []
+        unknown: list[str] = []
         for name in permission_names:
             permission = await self.rbac_repo.get_permission_by_name(name)
             if permission is None:
-                resource, sep, action = name.partition(":")
-                if not sep or not resource or not action:
-                    raise ConflictException(
-                        message=f"权限名 {name} 格式应为 resource:action",
-                        details={"permission": name},
-                    )
-                permission = await self.rbac_repo.create_permission(
-                    {
-                        "name": name,
-                        "resource": resource,
-                        "action": action,
-                        "description": f"自动创建：{name}",
-                    }
-                )
+                unknown.append(name)
+                continue
             permission_ids.append(permission.id)
+        if unknown:
+            raise ValidationException(
+                message="包含未注册权限，禁止自动创建",
+                error_code=ErrorCode.Validation.UNKNOWN_PERMISSION,
+                details={"unknown_permissions": unknown},
+            )
         # 高危：全量替换可能移除权限（撤权），提交前失效缓存（fail-closed）
         await self._invalidate_role_users_perm_cache(role_id, raise_on_failure=True)
         await self.rbac_repo.replace_role_permissions(role_id, permission_ids)
@@ -406,33 +421,172 @@ class RBACService(RBACAssignmentMixin):
         """建角色时的权限授予（复用 replace 语义，未 commit）。"""
         await self.replace_role_permissions(role_id, names, commit=False)
 
+    # ------------------------------------------------------------------ 角色绑定（带作用范围）
+
+    async def get_user_bindings(self, user_id: int) -> list[dict]:
+        """返回用户的角色绑定（角色标识 + 双展示名 + scope）。"""
+        return await self.rbac_repo.get_user_bindings(user_id)
+
+    async def get_user_authorization_version(self, user_id: int) -> Optional[int]:
+        """读取用户授权版本；用户不存在返回 None。"""
+        return await self.rbac_repo.get_user_authorization_version(user_id)
+
+    async def replace_user_role_bindings(
+        self,
+        user_id: int,
+        bindings: Sequence[dict],
+        actor: User,
+        expected_version: Optional[int],
+        commit: bool = True,
+    ) -> list[dict]:
+        """整组替换用户角色绑定。
+
+        防提权规则：
+        - 受保护角色（admin/rbac_admin）与超级用户目标的绑定只允许超级用户操作；
+        - 非超级用户不得授予含安全管理权限的自定义角色；
+        - 绑定 scope 必须符合角色策略（member=own，peak_manager=peak 等）；
+        - 非超级用户不能授予 all 范围的自定义角色绑定。
+        """
+        current_version = await self.rbac_repo.get_user_authorization_version(user_id)
+        if current_version is None:
+            raise NotFoundException(
+                message="用户不存在", resource_type="user", resource_id=user_id
+            )
+        if expected_version is None:
+            raise BaseAppException(
+                message="缺少 If-Match 授权版本",
+                error_code=ErrorCode.Conflict.VERSION_REQUIRED,
+                status_code=428,
+            )
+        if expected_version != current_version:
+            raise BaseAppException(
+                message="授权版本已变化，请刷新后重试",
+                error_code=ErrorCode.Conflict.VERSION_MISMATCH,
+                status_code=412,
+                details={"current_version": current_version},
+            )
+
+        target = await self.rbac_repo.get_user_with_roles(user_id)
+        if target is None:
+            raise NotFoundException(
+                message="用户不存在", resource_type="user", resource_id=user_id
+            )
+
+        validated: list[dict] = []
+        seen: set[tuple] = set()
+        for item in bindings:
+            role = await self.rbac_repo.get_role_by_id(item["role_id"])
+            if role is None:
+                raise NotFoundException(
+                    message="角色不存在",
+                    resource_type="role",
+                    resource_id=item["role_id"],
+                )
+            if role.name in PROTECTED_ROLE_NAMES or target.is_superuser:
+                if not actor.is_superuser:
+                    raise AuthorizationException(
+                        message="只有超级用户可以分配受保护角色或修改超级用户授权",
+                        error_code=ErrorCode.Authorization.ROLE_ASSIGNMENT_FORBIDDEN,
+                        details={"required_permissions": ["superuser"]},
+                    )
+
+            if role.name in ROLE_SCOPE_POLICY:
+                allowed_scopes = ROLE_SCOPE_POLICY[role.name]
+            else:
+                allowed_scopes = CUSTOM_ROLE_SCOPE_POLICY
+                if not actor.is_superuser:
+                    permissions = await self.rbac_repo.get_role_permissions_names(
+                        role.id
+                    )
+                    if permissions & NON_DELEGABLE_PERMISSIONS:
+                        raise AuthorizationException(
+                            message="该角色的安全管理权限不可委托",
+                            error_code=ErrorCode.Authorization.ROLE_ASSIGNMENT_FORBIDDEN,
+                            details={"required_permissions": ["superuser"]},
+                        )
+
+            if item["scope_type"] not in allowed_scopes:
+                raise AuthorizationException(
+                    message="该角色不允许此作用范围",
+                    error_code=ErrorCode.Authorization.SCOPE_FORBIDDEN,
+                    details={
+                        "role": role.name,
+                        "scope_type": item["scope_type"],
+                        "allowed": sorted(allowed_scopes),
+                    },
+                )
+
+            peak_id = item.get("scope_peak_id")
+            if item["scope_type"] == "peak":
+                if not peak_id:
+                    raise AuthorizationException(
+                        message="peak 范围必须指定峰",
+                        error_code=ErrorCode.Authorization.SCOPE_FORBIDDEN,
+                    )
+                peak = await self.rbac_repo.get_peak_by_id(peak_id)
+                if peak is None or not peak.is_active or peak.archived_at is not None:
+                    raise AuthorizationException(
+                        message="峰不存在或不可用",
+                        error_code=ErrorCode.Authorization.SCOPE_FORBIDDEN,
+                        details={"peak_id": peak_id},
+                    )
+            elif peak_id:
+                raise AuthorizationException(
+                    message="只有 peak 范围允许指定峰",
+                    error_code=ErrorCode.Authorization.SCOPE_FORBIDDEN,
+                )
+
+            key = (role.id, item["scope_type"], peak_id)
+            if key in seen:
+                continue
+            seen.add(key)
+            validated.append(
+                {
+                    "role_id": role.id,
+                    "scope_type": item["scope_type"],
+                    "scope_peak_id": peak_id,
+                }
+            )
+
+        await self._invalidate_user_perm_cache(user_id, raise_on_failure=True)
+        await self.rbac_repo.replace_user_bindings(
+            user_id, validated, created_by=actor.id
+        )
+        if commit:
+            await self.db.commit()
+        return await self.rbac_repo.get_user_bindings(user_id)
+
     # ------------------------------------------------------------------ 权限缓存失效
 
     async def _invalidate_user_perm_cache(
         self, user_id: int, raise_on_failure: bool = False
     ) -> None:
-        await _invalidate_user_perm_cache(user_id, raise_on_failure=raise_on_failure)
+        version = await self.rbac_repo.get_user_authorization_version(user_id) or 0
+        await _invalidate_user_perm_cache(
+            user_id, version, raise_on_failure=raise_on_failure
+        )
 
     async def _invalidate_role_users_perm_cache(
         self, role_id: int, raise_on_failure: bool = False
     ) -> None:
-        """失效指定角色下所有用户的权限缓存（role↔permission 变更时调用）。
-
-        并发失效：大角色下逐个串行 await 会堆积缓存 RTT。
-        """
+        """失效指定角色下所有用户各自版本的权限缓存（role↔permission 变更时调用）。"""
         user_ids = await self.rbac_repo.get_user_ids_by_role(role_id)
+        versions = await self.rbac_repo.get_authorization_versions(user_ids)
         await _invalidate_user_perm_cache_many(
-            user_ids, raise_on_failure=raise_on_failure
+            [(uid, versions.get(uid, 0)) for uid in user_ids],
+            raise_on_failure=raise_on_failure,
         )
 
     async def _invalidate_roles_users_perm_cache(
         self, role_ids: Sequence[int], raise_on_failure: bool = False
     ) -> None:
-        """失效这批角色下所有用户的权限缓存（权限定义变更时调用）。
+        """失效这批角色下所有用户各自版本的权限缓存（权限定义变更时调用）。
 
         一次 IN 查询取回受影响用户 + 一次批量删除，不随角色数线性增长往返次数。
         """
         user_ids = await self.rbac_repo.get_user_ids_by_roles(role_ids)
+        versions = await self.rbac_repo.get_authorization_versions(user_ids)
         await _invalidate_user_perm_cache_many(
-            user_ids, raise_on_failure=raise_on_failure
+            [(uid, versions.get(uid, 0)) for uid in user_ids],
+            raise_on_failure=raise_on_failure,
         )

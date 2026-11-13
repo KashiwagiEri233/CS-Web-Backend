@@ -275,7 +275,8 @@ async def test_revoke_role_to_user_by_id(rbac_service, monkeypatch):
     svc.rbac_repo.get_role_by_id.return_value = target
 
     assert await svc.revoke_role_from_user(1, 5) is True
-    assert target not in user.roles
+    # 统一 RBAC 改为删除绑定实体（带 scope），不再改动关系集合
+    svc.rbac_repo.delete_user_bindings.assert_awaited_once_with(1, 5)
 
 
 # ---- 权限缓存（#12） ----
@@ -305,6 +306,7 @@ async def test_get_user_permissions_caches_result(rbac_service, monkeypatch):
     svc.rbac_repo = AsyncMock()
 
     svc.rbac_repo.get_authorization_permissions.return_value = {"user:read"}
+    svc.rbac_repo.get_user_authorization_version.return_value = 1
 
     first = await svc.get_user_permissions(1)
     second = await svc.get_user_permissions(1)
@@ -318,13 +320,14 @@ async def test_get_user_permissions_caches_result(rbac_service, monkeypatch):
 async def test_grant_role_to_user_invalidates_cache(rbac_service, monkeypatch):
     """授予角色后应清除该用户权限缓存。"""
     cache = _real_memory_cache()
-    await cache.set(rbac_svc_module._user_perm_cache_key(1), ["old"], 60)
+    await cache.set(rbac_svc_module._user_perm_cache_key(1, 1), ["old"], 60)
     monkeypatch.setattr(rbac_svc_module, "get_cache", lambda: cache)
 
     svc = RBACService(db=MagicMock())
     svc.db = MagicMock()
     svc.db.commit = AsyncMock()
     svc.rbac_repo = AsyncMock()
+    svc.rbac_repo.get_user_authorization_version.return_value = 1
 
     user = MagicMock()
     user.roles = []
@@ -335,7 +338,7 @@ async def test_grant_role_to_user_invalidates_cache(rbac_service, monkeypatch):
     await svc.grant_role_to_user(1, 7)
 
     # 缓存已被失效
-    assert await cache.get(rbac_svc_module._user_perm_cache_key(1)) is None
+    assert await cache.get(rbac_svc_module._user_perm_cache_key(1, 1)) is None
 
 
 async def test_grant_permission_to_role_invalidates_all_role_users(
@@ -344,8 +347,8 @@ async def test_grant_permission_to_role_invalidates_all_role_users(
     """角色授予权限应失效该角色下所有用户的权限缓存。"""
     cache = _real_memory_cache()
     # 用户 1 和 2 都在该角色下，预先写入缓存
-    await cache.set(rbac_svc_module._user_perm_cache_key(1), ["x"], 60)
-    await cache.set(rbac_svc_module._user_perm_cache_key(2), ["y"], 60)
+    await cache.set(rbac_svc_module._user_perm_cache_key(1, 1), ["x"], 60)
+    await cache.set(rbac_svc_module._user_perm_cache_key(2, 1), ["y"], 60)
 
     monkeypatch.setattr(rbac_svc_module, "get_cache", lambda: cache)
 
@@ -353,6 +356,7 @@ async def test_grant_permission_to_role_invalidates_all_role_users(
     svc.db = MagicMock()
     svc.db.commit = AsyncMock()
     svc.rbac_repo = AsyncMock()
+    svc.rbac_repo.get_authorization_versions.return_value = {1: 1, 2: 1}
 
     role = MagicMock(id=3)
     role.permissions = []
@@ -363,8 +367,8 @@ async def test_grant_permission_to_role_invalidates_all_role_users(
 
     await svc.grant_permission_to_role(3, 4)
 
-    assert await cache.get(rbac_svc_module._user_perm_cache_key(1)) is None
-    assert await cache.get(rbac_svc_module._user_perm_cache_key(2)) is None
+    assert await cache.get(rbac_svc_module._user_perm_cache_key(1, 1)) is None
+    assert await cache.get(rbac_svc_module._user_perm_cache_key(2, 1)) is None
 
 
 # ---- 提权防护：admin 角色 / 超级用户目标（actor 必须是超级用户） ----

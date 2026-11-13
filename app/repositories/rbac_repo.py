@@ -1,10 +1,11 @@
 from typing import List, Optional, Sequence, Set
 
-from sqlalchemy import select, func
+from sqlalchemy import select, func, delete, insert, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.user import User, user_roles
+from app.models.user import User, UserRoleBinding, user_roles
+from app.models.organization import Peak
 from app.models.role import Role, role_permissions
 from app.models.permission import Permission
 from app.repositories.base import paginate
@@ -156,20 +157,6 @@ class RBACRepository:
         )
         return [row[0] for row in result.all()]
 
-    async def count_users_by_role(self, role_ids: Sequence[int]) -> dict[int, int]:
-        """按角色统计用户数（单条 group by 聚合，未出现的角色不在结果中）。
-
-        用于管理员角色列表：替代「逐角色 get_user_ids_by_role 再取长度」的 N+1。
-        """
-        if not role_ids:
-            return {}
-        result = await self.db.execute(
-            select(user_roles.c.role_id, func.count(user_roles.c.user_id))
-            .where(user_roles.c.role_id.in_(role_ids))
-            .group_by(user_roles.c.role_id)
-        )
-        return {int(row[0]): int(row[1]) for row in result.all()}
-
     async def get_role_ids_by_permission(self, permission_id: int) -> List[int]:
         """查询拥有指定权限的全部角色 id（用于权限定义变更时缓存失效）。"""
         result = await self.db.execute(
@@ -213,7 +200,14 @@ class RBACRepository:
 
         仅写入 update_data 中非 None 的字段。
         """
-        for field in ("name", "display_name", "description", "is_active"):
+        for field in (
+            "name",
+            "display_name",
+            "fantasy_display_name",
+            "description",
+            "audit_domains",
+            "is_active",
+        ):
             value = update_data.get(field)
             if value is not None:
                 setattr(role, field, value)
@@ -301,3 +295,138 @@ class RBACRepository:
                 if permission is not None:
                     role.permissions.append(permission)
         await self.db.flush()
+
+    # ------------------------------------------------------------------ 角色绑定（带作用范围）
+
+    async def get_user_bindings(self, user_id: int) -> List[dict]:
+        """查询用户的全部有效角色绑定（含角色展示名）。"""
+        stmt = (
+            select(
+                UserRoleBinding,
+                Role.name,
+                Role.display_name,
+                Role.fantasy_display_name,
+            )
+            .join(Role, Role.id == UserRoleBinding.role_id)
+            .where(UserRoleBinding.user_id == user_id)
+            .order_by(UserRoleBinding.id)
+        )
+        result = await self.db.execute(stmt)
+        rows = []
+        for binding, role_name, display_name, fantasy_name in result.all():
+            rows.append(
+                {
+                    "id": binding.id,
+                    "role_id": binding.role_id,
+                    "role_name": role_name,
+                    "display_name": display_name,
+                    "fantasy_display_name": fantasy_name,
+                    "scope_type": binding.scope_type,
+                    "scope_peak_id": binding.scope_peak_id,
+                    "created_at": binding.created_at,
+                }
+            )
+        return rows
+
+    async def get_user_authorization_version(self, user_id: int) -> Optional[int]:
+        """读取用户当前授权版本（不存在或已软删返回 None）。"""
+        result = await self.db.execute(
+            select(User.authorization_version).where(
+                User.id == user_id, User.deleted_at.is_(None)
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def get_authorization_versions(
+        self, user_ids: Sequence[int]
+    ) -> dict[int, int]:
+        """批量读取用户授权版本（用于按各自版本失效权限缓存）。"""
+        if not user_ids:
+            return {}
+        result = await self.db.execute(
+            select(User.id, User.authorization_version).where(User.id.in_(user_ids))
+        )
+        return {uid: version for uid, version in result.all()}
+
+    async def bump_authorization_version(self, user_id: int) -> None:
+        """授权变更后递增版本；缓存键与受保护写校验依赖该值。"""
+        await self.db.execute(
+            update(User)
+            .where(User.id == user_id)
+            .values(authorization_version=User.authorization_version + 1)
+        )
+
+    async def replace_user_bindings(
+        self,
+        user_id: int,
+        bindings: Sequence[dict],
+        created_by: Optional[int] = None,
+    ) -> None:
+        """整组替换用户绑定（flush，不 commit）。
+
+        调用方必须在同一外层事务内完成校验与审计；本方法不做权限判断。
+        """
+        await self.db.execute(delete(user_roles).where(user_roles.c.user_id == user_id))
+        if bindings:
+            await self.db.execute(
+                insert(user_roles),
+                [
+                    {
+                        "user_id": user_id,
+                        "role_id": item["role_id"],
+                        "scope_type": item["scope_type"],
+                        "scope_peak_id": item.get("scope_peak_id"),
+                        "created_by": created_by,
+                    }
+                    for item in bindings
+                ],
+            )
+        await self.bump_authorization_version(user_id)
+        await self.db.flush()
+
+    async def get_peak_by_id(self, peak_id: int) -> Optional[Peak]:
+        """读取峰（用于绑定 scope 校验）。"""
+        result = await self.db.execute(select(Peak).where(Peak.id == peak_id))
+        return result.scalar_one_or_none()
+
+    async def add_user_binding(
+        self,
+        user_id: int,
+        role_id: int,
+        scope_type: str,
+        scope_peak_id: Optional[int] = None,
+        created_by: Optional[int] = None,
+    ) -> None:
+        """新增单条绑定并递增授权版本（flush，不 commit）。"""
+        await self.db.execute(
+            insert(user_roles).values(
+                user_id=user_id,
+                role_id=role_id,
+                scope_type=scope_type,
+                scope_peak_id=scope_peak_id,
+                created_by=created_by,
+            )
+        )
+        await self.bump_authorization_version(user_id)
+        await self.db.flush()
+
+    async def delete_user_bindings(self, user_id: int, role_id: int) -> None:
+        """删除用户对某角色的全部绑定并递增授权版本（flush，不 commit）。"""
+        await self.db.execute(
+            delete(user_roles).where(
+                user_roles.c.user_id == user_id, user_roles.c.role_id == role_id
+            )
+        )
+        await self.bump_authorization_version(user_id)
+        await self.db.flush()
+
+    async def get_role_permissions_names(self, role_id: int) -> Set[str]:
+        """读取角色权限名集合（用于委派上限校验）。"""
+        stmt = (
+            select(Permission.resource, Permission.action)
+            .select_from(role_permissions)
+            .join(Permission, Permission.id == role_permissions.c.permission_id)
+            .where(role_permissions.c.role_id == role_id)
+        )
+        result = await self.db.execute(stmt)
+        return {f"{resource}:{action}" for resource, action in result.all()}

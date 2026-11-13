@@ -15,7 +15,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events import event_bus
-from app.core.loguru_logger import get_logger
 from app.models.community import CommunityComment, CommunityPost
 from app.models.user import User
 from app.repositories.community_repo import (
@@ -23,8 +22,6 @@ from app.repositories.community_repo import (
     CommunityInteractionRepository,
 )
 from app.services.community.community_utils import scan_mentions
-
-logger = get_logger("community")
 
 
 async def notify_mentions(
@@ -65,7 +62,7 @@ async def notify_mentions(
             ]
         )
         await db.commit()
-        # ER-15 Phase 1：通知改发领域事件（notification_events 订阅者独立 session 落库）
+        # 通知改发领域事件（notification_events 订阅者独立 session 落库）
         event_bus.emit(
             "community.mention",
             source_type=source_type,
@@ -95,16 +92,12 @@ async def notify_comment_reply(
     if not recipients:
         return
     try:
-        # ER-15 Phase 1：通知改发领域事件（订阅者独立 session 落库）
+        # 通知改发领域事件（订阅者独立 session 落库）
         event_bus.emit(
             "community.comment.reply",
             post_title=post.title,
             actor_id=author_id,
             recipients=recipients,
         )
-    except (
-        Exception
-    ) as exc:  # noqa: BLE001 - 通知副作用不阻断主流程（ER-49：留痕升级 warning）
-        logger.warning(
-            "社区通知事件投递失败", event="community.comment.reply", error=str(exc)
-        )
+    except Exception:  # noqa: BLE001
+        pass

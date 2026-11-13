@@ -6,9 +6,12 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime as _DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -24,9 +27,34 @@ DateTime = _DateTime(timezone=True)
 
 
 class Event(Base):
-    """活动：month/date/year 为展示用文本；capacity=0 表示不限人数。"""
+    """活动：starts_at/ends_at 为真实时间；month/date/year 仅作过渡展示。
+
+    status = draft | upcoming | ongoing | ended | cancelled。
+    """
 
     __tablename__ = "events"
+    __table_args__ = (
+        CheckConstraint("capacity >= 0", name="ck_events_capacity"),
+        CheckConstraint(
+            "starts_at IS NULL OR ends_at IS NULL OR starts_at < ends_at",
+            name="ck_events_time_order",
+        ),
+        CheckConstraint(
+            "visibility IN ('public', 'members', 'peak')",
+            name="ck_events_visibility",
+        ),
+        CheckConstraint(
+            "visibility <> 'peak' OR peak_id IS NOT NULL",
+            name="ck_events_peak_visibility",
+        ),
+        Index(
+            "ix_events_visibility_peak_status",
+            "visibility",
+            "peak_id",
+            "status",
+            "starts_at",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     month: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
@@ -42,6 +70,19 @@ class Event(Base):
     is_pinned: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     capacity: Mapped[int] = mapped_column(Integer, default=0)
     content_markdown: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    starts_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    ends_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    location: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    organizer_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    visibility: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="public"
+    )
+    peak_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("peaks.id", ondelete="SET NULL"), nullable=True
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_by: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("users.id"), nullable=True
     )

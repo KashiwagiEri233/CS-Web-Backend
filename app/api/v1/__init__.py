@@ -1,13 +1,11 @@
 from fastapi import APIRouter
 
 from app.api.v1 import (
-    agent_briefing,
-    agent_inbox,
-    agent_weekly_review,
-    agent_rules,
     admin_community,
     admin_events,
+    admin_finance,
     admin_roles,
+    admin_tasks,
     admin_users,
     announcements,
     audit,
@@ -18,12 +16,16 @@ from app.api.v1 import (
     exceptions,
     join,
     notifications,
+    organization,
     password_resets,
     profile,
     rbac,
     search,
+    tasks,
+    teams,
     tools,
     users,
+    wallet,
     workbench,
 )
 from app.core.config import settings
@@ -31,18 +33,6 @@ from app.core.config import settings
 api_router = APIRouter()
 
 api_router.include_router(auth.router, prefix="/auth", tags=["认证"])
-api_router.include_router(
-    agent_inbox.router, prefix="/agent-inbox", tags=["Agent建议收件箱"]
-)
-api_router.include_router(
-    agent_rules.router, prefix="/agent-rules", tags=["Agent自动化规则"]
-)
-api_router.include_router(
-    agent_briefing.router, prefix="/agent-briefing", tags=["Agent每日简报"]
-)
-api_router.include_router(
-    agent_weekly_review.router, prefix="/agent-weekly-review", tags=["Agent每周复盘"]
-)
 api_router.include_router(profile.router, tags=["个人资料"])
 api_router.include_router(users.router, prefix="/users", tags=["用户管理"])
 api_router.include_router(rbac.router, prefix="/rbac", tags=["RBAC权限管理"])
@@ -68,8 +58,18 @@ api_router.include_router(
 )
 api_router.include_router(tools.exam.router, prefix="/tools", tags=["考试"])
 api_router.include_router(tools.resource.router, prefix="/tools", tags=["资源"])
-api_router.include_router(tools.task.router, prefix="/tools", tags=["任务"])
-api_router.include_router(tools.points.router, prefix="/tools", tags=["积分"])
+api_router.include_router(wallet.router, prefix="/wallet", tags=["钱包"])
+api_router.include_router(tasks.router, prefix="/tasks", tags=["任务"])
+api_router.include_router(tasks.claim_router, prefix="/task-claims", tags=["任务执行"])
+api_router.include_router(teams.router, prefix="/teams", tags=["团队"])
+api_router.include_router(admin_tasks.router, prefix="/admin", tags=["管理员-任务"])
+api_router.include_router(organization.router, prefix="/organization", tags=["组织"])
+api_router.include_router(
+    organization.admin_router, prefix="/admin/organization", tags=["管理员-组织"]
+)
+api_router.include_router(
+    admin_finance.router, prefix="/admin/finance", tags=["管理员-财务"]
+)
 api_router.include_router(auxilio.router, tags=["学习助手"])
 api_router.include_router(auxilio.analysis_router, prefix="/tools", tags=["学习助手"])
 api_router.include_router(

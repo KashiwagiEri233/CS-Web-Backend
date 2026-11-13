@@ -3,7 +3,6 @@
 覆盖 ER-02 点名的零测试逻辑（仓储层直测，区别于 HTTP/phase 测试）：
 - ResourceRepository：CRUD / status·resource_type·submitted_by 过滤 / 分页 / increment_view；
 - TaskRepository：CRUD / status·category 过滤 / 认领（create/get/count_active/list_claims_*）；
-- PointsRepository：流水 / last_balance / list_transactions / leaderboard；
 - ComponentRegistryRepository：item / variant（replace_variants·toggle_variant）/ guide
   （upsert）。
 
@@ -12,8 +11,8 @@
   与 community/events 同源的 JSONB-LIKE 退化 bug，本测试刻意不传 tag 参数，避免命中；
   是否并入 tag 修复 MP 待用户拍板。
 - tools 域表均无 DB 级 CASCADE：Resource.submitted_by / Task.created_by /
-  PointsTransaction.user_id / TaskClaim.task_id 与 user_id / Variant.item_id 均为
-  NO ACTION，清理顺序须 子表 → 父表 → users。
+  TaskClaim.task_id 与 user_id / Variant.item_id 均为 NO ACTION，
+  清理顺序须 子表 → 父表 → users。
 
 本地无法连接数据库时自动 skip；CI 严格模式下直接失败。
 """
@@ -21,7 +20,7 @@
 import uuid
 
 import pytest
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 
 from app.core.timezone import now_utc
 from app.database import get_session
@@ -31,17 +30,15 @@ from app.models.component_registry import (
     ComponentRegistryVariant,
 )
 from app.models.exam import Exam
-from app.models.points import PointsTransaction
 from app.models.resource import Resource
-from app.models.task import Task, TaskClaim
+from app.models.task import Task, TaskClaim, TaskClaimMember
 from app.models.user import User
 from app.repositories.tools_repo import (
     ComponentRegistryRepository,
     ExamRepository,
-    PointsRepository,
     ResourceRepository,
-    TaskRepository,
 )
+from app.repositories.task_repo import TaskRepository
 
 pytestmark = pytest.mark.integration
 
@@ -63,12 +60,16 @@ async def _cleanup(
     db, uids=None, resource_ids=None, task_ids=None, item_ids=None, exam_ids=None
 ) -> None:
     """按依赖顺序清场：resources / exams / claims→tasks /
-    variants→guides→items / points→users。"""
+    variants→guides→items → users。"""
     if resource_ids:
         await db.execute(delete(Resource).where(Resource.id.in_(resource_ids)))
     if exam_ids:
         await db.execute(delete(Exam).where(Exam.id.in_(exam_ids)))
     if task_ids:
+        claim_ids = select(TaskClaim.id).where(TaskClaim.task_id.in_(task_ids))
+        await db.execute(
+            delete(TaskClaimMember).where(TaskClaimMember.claim_id.in_(claim_ids))
+        )
         await db.execute(delete(TaskClaim).where(TaskClaim.task_id.in_(task_ids)))
         await db.execute(delete(Task).where(Task.id.in_(task_ids)))
     if item_ids:
@@ -86,9 +87,6 @@ async def _cleanup(
             delete(ComponentRegistryItem).where(ComponentRegistryItem.id.in_(item_ids))
         )
     if uids:
-        await db.execute(
-            delete(PointsTransaction).where(PointsTransaction.user_id.in_(uids))
-        )
         await db.execute(delete(User).where(User.id.in_(uids)))
     await db.commit()
 
@@ -167,7 +165,6 @@ async def test_resource_crud_filters_view(integration_db_ready):
 
 # ---------------------------------------------------------------------------
 # 1.5) tag 过滤回归 —— Resource.tech_tags 走 JSONB @> 包含
-#      （2026-08-10 并入 tag 修复 MP：tools_repo.py:235 原为字符串 LIKE 退化写法）
 # ---------------------------------------------------------------------------
 async def test_resource_tag_filter_jsonb_containment(integration_db_ready):
     sfx = uuid.uuid4().hex[:8]
@@ -211,7 +208,7 @@ async def test_resource_tag_filter_jsonb_containment(integration_db_ready):
 
 
 # ---------------------------------------------------------------------------
-# 2) TaskRepository：CRUD + 过滤 + 认领（含 pending 列表）
+# 2) TaskRepository（P3 新模型）：CRUD + 过滤 + 执行实例/成员快照
 # ---------------------------------------------------------------------------
 async def test_task_crud_and_claims(integration_db_ready):
     sfx = uuid.uuid4().hex[:8]
@@ -229,8 +226,12 @@ async def test_task_crud_and_claims(integration_db_ready):
                     "description": "d",
                     "category": "dev",
                     "status": "published",
-                    "created_by": creator,
-                    "points": 10,
+                    "publisher_id": creator,
+                    "execution_mode": "single",
+                    "reward_total": 10,
+                    "max_members": 1,
+                    "deadline": now_utc(),
+                    "visibility": "public",
                 }
             )
             t2 = await repo.create(
@@ -239,128 +240,56 @@ async def test_task_crud_and_claims(integration_db_ready):
                     "description": "d",
                     "category": "design",
                     "status": "draft",
-                    "created_by": creator,
-                    "points": 5,
+                    "publisher_id": creator,
+                    "execution_mode": "single",
+                    "reward_total": 5,
+                    "max_members": 1,
+                    "deadline": now_utc(),
+                    "visibility": "public",
                 }
             )
             await db.commit()
             task_ids += [t1.id, t2.id]
             t1_id, t2_id = t1.id, t2.id
 
-            # get_by_id + 过滤（全局过滤用成员断言，避免其他测试遗留行干扰精确 total）
-            assert (await repo.get_by_id(t1_id)).title == f"task-{sfx}-1"
-            pub, pub_total = await repo.list_tasks(status="published", skip=0, limit=10)
-            assert pub_total >= 1 and any(t.id == t1_id for t in pub)
-            dev, dev_total = await repo.list_tasks(category="dev", skip=0, limit=10)
-            assert dev_total >= 1 and any(t.id == t1_id for t in dev)
-
-            # 认领
-            claim = await repo.create_claim(
-                {
-                    "task_id": t1_id,
-                    "user_id": u1,
-                    "status": "claimed",
-                    "claim_note": "n",
-                }
+            assert (await repo.get(t1_id)).title == f"task-{sfx}-1"
+            pub = await repo.list_tasks(
+                conditions=[Task.status == "published", Task.title.like(f"%{sfx}%")]
             )
+            assert any(t.id == t1_id for t in pub)
+            dev = await repo.list_tasks(
+                conditions=[Task.category == "dev", Task.title.like(f"%{sfx}%")]
+            )
+            assert any(t.id == t1_id for t in dev)
+
+            claim = await repo.create_claim(
+                {"task_id": t1_id, "leader_user_id": u1, "status": "active"}
+            )
+            await repo.add_claim_member(claim.id, u1, True)
             await db.commit()
             claim_id = claim.id
-            assert (await repo.get_claim(t1_id, u1)) is not None
-            assert (await repo.get_claim_by_id(claim_id)) is not None
-            assert await repo.count_active_claims(t1_id) == 1
+            assert (await repo.get_open_claim(t1_id)) is not None
+            assert len(await repo.list_claim_members(claim_id)) == 1
+            assert await repo.count_claims_for_user(u1) == 1
+            assert await repo.user_has_active_claim(u1) is True
 
-            # 第二个用户提交 -> active claims=2，pending 列表含该条
-            c2 = await repo.create_claim(
-                {
-                    "task_id": t1_id,
-                    "user_id": u2,
-                    "status": "submitted",
-                    "claim_note": "done",
-                }
-            )
-            await db.commit()
-            c2_id = c2.id
-            assert await repo.count_active_claims(t1_id) == 2
-            pending = await repo.list_pending_claims()
-            assert any(c.id == c2_id for c in pending)
-            assert len(await repo.list_claims_for_task(t1_id)) == 2
+            assert len(await repo.list_claims_for_task(t1_id)) == 1
             assert len(await repo.list_claims_for_user(u1)) == 1
 
-            # update + delete
-            t1_obj = await repo.get_by_id(t1_id)
+            t1_obj = await repo.get(t1_id)
             await repo.update(t1_obj, {"status": "closed", "closed_at": now_utc()})
             await db.commit()
-            assert (await repo.get_by_id(t1_id)).status == "closed"
-            assert await repo.delete(t2_id) is True
+            assert (await repo.get(t1_id)).status == "closed"
+            # 恢复 published 以便清理不残留开放执行实例约束
+            await repo.update(t1_obj, {"status": "published"})
             await db.commit()
-            assert (await repo.get_by_id(t2_id)) is None
-            assert await repo.delete(999999) is False
     finally:
         async with get_session() as db:
             await _cleanup(db, [creator, u1, u2], task_ids=task_ids)
 
 
 # ---------------------------------------------------------------------------
-# 3) PointsRepository：流水 / last_balance / list_transactions / leaderboard
-# ---------------------------------------------------------------------------
-async def test_points_transactions_balance_leaderboard(integration_db_ready):
-    sfx = uuid.uuid4().hex[:8]
-    async with get_session() as db:
-        u1 = await _make_user(db, f"{sfx}p1")
-        u2 = await _make_user(db, f"{sfx}p2")
-    try:
-        async with get_session() as db:
-            repo = PointsRepository(db)
-            assert await repo.last_balance(u1) == 0
-
-            tx1 = await repo.create_transaction(
-                user_id=u1,
-                amount=50,
-                reason="task",
-                source_type="task",
-                source_id=1,
-                balance_after=50,
-            )
-            tx2 = await repo.create_transaction(
-                user_id=u1,
-                amount=-10,
-                reason="spend",
-                source_type="shop",
-                source_id=None,
-                balance_after=40,
-            )
-            tx3 = await repo.create_transaction(
-                user_id=u2,
-                amount=100,
-                reason="bonus",
-                source_type="system",
-                source_id=None,
-                balance_after=100,
-            )
-            await db.commit()
-            assert tx1.id and tx2.id and tx3.id
-
-            assert await repo.last_balance(u1) == 40
-            assert await repo.last_balance(u2) == 100
-
-            # 同一时间戳提交的流水排序不确定，只断言集合
-            lst = await repo.list_transactions(u1, limit=10)
-            assert {t.id for t in lst} == {tx1.id, tx2.id}
-
-            # 排行榜取每人 max(balance_after)：u2(100) 应排在 u1(50) 之前；
-            # top_n 取大值，避免遗留高余额用户把测试用户挤出榜单
-            lb = await repo.leaderboard(top_n=1000)
-            pos_u2 = next(i for i, (uid, b) in enumerate(lb) if uid == u2)
-            pos_u1 = next(i for i, (uid, b) in enumerate(lb) if uid == u1)
-            assert pos_u2 < pos_u1
-            assert lb[pos_u2][1] == 100 and lb[pos_u1][1] == 50
-    finally:
-        async with get_session() as db:
-            await _cleanup(db, [u1, u2])
-
-
-# ---------------------------------------------------------------------------
-# 4) ComponentRegistryRepository：item / variant / guide
+# 3) ComponentRegistryRepository：item / variant / guide
 # ---------------------------------------------------------------------------
 async def test_component_registry_items_variants_guide(integration_db_ready):
     sfx = uuid.uuid4().hex[:8]
@@ -491,7 +420,7 @@ async def test_tools_transaction_rollback(integration_db_ready):
 
 # ---------------------------------------------------------------------------
 # 6) Exam 冒烟 —— list_exams 的 tag 过滤走 JSONB @> 包含（无专属测试套件，
-#    仅验证修复不报错、命中正确；2026-08-10 并入 tag 修复 MP：tools_repo.py:40）
+#    仅验证修复不报错、命中正确）
 # ---------------------------------------------------------------------------
 async def test_exam_tag_filter_smoke(integration_db_ready):
     sfx = uuid.uuid4().hex[:8]

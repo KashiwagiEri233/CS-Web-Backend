@@ -19,6 +19,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.timezone import now_utc
 from app.database import Base
+from app.models.types import JSONDict
 
 # 带时区的 DateTime（Postgres TIMESTAMP WITH TIME ZONE），与 UTC aware 约定对齐
 DateTime = _DateTime(timezone=True)
@@ -57,6 +58,14 @@ class Role(Base):
     )
     # 角色展示名（如「内容审核员」）；为空时回退 name
     display_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    # 旧端（宗门）展示名；为空时回退 display_name，不影响真实权限
+    fantasy_display_name: Mapped[Optional[str]] = mapped_column(
+        String(100), nullable=True
+    )
+    # 审计业务域白名单（如 ["organization"]）；仅授予 audit:read 时生效
+    audit_domains: Mapped[Optional[list]] = mapped_column(
+        JSONDict, nullable=True, default=list
+    )
     # 系统内置角色（种子数据创建）：禁止删除
     is_system: Mapped[bool] = mapped_column(Boolean, default=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
@@ -70,8 +79,13 @@ class Role(Base):
     )
 
     # 关联关系
+    # secondary 表含两条指向 users 的外键，显式指定连接列避免歧义。
     users: Mapped[List["User"]] = relationship(
-        "User", secondary="user_roles", back_populates="roles"
+        "User",
+        secondary="user_roles",
+        primaryjoin="Role.id == user_roles.c.role_id",
+        secondaryjoin="User.id == user_roles.c.user_id",
+        back_populates="roles",
     )
     permissions: Mapped[List["Permission"]] = relationship(
         "Permission", secondary=role_permissions, back_populates="roles"

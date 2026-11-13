@@ -19,12 +19,9 @@ from app.core.exceptions import (
     ErrorCode,
     NotFoundException,
 )
-from app.core.loguru_logger import get_logger
 from app.models.user import User
 from app.repositories.community_repo import CommunityFollowRepository
 from app.repositories.user_repo import UserRepository
-
-logger = get_logger("community")
 
 
 class FeedService:
@@ -132,15 +129,11 @@ class FeedService:
 
     async def _notify_follow(self, follower_id: int, target: User) -> None:
         try:
-            # ER-15 Phase 1：通知改发领域事件（订阅者独立 session 查关注者名并落库）
+            # 通知改发领域事件（订阅者独立 session 查关注者名并落库）
             event_bus.emit(
                 "community.user.followed",
                 follower_id=follower_id,
                 target_user_id=target.id,
             )
-        except (
-            Exception
-        ) as exc:  # noqa: BLE001 - 通知副作用不阻断主流程（ER-49：留痕升级 warning）
-            logger.warning(
-                "社区通知事件投递失败", event="community.user.followed", error=str(exc)
-            )
+        except Exception:  # noqa: BLE001
+            pass

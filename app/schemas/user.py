@@ -24,6 +24,7 @@ __all__ = [
     "AdminUserUpdate",
     "AdminUserListOut",
     "CustomResetPassword",
+    "InternalUserUpsertIn",
 ]
 
 # 单一定义来源：用户响应模型即 auth.User（id + is_superuser + 基础字段）。
@@ -83,4 +84,30 @@ class CustomResetPassword(BaseModel):
         is_valid, error_msg = validate_password_strength(v)
         if not is_valid:
             raise ValueError(error_msg)
+        return v
+
+
+class InternalUserUpsertIn(BaseModel):
+    """旧项目回推用户入参（POST /internal/users/upsert）。
+
+    字段与旧项目 InternalUserUpsertDTO 对齐；邮箱是两侧账号唯一标识，必填。
+    回推语义：按 email 查重后关联既有账号或创建新账号，不生成占位邮箱。
+    """
+
+    sync_id: Optional[str] = None
+    username: Optional[str] = None
+    email: str
+    nickname: Optional[str] = None
+    avatar_url: Optional[str] = None
+    # 旧项目 bcrypt 哈希（两侧算法一致，可直接复制）
+    password_hash: Optional[str] = None
+    active: Optional[bool] = None
+    model_config = camel_config(str_strip_whitespace=True)
+
+    @field_validator("email")
+    @classmethod
+    def _validate_email(cls, v: str) -> str:
+        v = v.strip().lower()
+        if not v or "@" not in v:
+            raise ValueError("邮箱格式非法")
         return v

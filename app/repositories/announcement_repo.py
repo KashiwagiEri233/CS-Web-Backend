@@ -16,11 +16,11 @@ class AnnouncementRepository:
         self.db = db
 
     async def list_active(self, now: datetime) -> list[Announcement]:
-        """生效中的公告：is_active + 未过期，按 priority 降序、创建时间降序。"""
+        """生效中的公告：published + 未过期，按 priority 降序、创建时间降序。"""
         stmt = (
             select(Announcement)
             .where(
-                Announcement.is_active.is_(True),
+                Announcement.status == "published",
                 (Announcement.expires_at.is_(None)) | (Announcement.expires_at > now),
             )
             .order_by(Announcement.priority.desc(), Announcement.created_at.desc())
@@ -28,8 +28,11 @@ class AnnouncementRepository:
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
 
-    async def list_all(self) -> list[Announcement]:
-        stmt = select(Announcement).order_by(Announcement.created_at.desc())
+    async def list_all(self, created_by: Optional[int] = None) -> list[Announcement]:
+        stmt = select(Announcement)
+        if created_by is not None:
+            stmt = stmt.where(Announcement.created_by == created_by)
+        stmt = stmt.order_by(Announcement.created_at.desc())
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
 

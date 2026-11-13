@@ -53,6 +53,10 @@ async def list_all_events(
     body.total / body.total_pages 做分页，裸数组会导致列表永远为空。
     """
     events = await service.event_repo.list_all()
+    for event in events:
+        setattr(
+            event, "registered_count", await service.reg_repo.count_registered(event.id)
+        )
     items = [event_to_out(e) for e in events]
     total = len(items)
     page_size = max(total, 1)  # 管理端全量列表不分页
@@ -170,6 +174,34 @@ async def delete_event(
         current_user.id, event_id, client_meta=get_client_meta(request)
     )
     return {"ok": True}
+
+
+@router.post("/{event_id}/close", response_model=EventOut)
+async def close_event(
+    event_id: int,
+    request: Request,
+    service: EventService = Depends(get_event_service),
+    current_user: User = Depends(require_permission("event", "close")),
+) -> Any:
+    """显式结束活动（真实结束动作，时间到期不等于取消）。"""
+    event = await service.close_event(
+        current_user.id, event_id, client_meta=get_client_meta(request)
+    )
+    return event_to_out(event)
+
+
+@router.post("/{event_id}/cancel", response_model=EventOut)
+async def cancel_event(
+    event_id: int,
+    request: Request,
+    service: EventService = Depends(get_event_service),
+    current_user: User = Depends(require_permission("event", "close")),
+) -> Any:
+    """取消活动；不清除报名与签到证据。"""
+    event = await service.cancel_event(
+        current_user.id, event_id, client_meta=get_client_meta(request)
+    )
+    return event_to_out(event)
 
 
 # ------------------------------------------------------------------ 报名管理

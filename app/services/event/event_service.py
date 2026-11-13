@@ -11,7 +11,7 @@ from datetime import date as date_cls
 from typing import Optional
 
 from app.core.constants import VERIFICATION_CODE_MIN, VERIFICATION_CODE_MAX
-from sqlalchemy import select
+from sqlalchemy import and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events import event_bus
@@ -23,13 +23,15 @@ from app.core.exceptions import (
 )
 from app.core.timezone import now_utc
 from app.models.event import Event, EventCheckin, EventRegistration
+from app.models.organization import MemberProfile
+from app.models.user import User
 from app.repositories.event_repo import (
     EventCheckinRepository,
     EventRegistrationRepository,
     EventRepository,
     EventSettingRepository,
 )
-from app.repositories.user_repo import UserRepository
+from app.repositories.organization_repo import OrganizationRepository
 from app.schemas.event import EVENT_LIMITS, EventInput, EventSettingsIn
 from app.services.audit_service import AuditService
 
@@ -41,7 +43,6 @@ class EventService:
         self.reg_repo = EventRegistrationRepository(db)
         self.checkin_repo = EventCheckinRepository(db)
         self.setting_repo = EventSettingRepository(db)
-        self.user_repo = UserRepository(db)
         self.audit = audit if audit is not None else AuditService()
 
     # ------------------------------------------------------------------ 设置
@@ -83,32 +84,79 @@ class EventService:
     # ------------------------------------------------------------------ CRUD
 
     async def auto_archive(self) -> int:
-        """自动归档：日期已过的活动标记 ended。供定时任务或管理任务调用。"""
-        count = await self.event_repo.auto_archive(date_cls.today().isoformat())
-        await self.db.commit()
-        return count
+        """自动归档：日期已过的活动标记 ended。"""
+        return await self.event_repo.auto_archive(date_cls.today().isoformat())
 
     async def list_events(
         self,
         *,
         status: Optional[str] = None,
-        month: Optional[str] = None,
         search: Optional[str] = None,
         tag: Optional[str] = None,
+        user: Optional[User] = None,
         skip: int = 0,
         limit: int = 50,
     ) -> tuple[list[Event], int]:
+        await self.auto_archive()
+        member = None
+        if user is not None:
+            member = await OrganizationRepository(self.db).get_member_by_user_id(
+                user.id
+            )
+            if member is not None and member.membership_status != "active":
+                member = None
         events, total = await self.event_repo.list_events(
             status=status,
-            month=month,
             search=search,
             tag=tag,
+            visibility_conditions=self._visibility_conditions(member),
             skip=skip,
             limit=limit,
         )
+        # 附报名人数
+        for event in events:
+            count = await self.reg_repo.count_registered(event.id)
+            setattr(event, "registered_count", count)
         return events, total
 
+    @staticmethod
+    def _visibility_conditions(member: Optional[MemberProfile]) -> list:
+        clauses = [Event.visibility == "public"]
+        if member is not None:
+            clauses.append(Event.visibility == "members")
+            if member.peak_id is not None:
+                clauses.append(
+                    and_(
+                        Event.visibility == "peak",
+                        Event.peak_id == member.peak_id,
+                    )
+                )
+        return [or_(*clauses)]
+
+    @staticmethod
+    def can_view(event: Event, member: Optional[MemberProfile]) -> bool:
+        if event.visibility == "public":
+            return True
+        if member is None:
+            return False
+        if event.visibility == "members":
+            return True
+        if event.visibility == "peak":
+            return event.peak_id is not None and member.peak_id == event.peak_id
+        return False
+
+    async def user_can_view(self, user: Optional[User], event: Event) -> bool:
+        member = None
+        if user is not None:
+            member = await OrganizationRepository(self.db).get_member_by_user_id(
+                user.id
+            )
+            if member is not None and member.membership_status != "active":
+                member = None
+        return self.can_view(event, member)
+
     async def get_event(self, event_id: int) -> Event:
+        await self.auto_archive()
         event = await self.event_repo.get_by_id(event_id)
         if event is None:
             raise NotFoundException(
@@ -194,6 +242,44 @@ class EventService:
         )
         return {"success": success, "failed": len(event_ids) - success}
 
+    async def close_event(
+        self, admin_id: int, event_id: int, client_meta=None
+    ) -> Event:
+        """显式结束活动；cancelled 不可被结束覆盖。"""
+        event = await self.get_event(event_id)
+        if event.status == "cancelled":
+            raise ConflictException(
+                message="已取消的活动不能结束",
+                error_code=ErrorCode.Conflict.RESOURCE_CONFLICT,
+            )
+        event.status = "ended"
+        event.version = (event.version or 1) + 1
+        await self.db.commit()
+        await self.db.refresh(event)
+        await self._audit(
+            "event.close", admin_id, event, {"status": "ended"}, client_meta
+        )
+        return event
+
+    async def cancel_event(
+        self, admin_id: int, event_id: int, client_meta=None
+    ) -> Event:
+        """取消活动；不清除报名与签到证据。"""
+        event = await self.get_event(event_id)
+        if event.status == "ended":
+            raise ConflictException(
+                message="已结束的活动不能取消",
+                error_code=ErrorCode.Conflict.RESOURCE_CONFLICT,
+            )
+        event.status = "cancelled"
+        event.version = (event.version or 1) + 1
+        await self.db.commit()
+        await self.db.refresh(event)
+        await self._audit(
+            "event.cancel", admin_id, event, {"status": "cancelled"}, client_meta
+        )
+        return event
+
     # ------------------------------------------------------------------ 报名
 
     async def get_user_registration(
@@ -201,92 +287,22 @@ class EventService:
     ) -> Optional[EventRegistration]:
         return await self.reg_repo.get(user_id, event_id)
 
-    @staticmethod
-    def _validate_form_data(event: Event, form_data: Optional[dict]) -> None:
-        fields = event.registration_fields or []
-        if not fields:
-            return
-        data = form_data or {}
-        if len(data) > 50:
-            raise ValidationException(
-                message="提交字段数量超出限制",
-                error_code=ErrorCode.Validation.VALIDATION_FAILED,
-            )
-        for field in fields:
-            key = (
-                field.get("key")
-                if isinstance(field, dict)
-                else getattr(field, "key", None)
-            )
-            if not key:
-                continue
-            label = (
-                field.get("label")
-                if isinstance(field, dict)
-                else getattr(field, "label", None)
-            ) or key
-            required = bool(
-                field.get("required", False)
-                if isinstance(field, dict)
-                else getattr(field, "required", False)
-            )
-            field_type = (
-                field.get("type")
-                if isinstance(field, dict)
-                else getattr(field, "type", "text")
-            ) or "text"
-            options = (
-                field.get("options")
-                if isinstance(field, dict)
-                else getattr(field, "options", None)
-            )
-
-            val = data.get(key)
-            val_str = str(val).strip() if val is not None else ""
-
-            if required and not val_str:
-                raise ValidationException(
-                    message=f"{label} 为必填项",
-                    error_code=ErrorCode.Validation.VALIDATION_FAILED,
-                )
-            if val_str and len(val_str) > 1000:
-                raise ValidationException(
-                    message=f"{label} 输入内容过长（最多 1000 字符）",
-                    error_code=ErrorCode.Validation.VALIDATION_FAILED,
-                )
-            if field_type == "select" and options and val_str:
-                if val_str not in options:
-                    raise ValidationException(
-                        message=f"{label} 选项无效",
-                        error_code=ErrorCode.Validation.VALIDATION_FAILED,
-                    )
-
     async def register(
         self, user_id: int, event_id: int, form_data: Optional[dict] = None
     ) -> EventRegistration:
-        # 悲观锁锁定活动行，防止并发报名超卖
-        stmt = select(Event).where(Event.id == event_id).with_for_update()
-        event = (await self.db.execute(stmt)).scalar_one_or_none()
+        event = await self.event_repo.get_by_id(event_id)
         if event is None:
             raise NotFoundException(
                 message="活动不存在", resource_type="event", resource_id=str(event_id)
             )
 
+        await self.auto_archive()
+        await self.db.refresh(event)
         if event.status == "ended":
             raise ConflictException(
                 message="活动已结束，不可报名",
                 error_code=ErrorCode.Event.EVENT_ENDED,
             )
-
-        if event.date:
-            norm_date = event.date.replace(".", "-").replace("/", "-")
-            if len(norm_date) >= 10 and norm_date[:10] < date_cls.today().isoformat():
-                event.status = "ended"
-                await self.db.flush()
-                raise ConflictException(
-                    message="活动已结束，不可报名",
-                    error_code=ErrorCode.Event.EVENT_ENDED,
-                )
 
         existing = await self.reg_repo.get(user_id, event_id)
         if existing is not None and existing.status == "registered":
@@ -299,8 +315,6 @@ class EventService:
             raise ConflictException(
                 message="活动报名已满", error_code=ErrorCode.Event.FULL
             )
-
-        self._validate_form_data(event, form_data)
 
         if existing is not None:  # cancelled → 重新报名
             await self.reg_repo.set_status(existing, "registered", None)
@@ -349,42 +363,18 @@ class EventService:
         )
 
     async def list_user_registered_events(self, user_id: int) -> list[Event]:
-        """用户已报名的活动（registered 状态）。
-
-        批量取活动（单次 IN 查询）后按报名顺序回填，避免逐条 get_by_id 的 N+1。
-        """
-        regs = [
-            reg
-            for reg in await self.reg_repo.list_for_user_all(user_id)
-            if reg.status == "registered"
-        ]
-        if not regs:
-            return []
-        events = await self.event_repo.list_by_ids([reg.event_id for reg in regs])
-        by_id = {event.id: event for event in events}
-        return [by_id[reg.event_id] for reg in regs if reg.event_id in by_id]
+        """用户已报名的活动（registered 状态）。"""
+        await self.auto_archive()
+        regs = await self.reg_repo.list_for_user_all(user_id)
+        events = []
+        for reg in regs:
+            event = await self.event_repo.get_by_id(reg.event_id)
+            if event is not None:
+                events.append(event)
+        return events
 
     async def list_event_registrations(self, event_id: int) -> list[EventRegistration]:
-        """管理端报名列表：批量回填报名人 display_name/email（P1-8c）。
-
-        一次 IN 查询取报名人，display_name 无值时回退 username（与用户公开主页口径一致）。
-        """
-        regs = await self.reg_repo.list_for_event(event_id)
-        if not regs:
-            return []
-        users = {
-            user.id: user
-            for user in await self.user_repo.list_by_ids([reg.user_id for reg in regs])
-        }
-        for reg in regs:
-            user = users.get(reg.user_id)
-            setattr(
-                reg,
-                "display_name",
-                (user.display_name or user.username) if user else None,
-            )
-            setattr(reg, "email", user.email if user else None)
-        return regs
+        return await self.reg_repo.list_for_event(event_id)
 
     async def registration_stats(self, event_id: int) -> dict:
         return await self.reg_repo.stats_for_event(event_id)
@@ -423,8 +413,7 @@ class EventService:
         form_data: Optional[dict] = None,
         client_meta=None,
     ) -> EventRegistration:
-        stmt = select(Event).where(Event.id == event_id).with_for_update()
-        event = (await self.db.execute(stmt)).scalar_one_or_none()
+        event = await self.event_repo.get_by_id(event_id)
         if event is None:
             raise NotFoundException(
                 message="活动不存在", resource_type="event", resource_id=str(event_id)
@@ -440,7 +429,6 @@ class EventService:
             raise ConflictException(
                 message="活动名额已满", error_code=ErrorCode.Event.FULL
             )
-        self._validate_form_data(event, form_data)
         if existing is not None:
             await self.reg_repo.set_status(existing, "registered", None)
             existing.form_data = form_data
@@ -480,23 +468,18 @@ class EventService:
         existing_codes = {
             c.registration_id for c in await self.checkin_repo.list_for_event(event_id)
         }
-        spans = VERIFICATION_CODE_MAX - VERIFICATION_CODE_MIN + 1
-        pending: list[dict] = []
         for reg in regs:
             if reg.id in existing_codes:
                 skipped += 1
                 continue
-            code = f"{secrets.randbelow(spans) + VERIFICATION_CODE_MIN}"
-            pending.append(
-                {
-                    "event_id": event_id,
-                    "registration_id": reg.id,
-                    "user_id": reg.user_id,
-                    "checkin_code": code,
-                }
+            code = f"{secrets.randbelow(VERIFICATION_CODE_MAX - VERIFICATION_CODE_MIN + 1) + VERIFICATION_CODE_MIN}"  # noqa: E501
+            await self.checkin_repo.create(
+                event_id=event_id,
+                registration_id=reg.id,
+                user_id=reg.user_id,
+                checkin_code=code,
             )
-        # 批量插入（单次 flush），替代逐条 create 的 N+1 写放大
-        generated = await self.checkin_repo.create_many(pending)
+            generated += 1
         await self.db.commit()
         await self._audit(
             "event.checkin_generate",

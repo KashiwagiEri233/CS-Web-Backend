@@ -18,12 +18,12 @@ from sqlalchemy import delete, select
 from app.core.exceptions import ConflictException
 from app.database import get_session
 from app.models.component_registry import ComponentRegistryItem
-from app.models.conversation import ChatEvent, ChatMessage
+from app.models.conversation import AgentRun, ChatEvent, ChatMessage, Conversation
 from app.models.learning import WrongAnswer
 from app.models.learning_goal import LearningGoal
+from app.models.learning_plan import LearningPlanItem
 from app.models.exam import Exam
 from app.models.resource import Resource
-from app.models.task import Task
 from app.models.user import User
 from app.schemas.tools import (
     ComponentGuideInput,
@@ -32,14 +32,11 @@ from app.schemas.tools import (
     ExamInput,
     QuestionInput,
     ResourceInput,
-    TaskInput,
 )
 from app.services.auxilio_service import AuxilioService
 from app.services.component_registry_service import ComponentRegistryService
 from app.services.exam_service import ExamService
-from app.services.points_service import PointsService
 from app.services.resource_service import ResourceService
-from app.services.task_service import TaskService
 
 
 def _sfx() -> str:
@@ -68,7 +65,6 @@ async def _cleanup_user(db, user_id: int) -> None:
         "login_history",
         "password_history",
         "notifications",
-        "points_transactions",
         "task_claims",
         "exam_attempts",
         "event_registrations",
@@ -193,64 +189,6 @@ async def test_resource_flow(integration_db_ready, admin_user):
 
 
 @pytest.mark.integration
-async def test_task_and_points_flow(integration_db_ready, admin_user):
-    sfx = _sfx()
-    async with get_session() as db:
-        task_svc = TaskService(db)
-        points_svc = PointsService(db)
-        u = await _make_user(db, f"tk_{sfx}@t.com")
-        u2 = await _make_user(db, f"tk2_{sfx}@t.com")
-        try:
-            task = await task_svc.create_task(
-                u.id,
-                TaskInput(
-                    title=f"任务-{sfx}",
-                    description="写篇文章",
-                    points=20,
-                    max_claimants=1,
-                ),
-            )
-            await task_svc.publish_task(task.id)
-
-            claim = await task_svc.claim_task(u.id, task.id, "我来")
-            assert claim.status == "claimed"
-
-            # 名额已满
-            with pytest.raises(ConflictException):
-                await task_svc.claim_task(u2.id, task.id)
-
-            # 重复认领
-            with pytest.raises(ConflictException):
-                await task_svc.claim_task(u.id, task.id)
-
-            # 提交 + 审核 → 积分
-            await task_svc.submit_claim(u.id, claim.id)
-            reviewed = await task_svc.review_claim(admin_user, claim.id, True, "通过")
-            assert reviewed.status == "approved"
-
-            profile = await points_svc.profile(u.id)
-            assert profile["balance"] == 20
-            assert profile["level"] == 1
-
-            leaderboard = await points_svc.leaderboard()
-            assert any(e["user_id"] == u.id for e in leaderboard)
-
-            # 扣积分
-            await points_svc.deduct_points(u.id, 5, "system", None, "测试扣除")
-            assert await points_svc.balance(u.id) == 15
-        finally:
-            from sqlalchemy import text
-
-            for uid in (u.id, u2.id):
-                await db.execute(
-                    text("DELETE FROM points_transactions WHERE user_id=:i"), {"i": uid}
-                )
-            await _cleanup_user(db, uid)
-            await db.execute(delete(Task).where(Task.title.like(f"%{sfx}%")))
-            await db.commit()
-
-
-@pytest.mark.integration
 async def test_auxilio(integration_db_ready, admin_user):
     sfx = _sfx()
     async with get_session() as db:
@@ -315,9 +253,7 @@ async def test_auxilio(integration_db_ready, admin_user):
 
             analysis = await svc.analyze_learning_profile(u.id)
             assert any(t["tag"] == "web" for t in analysis["weak_tags"])
-            web_profile = next(
-                t for t in analysis["knowledge_points"] if t["tag"] == "web"
-            )
+            web_profile = next(t for t in analysis["knowledge_points"] if t["tag"] == "web")
             assert web_profile["incorrect"] == 1
             assert web_profile["mistake_count"] >= 2
             assert web_profile["confidence_label"] == "low"
@@ -338,9 +274,7 @@ async def test_auxilio(integration_db_ready, admin_user):
             assert goal.exam_id == exam.id
             active_goals = await svc.list_learning_goals(u.id)
             assert any(item.id == goal.id for item in active_goals)
-            await svc.update_learning_goal(
-                u.id, goal.id, status="paused", weekly_budget_minutes=300
-            )
+            await svc.update_learning_goal(u.id, goal.id, status="paused", weekly_budget_minutes=300)
             await db.refresh(goal)
             assert goal.status == "paused" and goal.weekly_budget_minutes == 300
             with pytest.raises(ValueError, match="15 到 10080"):
@@ -374,9 +308,7 @@ async def test_auxilio(integration_db_ready, admin_user):
             completed = await svc.update_learning_plan_item(
                 u.id, first_item.id, status="completed"
             )
-            assert (
-                completed.status == "completed" and completed.completed_at is not None
-            )
+            assert completed.status == "completed" and completed.completed_at is not None
         finally:
             await _cleanup_user(db, u.id)
             await db.execute(delete(Exam).where(Exam.title.like(f"%{sfx}%")))
@@ -480,12 +412,8 @@ async def test_auxilio_runtime_and_conversation_fork(integration_db_ready):
             assert deleted_count == 2
             assert source.deleted_at is not None and branch.deleted_at is not None
         finally:
-            await db.execute(
-                text("DELETE FROM chat_events WHERE user_id=:uid"), {"uid": user.id}
-            )
-            await db.execute(
-                text("DELETE FROM agent_runs WHERE user_id=:uid"), {"uid": user.id}
-            )
+            await db.execute(text("DELETE FROM chat_events WHERE user_id=:uid"), {"uid": user.id})
+            await db.execute(text("DELETE FROM agent_runs WHERE user_id=:uid"), {"uid": user.id})
             await db.execute(
                 text(
                     "DELETE FROM chat_messages WHERE conversation_id IN "
@@ -493,9 +421,7 @@ async def test_auxilio_runtime_and_conversation_fork(integration_db_ready):
                 ),
                 {"uid": user.id},
             )
-            await db.execute(
-                text("DELETE FROM conversations WHERE user_id=:uid"), {"uid": user.id}
-            )
+            await db.execute(text("DELETE FROM conversations WHERE user_id=:uid"), {"uid": user.id})
             await db.commit()
             await _cleanup_user(db, user.id)
 

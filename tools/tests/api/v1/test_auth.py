@@ -60,7 +60,7 @@ class _FakeAuthService:
         return _token_pair()
 
     async def login(self, username, password, client_meta):
-        return _token_pair()
+        return {"requires_2fa": False, "two_factor_token": None, "pair": _token_pair()}
 
     async def login_by_email(self, email, password, client_meta):
         return {"requires_2fa": False, "two_factor_token": None, "pair": _token_pair()}
@@ -147,7 +147,11 @@ def test_login_delegates_to_service():
         async def login(self, username, password, client_meta):
             captured["username"] = username
             captured["client_meta"] = client_meta
-            return _token_pair()
+            return {
+                "requires_2fa": False,
+                "two_factor_token": None,
+                "pair": _token_pair(),
+            }
 
     client = TestClient(_build_app(_Capturing()), raise_server_exceptions=False)
     resp = client.post("/auth/login", data={"username": "admin", "password": "x"})
