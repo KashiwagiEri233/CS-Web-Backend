@@ -23,7 +23,9 @@ services:
       POSTGRES_USER: ${DATABASE_USER:-postgres}
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?请在 .env 中设置 DATABASE_PASSWORD}
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      # PG18 起官方镜像改用「挂载父目录」的约定：数据落在 /var/lib/postgresql/18/docker，
+      # 便于 pg_upgrade --link，避免挂载点跨越数据目录。挂 /data 子路径会触发启动报错。
+      - pgdata:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER:-postgres} -d ${DATABASE_NAME:-domefff}"]
       interval: 5s

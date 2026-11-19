@@ -61,9 +61,13 @@ COPY --chown=appuser:appuser app ./app
 COPY --chown=appuser:appuser alembic ./alembic
 COPY --chown=appuser:appuser alembic.ini run.py ./
 
-# 日志落盘目录（ER-40）：prod 日志写 /app/logs；以 appuser 属主预建，
-# 供命名卷 logs: 首次挂载时继承属主，避免容器非 root 下 PermissionError 降级为仅控制台。
-RUN mkdir -p /app/logs && chown appuser:appuser /app/logs
+# 运行期可写目录：以 appuser 属主预建，避免容器非 root 运行时
+# 在 /app（root 属主）下 mkdir 触发 PermissionError。
+#   logs                  日志落盘（ER-40）
+#   uploads/resources     资源文件上传
+#   data                  社区图片、头像等用户数据
+RUN mkdir -p /app/logs /app/uploads /app/data \
+    && chown -R appuser:appuser /app/logs /app/uploads /app/data
 
 USER appuser
 
