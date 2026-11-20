@@ -16,7 +16,7 @@ services:
     build:
       context: .
       dockerfile: docker/db/Dockerfile
-    container_name: cs-backend-db
+    container_name: cs-db
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${DATABASE_NAME:-domefff}

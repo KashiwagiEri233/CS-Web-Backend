@@ -1,7 +1,7 @@
 # PostgreSQL 18 + zhparser（中文全文检索分词）
 #
 # 构建：docker compose build db
-# 验证：docker exec cs-backend-db psql -U postgres -d domefff -c "SELECT * FROM pg_available_extensions WHERE name='zhparser';"
+# 验证：docker exec cs-db psql -U postgres -d domefff -c "SELECT * FROM pg_available_extensions WHERE name='zhparser';"
 #
 # 说明：
 #   - 基线版本跟随生产环境的 PostgreSQL 18，避免开发/生产大版本漂移
